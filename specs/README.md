@@ -30,9 +30,10 @@ flowchart LR
 Specs 001 to 012 are `drafted`. The set was read as a whole on
 2026-10-12 by two readers working apart, one for security and one for
 consistency and the protocol, and the specs were revised from what they
-found. Specs 013 and 014 are `vague`: a problem statement with a
-proposed shape and the questions that have to be answered before either
-is a design. Nothing is built.
+found. Spec 013, GitHub, is the first connector and `drafted`. Spec
+014 is `vague`: a problem statement with a proposed shape and the
+questions that have to be answered before it is a design. Nothing is
+built.
 
 ## Index
 
@@ -50,7 +51,7 @@ is a design. Nothing is built.
 | [010](010-records-and-observability.md) | Records and observability: the call record and its retention, metrics, traces, logs that hold no content, the probes | medium | drafted | 002, 008 |
 | [011](011-distribution.md) | Distribution: the repository scaffold, the binary and its images, configuration, the stubs, test tiers, and release | large | drafted | 001 |
 | [012](012-security-and-threat-model.md) | Security and threat model: what is protected, who attacks, each defense and the test that holds it, and what is not defended | medium | drafted | 001, 005, 007, 008, 009 |
-| [013](013-github-connector.md) | A code host's connector: an app a person installs on chosen repositories, joined with the sign-in in one redirect | medium | vague | 006, 007 |
+| [013](013-github-connector.md) | A code host's connector: GitHub through a GitHub App, signed in like any connector, with the account read once and a link to choose repositories | medium | drafted | 006, 007, 008 |
 | [014](014-http-forwarding.md) | Plain HTTP through a connection: a forwarding address, the credential added, and a change held for its owner's confirmation | large | vague | 003, 008, 009 |
 
 ## Build order
@@ -70,4 +71,5 @@ The numbers are identifiers, not the order of work. The order is:
    authorization server, confirmed, refreshed, and reconnected.
 7. **The whole path** end to end, and the threat model's tests (012).
 
-Specs 013 and 014 follow once their questions are answered.
+Spec 013 is built with step 6, since GitHub is the first connector.
+Spec 014 follows once its questions are answered.

@@ -92,6 +92,7 @@ One owner's link to one connector.
 | `scopes` | list of strings | what the other service granted, when it says |
 | `address` | URL | where a caller reaches this connection ([[008-carrying-a-call]]) |
 | `tools` | `{read_only, hidden}` | the connector's marks, so a caller applies them by tool name |
+| `links` | `{manage}` | links a client may show, copied from the connector when read: `manage` changes what the other service grants ([[013-github-connector]]) |
 | `created_by` | subject | who made the request, which differs from `owner` when one acts for another |
 | `created_at`, `updated_at` | time | |
 | `last_used_at` | time | the last call, written at most once a minute |

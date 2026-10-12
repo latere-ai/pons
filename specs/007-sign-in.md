@@ -251,7 +251,12 @@ browser to it.
    `grant_type=authorization_code`, the code, the redirect address, the
    verifier, the `resource` and the client, in 15 seconds. A failure or
    a `token_type` other than `Bearer` ends the flow with
-   `error=sign_in_failed`.
+   `error=sign_in_failed`. Every token request, here and at a refresh,
+   carries `Accept: application/json`, and an answer whose JSON has an
+   `error` member is an error whatever its status, since some services
+   answer an error with `200` ([[013-github-connector]]). When the
+   entry gives `auth.account`, the account is read once with the new
+   access token, best effort ([[013-github-connector]]).
 5. **The tokens are sealed with the flow** as its pending credential
    ([[005-store-and-sealing]]), with the access token's expiry and the
    scopes the answer names, or the ones asked. They are not the

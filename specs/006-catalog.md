@@ -85,6 +85,11 @@ the same validation and serves nothing.
 | `client.id`, `client.secret` | | a client the operator registered with the service. `secret` is a reference, absent for a public client. Required with `discovery: none` |
 | `scopes` | | the scopes to ask for, in place of the ones the server names |
 | `resource` | `true` for `mcp`, `false` for `http` | whether the request names the server a token is for (RFC 8707). The protocol requires it of a client, so it is turned off only for a server that refuses the member |
+| `account` | | `{url, field}`: an https URL whose host matches `hosts`, read once after the sign-in for the connection's `account` ([[013-github-connector]]) |
+
+Any entry may also give `links.manage`, an https URL a client shows to
+change what the other service grants, which Pons never fetches
+([[013-github-connector]]).
 
 **`token`**: a person pastes a key.
 
