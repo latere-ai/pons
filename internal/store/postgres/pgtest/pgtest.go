@@ -283,3 +283,43 @@ func reaper(socket string) {
 		fmt.Fprintf(os.Stderr, "pgtest: turning the reaper off: %v\n", err)
 	}
 }
+
+// Dump is every row of every table of the database a URL names, as text,
+// for a test that searches what is at rest.
+func Dump(t testing.TB, dsn string) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	conn, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connecting to dump: %v", err)
+	}
+	defer func() {
+		if err := conn.Close(ctx); err != nil {
+			t.Errorf("closing the dump's connection: %v", err)
+		}
+	}()
+	rows, err := conn.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename`)
+	if err != nil {
+		t.Fatalf("listing the tables: %v", err)
+	}
+	tables, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatalf("listing the tables: %v", err)
+	}
+	var b strings.Builder
+	for _, table := range tables {
+		rows, err := conn.Query(ctx, `SELECT row_to_json(t)::text FROM `+pgx.Identifier{table}.Sanitize()+` t`)
+		if err != nil {
+			t.Fatalf("dumping %s: %v", table, err)
+		}
+		lines, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			t.Fatalf("dumping %s: %v", table, err)
+		}
+		for _, line := range lines {
+			b.WriteString(table + ": " + line + "\n")
+		}
+	}
+	return b.String()
+}
