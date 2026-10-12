@@ -432,7 +432,7 @@ func (l *lazyDecoder) Read(p []byte) (int, error) {
 		return 0, refuse(ConnectFailed)
 	}
 	n, err := l.dec.Read(p)
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		var r *Refusal
 		if !errors.As(err, &r) {
 			err = refuse(ConnectFailed)
@@ -475,7 +475,7 @@ type classified struct {
 
 func (c *classified) Read(p []byte) (int, error) {
 	n, err := c.rc.Read(p)
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		err = classify(c.caller, err)
 	}
 	return n, err

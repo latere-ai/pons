@@ -12,8 +12,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
-	"io"
-	"log"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/http"
@@ -109,7 +108,7 @@ func startServerWith(t *testing.T, cert tls.Certificate, h http.Handler) *server
 	hs := httptest.NewUnstartedServer(h)
 	hs.TLS = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 	// A handshake a test refuses on purpose is no news.
-	hs.Config.ErrorLog = log.New(io.Discard, "", 0)
+	hs.Config.ErrorLog = slog.NewLogLogger(slog.DiscardHandler, slog.LevelError)
 	hs.Config.ConnState = func(_ net.Conn, st http.ConnState) {
 		if st == http.StateNew {
 			s.conns.Add(1)
