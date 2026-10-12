@@ -325,6 +325,7 @@ type Call struct {
 	Method     string
 	Tool       string
 	Effect     string
+	Refs       int // the count of refs a push updates on a git address; 0 when the call is no push
 	Outcome    string
 	Status     int // 0 when the connector did not answer
 	BytesIn    int64
