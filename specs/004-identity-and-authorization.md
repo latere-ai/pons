@@ -209,7 +209,7 @@ type Limits struct {
 
 The JSON form has every member optional and exactly these keys:
 `owner`, `max_connections`, `connectors`, `read_only`, `tools`,
-`calls_per_minute`. `DecodeLimits(authz.Decision)` reads it. An object
+`refs`, `calls_per_minute`. `DecodeLimits(authz.Decision)` reads it. An object
 that does not parse, a key this version does not know, a figure below
 zero and an empty glob make the answer no decision,
 and the request fails closed with `503 authorizer_unavailable`: a
@@ -332,7 +332,7 @@ call's arguments, which Pons does not read.
 | An allow of a use is remembered per tool: a second call of the same tool asks nothing within the `ttl`, a call of another tool asks, and a deny at the authorizer holds once the `ttl` has passed | `carry.TestAnAllowIsRememberedPerTool` |
 | A deny of a read, a change, a delete, a use, a confirm and a reconnect is the `404` of its kind, byte for byte the answer of an id that names nothing; a deny of a create or a list is `403 forbidden` | `TestADenyDoesNotConfirmAnId` |
 | Another status, a body with no `allow`, a late answer, limits with an unknown key, a negative figure or an empty glob, and a filter with labels are each `503 authorizer_unavailable` with nothing done | `access.TestTheClientFailsClosed`, `authorizer.TestDecodeRefusesWhatItCannotHold` |
-| The limits object carries exactly the 6 keys above, and `DecodeLimits` reads back what an authorizer renders | `authorizer.TestTheWireNamesEveryMemberAndNoOther` |
+| The limits object carries exactly the 7 keys above, and `DecodeLimits` reads back what an authorizer renders | `authorizer.TestTheWireNamesEveryMemberAndNoOther` |
 | A create is recorded under the owner its allow names, else the owner the request named, else the caller's subject; a confirm and a reconnect do not move a connection to another owner | `TestWhoseACreateIs`, `TestAStoredConnectionKeepsItsOwner` |
 | Each member of `Limits` has a case in which an allow carrying it changes the outcome of a request: the connection cap, a connector outside the globs, a writing tool under `read_only`, a tool outside `tools`, and the rate; a call a limit refuses opens no credential, reaches no connector and is recorded `denied` | `TestEachMemberOfAnAllowChangesTheOutcome`, a case per member, which fails when a member has none; `carry.TestALimitRefusesBeforeTheCredential` |
 | With no authorizer, an owner's connection past `PONS_MAX_CONNECTIONS_PER_OWNER` is `403 forbidden` naming the limit, and a subject's create past `PONS_CREATES_PER_MINUTE` is `429 rate_limited`; under an authorizer, an allow's `max_connections` above the variable is held to it | `TestLimitsHoldWithNoAuthorizer` |

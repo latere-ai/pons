@@ -1,0 +1,199 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: Apache-2.0
+
+package authorizer_test
+
+import (
+	"bufio"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"regexp"
+	"slices"
+	"sort"
+	"strings"
+	"testing"
+
+	"latere.ai/x/pkg/authz"
+
+	"latere.ai/x/pons/authorizer"
+)
+
+// specRow is one row of the vocabulary table of spec 004.
+type specRow struct {
+	kind, action string
+	fields       []string
+}
+
+// specTable reads the vocabulary table of spec 004.
+func specTable(t *testing.T) []specRow {
+	t.Helper()
+	f, err := os.Open(filepath.Join("..", "specs", "004-identity-and-authorization.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	row := regexp.MustCompile("^\\| `(Connector|Connection)` \\| `([a-z]+\\.[a-z]+)` \\| (.*) \\|$")
+	word := regexp.MustCompile("`([a-z_]+)`")
+	var rows []specRow
+	scan := bufio.NewScanner(f)
+	for scan.Scan() {
+		m := row.FindStringSubmatch(scan.Text())
+		if m == nil {
+			continue
+		}
+		r := specRow{kind: m[1], action: m[2]}
+		for _, w := range word.FindAllStringSubmatch(m[3], -1) {
+			if !slices.Contains(r.fields, w[1]) {
+				r.fields = append(r.fields, w[1])
+			}
+		}
+		rows = append(rows, r)
+	}
+	if err := scan.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return rows
+}
+
+// The constants of the package are the vocabulary table of spec 004, in its
+// order, with its fields.
+func TestTheVocabularyIsTheSpecs(t *testing.T) {
+	rows := specTable(t)
+	if len(rows) == 0 {
+		t.Fatal("no row of the vocabulary table was read")
+	}
+	actions := authorizer.Actions()
+	if len(actions) != len(rows) {
+		t.Fatalf("the package has %d actions and the spec %d", len(actions), len(rows))
+	}
+	v := authorizer.Vocabulary()
+	if v.Core != authorizer.Core || len(v.Actions) != len(rows) {
+		t.Fatalf("the vocabulary is %+v", v)
+	}
+	for i, r := range rows {
+		if actions[i] != r.action {
+			t.Errorf("row %d: the package has %q and the spec %q", i, actions[i], r.action)
+		}
+		if got := authorizer.Kind(r.action); got != r.kind {
+			t.Errorf("%s acts on %q, the spec says %q", r.action, got, r.kind)
+		}
+		if !authorizer.Known(r.action) {
+			t.Errorf("%s is not known", r.action)
+		}
+		if got := authorizer.Fields(r.action); !slices.Equal(got, r.fields) {
+			t.Errorf("%s sends %v, the spec says %v", r.action, got, r.fields)
+		}
+	}
+	if authorizer.Known("connection.steal") || authorizer.Kind("connection.steal") != "" || authorizer.Fields("x") != nil {
+		t.Error("a string outside the table is an action")
+	}
+	if v.Label(authorizer.KindConnection) != "Connections" {
+		t.Error("the kinds carry no label")
+	}
+}
+
+// DecodeLimits refuses what Pons cannot hold: an object that does not parse,
+// an unknown key, a negative figure and an empty glob.
+func TestDecodeRefusesWhatItCannotHold(t *testing.T) {
+	for _, raw := range []string{
+		`[]`, `{"owner": 1}`, `{"max_connections": "5"}`, `{"plan": "pro"}`, `{"owner": "x", "Owner": "y"}`,
+		`{"max_connections": -1}`, `{"calls_per_minute": -5}`,
+		`{"connectors": [""]}`, `{"tools": ["get_*", ""]}`, `{"refs": [""]}`, `{} {}`, `{`,
+	} {
+		_, err := authorizer.DecodeLimits(authz.Decision{Allow: true, Limits: json.RawMessage(raw)})
+		if !errors.Is(err, authorizer.ErrUnreadableLimits) {
+			t.Errorf("%s: %v", raw, err)
+		}
+	}
+	for _, raw := range []string{``, `null`, ` {} `} {
+		l, err := authorizer.DecodeLimits(authz.Decision{Allow: true, Limits: json.RawMessage(raw)})
+		if err != nil || !isZero(l) {
+			t.Errorf("%q: %+v, %v", raw, l, err)
+		}
+	}
+}
+
+func isZero(l authorizer.Limits) bool {
+	return l.Owner == "" && l.MaxConnections == 0 && l.Connectors == nil && !l.ReadOnly && l.Tools == nil && l.Refs == nil && l.CallsPerMinute == 0
+}
+
+// The limits object carries exactly the six keys, and DecodeLimits reads
+// back what an authorizer renders.
+func TestTheWireNamesEveryMemberAndNoOther(t *testing.T) {
+	full := authorizer.Limits{
+		Owner: "https://issuer.example.com|team", MaxConnections: 3, Connectors: []string{"notion", "ctr_*"},
+		ReadOnly: true, Tools: []string{"get_*"}, Refs: []string{"refs/heads/agent/*"}, CallsPerMinute: 60,
+	}
+	raw, err := json.Marshal(full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keys map[string]any
+	if err := json.Unmarshal(raw, &keys); err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, 0, len(keys))
+	for k := range keys {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	want := []string{"calls_per_minute", "connectors", "max_connections", "owner", "read_only", "refs", "tools"}
+	if !slices.Equal(names, want) {
+		t.Fatalf("the wire names %v, want %v", names, want)
+	}
+	back, err := authorizer.DecodeLimits(authz.Decision{Allow: true, Limits: raw})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.Owner != full.Owner || back.MaxConnections != 3 || !slices.Equal(back.Connectors, full.Connectors) ||
+		!back.ReadOnly || !slices.Equal(back.Tools, full.Tools) || !slices.Equal(back.Refs, full.Refs) || back.CallsPerMinute != 60 {
+		t.Fatalf("read back %+v", back)
+	}
+	if empty, _ := json.Marshal(authorizer.Limits{}); string(empty) != "{}" {
+		t.Fatalf("an empty limits object renders %s", empty)
+	}
+}
+
+func TestWhatALimitAdmits(t *testing.T) {
+	var none authorizer.Limits
+	if !none.AdmitsConnector("ctr_1") || !none.AdmitsTool("delete_everything") {
+		t.Error("empty globs admit nothing")
+	}
+	l := authorizer.Limits{Connectors: []string{"notion", "git*"}, Tools: []string{"get_*"}}
+	for ref, want := range map[string]bool{"notion": true, "github": true, "ctr_01": false, "Notion": false} {
+		if l.AdmitsConnector(ref) != want {
+			t.Errorf("AdmitsConnector(%q) != %v", ref, want)
+		}
+	}
+	if !(authorizer.Limits{Connectors: []string{"ctr_*"}}).AdmitsConnector("ctr_01jb") {
+		t.Error("ctr_* does not admit an added connector")
+	}
+	if !l.AdmitsTool("get_issue") || l.AdmitsTool("create_issue") {
+		t.Error("tools")
+	}
+	refs := authorizer.Limits{Refs: []string{"refs/heads/agent/*"}}
+	if !none.AdmitsRef("refs/heads/main") || !refs.AdmitsRef("refs/heads/agent/fix") || refs.AdmitsRef("refs/heads/main") {
+		t.Error("refs")
+	}
+	cases := []struct{ named, installation, want int }{
+		{0, 100, 100}, {5, 100, 5}, {500, 100, 100}, {5, 0, 5}, {0, 0, 0},
+	}
+	for _, c := range cases {
+		if got := (authorizer.Limits{MaxConnections: c.named}).Cap(c.installation); got != c.want {
+			t.Errorf("Cap(%d) under %d = %d, want %d", c.installation, c.named, got, c.want)
+		}
+	}
+}
+
+// The doc's example subject renders as authz renders one.
+func TestTheSubjectShape(t *testing.T) {
+	if got := authz.Subject("https://issuer.example.com/", "alice"); !strings.HasSuffix(got, "|alice") {
+		t.Fatalf("subject %q", got)
+	}
+}

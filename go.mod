@@ -6,7 +6,10 @@ toolchain go1.27.2
 
 tool latere.ai/x/ci-gate/cmd/lateregate
 
-require latere.ai/x/pkg v0.91.0
+require (
+	go.yaml.in/yaml/v3 v3.0.5
+	latere.ai/x/pkg v0.91.0
+)
 
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
