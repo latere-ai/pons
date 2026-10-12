@@ -67,14 +67,14 @@ func subject(sub string) string { return authz.Subject(issuer, sub) }
 
 func (tokens) Authenticate(r *http.Request) (access.Caller, error) {
 	h := r.Header.Get("Authorization")
-	switch {
-	case h == "":
+	switch h {
+	case "":
 		return access.Caller{}, access.ErrMissingToken
-	case h == "Bearer expired":
+	case "Bearer expired":
 		return access.Caller{}, &access.TokenError{Reason: "expired"}
-	case h == "Bearer unreachable":
+	case "Bearer unreachable":
 		return access.Caller{}, &access.TokenError{Reason: "issuer_unavailable", Retryable: true}
-	case h == "Bearer broken":
+	case "Bearer broken":
 		return access.Caller{}, io.ErrUnexpectedEOF
 	}
 	sub := strings.TrimPrefix(h, "Bearer ")

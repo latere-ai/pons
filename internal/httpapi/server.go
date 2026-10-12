@@ -139,10 +139,10 @@ func (s *Server) Handler() http.Handler {
 			return handle(s, w, r, c)
 		}))
 	}
-	mux.HandleFunc("GET "+b+"/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET "+b+"/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/yaml")
 		if _, err := w.Write(api.OpenAPI); err != nil {
-			s.log().Warn("the contract was not written whole", "error", err.Error())
+			s.log().WarnContext(r.Context(), "the contract was not written whole", "error", err.Error())
 		}
 	})
 	return otel.Handler(mux, "ponsd",
@@ -241,7 +241,7 @@ func (s *Server) probes() http.Handler {
 		inner.ServeHTTP(rec, r)
 		if rec.code == http.StatusOK {
 			if _, err := w.Write([]byte("dial: private addresses allowed\n")); err != nil {
-				s.log().Warn("the readiness line was not written", "error", err.Error())
+				s.log().WarnContext(r.Context(), "the readiness line was not written", "error", err.Error())
 			}
 		}
 	})

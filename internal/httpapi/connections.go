@@ -110,14 +110,15 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request, c acce
 		sealed = &sc
 	}
 	limit := d.Limits.Cap(s.MaxConnectionsPerOwner)
+	ctx := r.Context()
 	made, err := s.idempotent(r, c, r.Header.Get("Idempotency-Key"), routeConnect, row.ID, func(tx store.Tx) error {
-		if err := tx.Connections().Create(r.Context(), row, limit); err != nil {
+		if err := tx.Connections().Create(ctx, row, limit); err != nil {
 			return err
 		}
 		if sealed == nil {
 			return nil
 		}
-		_, err := tx.Credentials().Put(r.Context(), row.ID, *sealed)
+		_, err := tx.Credentials().Put(ctx, row.ID, *sealed)
 		return err
 	})
 	switch {
@@ -217,8 +218,9 @@ func (s *Server) idempotent(r *http.Request, c access.Caller, key, route, object
 	if key == "" {
 		return object, s.Store.Tx(r.Context(), create)
 	}
-	err := s.Store.Tx(r.Context(), func(tx store.Tx) error {
-		if err := tx.Idempotency().Put(r.Context(), store.IdempotencyKey{
+	ctx := r.Context()
+	err := s.Store.Tx(ctx, func(tx store.Tx) error {
+		if err := tx.Idempotency().Put(ctx, store.IdempotencyKey{
 			Subject: c.Subject, Key: key, Route: route, Status: http.StatusCreated, Object: object,
 		}); err != nil {
 			return err
@@ -398,12 +400,13 @@ func (s *Server) replaceCredential(w http.ResponseWriter, r *http.Request, c acc
 	if err != nil {
 		return err
 	}
-	err = s.Store.Tx(r.Context(), func(tx store.Tx) error {
-		if _, err := tx.Credentials().Put(r.Context(), row.ID, sealed); err != nil {
+	ctx := r.Context()
+	err = s.Store.Tx(ctx, func(tx store.Tx) error {
+		if _, err := tx.Credentials().Put(ctx, row.ID, sealed); err != nil {
 			return err
 		}
 		if row.State == store.StateNeedsReconnect {
-			return tx.Connections().Move(r.Context(), row.ID, store.StateNeedsReconnect, store.StateConnected, "")
+			return tx.Connections().Move(ctx, row.ID, store.StateNeedsReconnect, store.StateConnected, "")
 		}
 		return nil
 	})

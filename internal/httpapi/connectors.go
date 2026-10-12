@@ -195,8 +195,9 @@ func (s *Server) addConnector(w http.ResponseWriter, r *http.Request, c access.C
 		Icon: conn.Icon, Kind: conn.Kind, URL: conn.URL, Hosts: conn.HostPatterns(), Auth: authDoc, Tools: toolsDoc,
 	}
 	key := r.Header.Get("Idempotency-Key")
+	ctx := r.Context()
 	replayed, err := s.idempotent(r, c, key, routeAddConnector, row.ID, func(tx store.Tx) error {
-		return tx.Connectors().Create(r.Context(), row)
+		return tx.Connectors().Create(ctx, row)
 	})
 	switch {
 	case errors.Is(err, store.ErrNameTaken):

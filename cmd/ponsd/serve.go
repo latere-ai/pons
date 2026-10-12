@@ -300,19 +300,19 @@ func (srv *server) sweep(ctx context.Context, every time.Duration) {
 // check reads the configuration, the catalog and the store as serve would,
 // serves nothing, and prints one line per finding. It fails on everything
 // serve refuses at start, and on a sealed value no listed key wraps.
-func check(ctx context.Context, getenv func(string) string, out io.Writer, hooks Hooks) error {
+func check(ctx context.Context, getenv func(string) string, out io.Writer, hooks Hooks) (err error) {
 	s, err := config.FromEnv(getenv)
 	if err != nil {
 		return err
 	}
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	log := slog.New(slog.DiscardHandler)
 	srv, err := open(ctx, s, log, hooks)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		if err := srv.store.Close(); err != nil {
-			fmt.Fprintln(out, "store: did not close:", err)
+		if cerr := srv.store.Close(); cerr != nil {
+			err = errors.Join(err, fmt.Errorf("store: did not close: %w", cerr))
 		}
 	}()
 	if err := srv.identity(ctx); err != nil {
