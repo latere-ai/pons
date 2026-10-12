@@ -1,0 +1,529 @@
+openapi: 3.1.0
+info:
+  title: Pons
+  version: "1"
+  summary: Connections to other services, each credential sealed, every call carried.
+  description: |
+    A client a person uses lists connectors, connects one and disconnects
+    it. A credential is accepted once and never returned: no route, list or
+    error carries one. Every route but this document takes a bearer token
+    of an issuer the server trusts, and every route asks the server's
+    authorizer before it acts. A connection another owner holds reads as a
+    missing one.
+
+    Every error is one object: a `code` to branch on, a fixed `message` for
+    a person, and `details` for a developer.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: /v1
+    description: The base path, PONS_BASE_PATH.
+security:
+  - bearer: []
+tags:
+  - name: connectors
+    description: The catalog of an installation and the connectors a person added.
+  - name: connections
+    description: One owner's link to one connector.
+  - name: contract
+    description: This document.
+paths:
+  /connectors:
+    get:
+      tags: [connectors]
+      operationId: listConnectors
+      summary: List connectors
+      description: |
+        The installation's catalog, in the order of its file, then the
+        connectors the caller may see that a person added, newest first.
+        The catalog is listed whatever the authorizer's filter says.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - name: kind
+          in: query
+          description: Only connectors of this kind.
+          schema: {type: string, enum: [mcp, http]}
+      responses:
+        "200":
+          description: A page of connectors.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConnectorList"}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+    post:
+      tags: [connectors]
+      operationId: addConnector
+      summary: Add a connector
+      description: |
+        A connector a person adds by its address, theirs alone. Its `url` is
+        https on port 443 and its credential goes to that host alone. A
+        connector whose people sign in, `auth.type` `oauth`, needs the
+        sign-in, which this server does not offer yet:
+        `422 sign_in_unsupported`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AddConnector"}
+      responses:
+        "201":
+          description: The connector, with its id.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Connector"}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "422": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+  /connectors/{ref}:
+    get:
+      tags: [connectors]
+      operationId: readConnector
+      summary: Read a connector
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          description: A catalog name, or the id of a connector a person added.
+          schema: {type: string}
+      responses:
+        "200":
+          description: The connector.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Connector"}
+        "401": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+    delete:
+      tags: [connectors]
+      operationId: removeConnector
+      summary: Remove an added connector
+      description: Removes a connector the caller added, when no connection uses it. A catalog name is no connector this route removes.
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          description: The id of a connector a person added.
+          schema: {type: string}
+      responses:
+        "204": {description: Removed.}
+        "401": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+  /connections:
+    post:
+      tags: [connections]
+      operationId: connect
+      summary: Connect a connector
+      description: |
+        A connector that takes a key (`token`), a client of the owner's own
+        (`client_credentials`) or nothing (`none`) is connected at once,
+        and the answer is the connection, `connected`. The credential is
+        write-only: no route returns it. A connector whose people sign in
+        (`oauth`) needs the sign-in, which this server does not offer yet:
+        `422 sign_in_unsupported`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Connect"}
+      responses:
+        "201":
+          description: The connection.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Connection"}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "422": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+    get:
+      tags: [connections]
+      operationId: listConnections
+      summary: List connections
+      description: The connections the caller may see, newest first.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+        - name: owner
+          in: query
+          description: Only this owner's connections. It narrows what the caller may see and never widens it.
+          schema: {type: string}
+        - name: connector
+          in: query
+          description: Only the connections of this connector reference.
+          schema: {type: string}
+        - name: state
+          in: query
+          schema: {$ref: "#/components/schemas/State"}
+      responses:
+        "200":
+          description: A page of connections.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConnectionList"}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+  /connections/{id}:
+    get:
+      tags: [connections]
+      operationId: readConnection
+      summary: Read a connection
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+      responses:
+        "200":
+          description: The connection.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Connection"}
+        "401": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+    patch:
+      tags: [connections]
+      operationId: renameConnection
+      summary: Rename a connection
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Rename"}
+      responses:
+        "200":
+          description: The connection, renamed.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Connection"}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+    delete:
+      tags: [connections]
+      operationId: disconnect
+      summary: Disconnect
+      description: Removes the connection and its credential in one transaction.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+      responses:
+        "204": {description: Disconnected.}
+        "401": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+  /connections/{id}/credential:
+    put:
+      tags: [connections]
+      operationId: replaceCredential
+      summary: Replace a credential
+      description: |
+        A new key for a `token` connection, or a new client for a
+        `client_credentials` one. It replaces the old in one write, and a
+        connection that needed to be connected again is connected.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReplaceCredential"}
+      responses:
+        "204": {description: Replaced.}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+  /connections/{id}/calls:
+    get:
+      tags: [connections]
+      operationId: listCalls
+      summary: List a connection's calls
+      description: The records of the calls carried through the connection, newest first. A record says that a call happened, never what it said.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of call records.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CallList"}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+  /openapi.yaml:
+    get:
+      tags: [contract]
+      operationId: contract
+      summary: This document
+      security: []
+      responses:
+        "200":
+          description: The contract, as OpenAPI 3.1.
+          content:
+            application/yaml:
+              schema: {type: string}
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: A token of an issuer the server trusts, addressed to its audience.
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      description: How many items a page holds, 50 by default and 200 at most.
+      schema: {type: integer, minimum: 1}
+    Cursor:
+      name: cursor
+      in: query
+      description: The next_cursor of the page before. Opaque.
+      schema: {type: string}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      description: The same key from the same caller within 24 hours answers the first response again and creates nothing.
+      schema: {type: string}
+    ConnectionID:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, pattern: "^con_[0-9a-z]{26}$"}
+  responses:
+    Error:
+      description: An error.
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+  schemas:
+    State:
+      type: string
+      enum: [pending, connected, needs_reconnect]
+    Marks:
+      type: object
+      description: Globs over tool names. A tool no read_only glob matches is treated as one that changes something.
+      required: [read_only, hidden]
+      additionalProperties: false
+      properties:
+        read_only: {type: array, items: {type: string}}
+        hidden: {type: array, items: {type: string}}
+    Inject:
+      type: object
+      required: [header, format]
+      additionalProperties: false
+      properties:
+        header: {type: string, description: The request header the key is placed in.}
+        format: {type: string, description: "The header's value, with {value} where the key goes."}
+    Connector:
+      type: object
+      description: What a service is, and how a person gives access to it.
+      required: [name, title, kind, url, hosts, auth, tools]
+      additionalProperties: false
+      properties:
+        name: {type: string, description: The catalog name, or the label of an added connector.}
+        id: {type: string, description: The id of a connector a person added.}
+        owner: {type: string, description: Whose an added connector is.}
+        title: {type: string}
+        description: {type: string}
+        icon: {type: string, format: uri}
+        kind: {type: string, enum: [mcp, http]}
+        url: {type: string, format: uri}
+        hosts: {type: array, items: {type: string}, description: The hosts a credential of this connector may be sent to.}
+        auth:
+          type: object
+          required: [type]
+          additionalProperties: false
+          properties:
+            type: {type: string, enum: [oauth, token, client_credentials, none]}
+            scopes: {type: array, items: {type: string}}
+            inject: {$ref: "#/components/schemas/Inject"}
+            hint: {type: string, description: Where a person gets a key.}
+        tools: {$ref: "#/components/schemas/Marks"}
+    ConnectorList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/Connector"}}
+        next_cursor: {type: string}
+    AddConnector:
+      type: object
+      required: [name, title, kind, url, auth]
+      additionalProperties: false
+      properties:
+        name: {type: string, description: A DNS label of at most 40 characters, unique among the owner's connectors.}
+        title: {type: string, maxLength: 60}
+        description: {type: string, maxLength: 200}
+        icon: {type: string, format: uri}
+        kind: {type: string, enum: [mcp]}
+        url: {type: string, format: uri, description: An https URL on port 443.}
+        owner: {type: string, description: The owner the caller asks to add for. The authorizer decides whether it may.}
+        auth:
+          type: object
+          required: [type]
+          additionalProperties: false
+          properties:
+            type: {type: string, enum: [oauth, token, none]}
+            scopes: {type: array, items: {type: string}}
+            inject:
+              type: object
+              additionalProperties: false
+              properties:
+                header: {type: string}
+                format: {type: string}
+            hint: {type: string, maxLength: 200}
+        tools:
+          type: object
+          additionalProperties: false
+          properties:
+            read_only: {type: array, items: {type: string}}
+            hidden: {type: array, items: {type: string}}
+    Credential:
+      type: object
+      description: Write-only. The key of a token connector, or the client of a client_credentials one.
+      additionalProperties: false
+      properties:
+        value: {type: string, minLength: 8, writeOnly: true}
+        client_id: {type: string, writeOnly: true}
+        client_secret: {type: string, minLength: 8, writeOnly: true}
+    Connect:
+      type: object
+      required: [connector]
+      additionalProperties: false
+      properties:
+        connector: {type: string, description: A catalog name, or the id of a connector the owner added.}
+        name: {type: string, description: Unique among the owner's connections. The connector's name by default.}
+        owner: {type: string, description: The owner the caller asks to connect for. The authorizer decides whether it may.}
+        return_to: {type: string, format: uri, description: Where the browser goes after a sign-in.}
+        credential: {$ref: "#/components/schemas/Credential"}
+        scopes: {type: array, items: {type: string}, description: Scopes to ask for at a sign-in.}
+    Rename:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: {type: string}
+    ReplaceCredential:
+      type: object
+      required: [credential]
+      additionalProperties: false
+      properties:
+        credential: {$ref: "#/components/schemas/Credential"}
+    Connection:
+      type: object
+      description: One owner's link to one connector. It never carries the credential.
+      required: [id, name, owner, connector, kind, auth, state, address, tools, links, created_by, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        id: {type: string}
+        name: {type: string}
+        owner: {type: string}
+        connector: {type: string}
+        kind: {type: string, enum: [mcp, http]}
+        auth: {type: string, enum: [oauth, token, client_credentials, none]}
+        state: {$ref: "#/components/schemas/State"}
+        reason: {type: string, enum: [refresh_refused, revoked, credential_refused]}
+        account: {type: string, description: The account at the other service this connection acts as.}
+        scopes: {type: array, items: {type: string}}
+        address: {type: string, format: uri, description: Where a caller reaches this connection.}
+        git_address: {type: string, format: uri, description: Where git reaches the connector's git host.}
+        tools: {$ref: "#/components/schemas/Marks"}
+        links:
+          type: object
+          additionalProperties: false
+          properties:
+            manage: {type: string, format: uri, description: Where a person changes what the other service grants.}
+        created_by: {type: string}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        last_used_at: {type: string, format: date-time}
+        expires_at: {type: string, format: date-time}
+    ConnectionList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/Connection"}}
+        next_cursor: {type: string}
+    Call:
+      type: object
+      description: That a call happened. No member holds an argument, a result, a header or a query string.
+      required: [id, connection, owner, connector, subject, at, duration_ms, method, outcome, bytes_in, bytes_out]
+      additionalProperties: false
+      properties:
+        id: {type: string}
+        connection: {type: string}
+        owner: {type: string}
+        connector: {type: string}
+        subject: {type: string}
+        session: {type: string}
+        at: {type: string, format: date-time}
+        duration_ms: {type: integer}
+        method: {type: string}
+        tool: {type: string}
+        refs: {type: integer}
+        effect: {type: string, enum: [read, write]}
+        outcome: {type: string, enum: [ok, denied, not_connected, upstream_error, upstream_refused, timeout, canceled]}
+        status: {type: integer}
+        bytes_in: {type: integer}
+        bytes_out: {type: integer}
+    CallList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/Call"}}
+        next_cursor: {type: string}
+    Error:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          additionalProperties: false
+          properties:
+            code:
+              type: string
+              enum: [invalid_request, unknown_field, invalid_field, missing_field, invalid_code, missing_token, invalid_token, forbidden, connector_not_found, connection_not_found, name_taken, connector_in_use, connection_not_connected, wrong_kind, flow_expired, request_too_large, connector_unreachable, sign_in_unsupported, credential_refused, rate_limited, internal, connector_unavailable, authorizer_unavailable, sealing_unavailable, connector_timeout]
+            message: {type: string, description: One fixed sentence for a person.}
+            details:
+              type: object
+              description: For a developer.
+              properties:
+                reason: {type: string, description: What happened in this instance.}
+                retryable: {type: boolean, description: Whether the same request may succeed later.}
+                field: {type: string, description: The member of the request the error is about.}
+                state: {$ref: "#/components/schemas/State"}
