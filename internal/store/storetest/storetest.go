@@ -145,8 +145,14 @@ func Sealer(t testing.TB, bytes ...byte) *store.KeySealer {
 // is fails the test when err is not want.
 func is(t testing.TB, err, want error) {
 	t.Helper()
-	if !errors.Is(err, want) && !(err == nil && want == nil) {
-		t.Fatalf("got %v, want %v", err, want)
+	failIf(t, !errors.Is(err, want) && !(err == nil && want == nil), "got %v, want %v", err, want)
+}
+
+// failIf fails the test when cond holds.
+func failIf(t testing.TB, cond bool, format string, args ...any) {
+	t.Helper()
+	if cond {
+		t.Fatalf(format, args...)
 	}
 }
 
@@ -230,24 +236,16 @@ func testConnectors(t *testing.T, e env) {
 	}
 	first, next, err := cs.List(ctx, []string{"carol"}, store.Page{Limit: 2})
 	ok(t, err)
-	if len(first) != 2 || first[0].ID != made[2] || first[1].ID != made[1] || next != made[1] {
-		t.Fatalf("first page %v, next %q", first, next)
-	}
+	failIf(t, len(first) != 2 || first[0].ID != made[2] || first[1].ID != made[1] || next != made[1], "first page %v, next %q", first, next)
 	rest, next, err := cs.List(ctx, []string{"carol"}, store.Page{Limit: 2, Cursor: next})
 	ok(t, err)
-	if len(rest) != 1 || rest[0].ID != made[0] || next != "" {
-		t.Fatalf("second page %v, next %q", rest, next)
-	}
+	failIf(t, len(rest) != 1 || rest[0].ID != made[0] || next != "", "second page %v, next %q", rest, next)
 	none, _, err := cs.List(ctx, nil, store.Page{})
 	ok(t, err)
-	if len(none) != 0 {
-		t.Fatalf("a list for no owner answered %d", len(none))
-	}
+	failIf(t, len(none) != 0, "a list for no owner answered %d", len(none))
 	both, _, err := cs.List(ctx, []string{"alice", "bob"}, store.Page{})
 	ok(t, err)
-	if len(both) != 2 {
-		t.Fatalf("alice and bob hold %d", len(both))
-	}
+	failIf(t, len(both) != 2, "alice and bob hold %d", len(both))
 
 	// A connector in use is not removed.
 	is(t, cs.Delete(ctx, id.New(id.Connector)), store.ErrNotFound)
@@ -256,9 +254,7 @@ func testConnectors(t *testing.T, e env) {
 	Create(t, e.st, conn)
 	used, err := e.st.Connections().InUse(ctx, wiki.ID)
 	ok(t, err)
-	if !used {
-		t.Fatal("the connector is not in use")
-	}
+	failIf(t, !used, "the connector is not in use")
 	is(t, cs.Delete(ctx, wiki.ID), store.ErrInUse)
 	ok(t, e.st.Connections().Delete(ctx, conn.ID))
 	ok(t, cs.Delete(ctx, wiki.ID))
@@ -315,9 +311,7 @@ func testConnections(t *testing.T, e env) {
 	}
 	_, next, err := cs.List(ctx, store.Filter{Owners: []string{"alice", "bob"}}, store.Page{Limit: 2})
 	ok(t, err)
-	if next != b.ID {
-		t.Fatalf("next %q, want %q", next, b.ID)
-	}
+	failIf(t, next != b.ID, "next %q, want %q", next, b.ID)
 	if got := list(store.Filter{Owners: []string{"alice", "bob"}}, store.Page{Limit: 2, Cursor: next}); !slices.Equal(got, []string{a.ID}) {
 		t.Fatalf("the page after %v", got)
 	}
@@ -347,25 +341,17 @@ func testConnections(t *testing.T, e env) {
 	ok(t, cs.Touch(ctx, a.ID, at))
 	ok(t, cs.Touch(ctx, a.ID, at.Add(30*time.Second)))
 	ok(t, cs.Touch(ctx, a.ID, at.Add(time.Minute)))
-	if !used().Equal(at) {
-		t.Fatalf("last_used_at moved within a minute: %v", used())
-	}
+	failIf(t, !used().Equal(at), "last_used_at moved within a minute: %v", used())
 	ok(t, cs.Touch(ctx, a.ID, at.Add(61*time.Second)))
-	if !used().Equal(at.Add(61 * time.Second)) {
-		t.Fatalf("last_used_at did not move past a minute: %v", used())
-	}
+	failIf(t, !used().Equal(at.Add(61*time.Second)), "last_used_at did not move past a minute: %v", used())
 	ok(t, cs.Touch(ctx, id.New(id.Connection), at))
 
 	counts, err := cs.CountByState(ctx)
 	ok(t, err)
-	if counts[store.StatePending] != 1 || counts[store.StateConnected] != 2 || counts[store.StateNeedsReconnect] != 0 {
-		t.Fatalf("counts %v", counts)
-	}
+	failIf(t, counts[store.StatePending] != 1 || counts[store.StateConnected] != 2 || counts[store.StateNeedsReconnect] != 0, "counts %v", counts)
 	used2, err := cs.InUse(ctx, "nothing")
 	ok(t, err)
-	if used2 {
-		t.Fatal("a connector no connection names is in use")
-	}
+	failIf(t, used2, "a connector no connection names is in use")
 }
 
 func testNames(t *testing.T, e env) {
@@ -403,14 +389,10 @@ func testCap(t *testing.T, e env) {
 			t.Fatalf("a racing create: %v", err)
 		}
 	}
-	if made != 1 {
-		t.Fatalf("%d racing creates made a connection at one remaining place", made)
-	}
+	failIf(t, made != 1, "%d racing creates made a connection at one remaining place", made)
 	rows, _, err := cs.List(ctx, store.Filter{Owners: []string{"alice"}}, store.Page{})
 	ok(t, err)
-	if len(rows) != 4 {
-		t.Fatalf("alice holds %d", len(rows))
-	}
+	failIf(t, len(rows) != 4, "alice holds %d", len(rows))
 }
 
 // StateMachine holds a store to the connection's state machine: every edge
@@ -443,14 +425,10 @@ func StateMachine(t *testing.T, st store.Store) {
 			got, gerr := cs.Get(ctx, c.ID)
 			ok(t, gerr)
 			if store.Legal(from, to) {
-				if err != nil || got.State != to {
-					t.Errorf("%s to %s, an edge: %v, now %s", from, to, err, got.State)
-				}
+				failIf(t, err != nil || got.State != to, "%s to %s, an edge: %v, now %s", from, to, err, got.State)
 				continue
 			}
-			if !errors.Is(err, store.ErrIllegalMove) || got.State != from {
-				t.Errorf("%s to %s, no edge: %v, now %s", from, to, err, got.State)
-			}
+			failIf(t, !errors.Is(err, store.ErrIllegalMove) || got.State != from, "%s to %s, no edge: %v, now %s", from, to, err, got.State)
 		}
 	}
 	// A move needs the row in its from state, and a row.
@@ -464,9 +442,7 @@ func StateMachine(t *testing.T, st store.Store) {
 		t.Helper()
 		got, err := cs.Get(ctx, c.ID)
 		ok(t, err)
-		if got.Reason != want {
-			t.Fatalf("reason %q, want %q", got.Reason, want)
-		}
+		failIf(t, got.Reason != want, "reason %q, want %q", got.Reason, want)
 	}
 	ok(t, cs.Move(ctx, c.ID, store.StateConnected, store.StateNeedsReconnect, store.ReasonRefreshRefused))
 	reason(store.ReasonRefreshRefused)
@@ -492,9 +468,7 @@ func StateMachine(t *testing.T, st store.Store) {
 			t.Fatalf("a racing move: %v", err)
 		}
 	}
-	if won != 1 {
-		t.Fatalf("%d movers from one state won", won)
-	}
+	failIf(t, won != 1, "%d movers from one state won", won)
 }
 
 func testCredentials(t *testing.T, e env) {
@@ -507,28 +481,20 @@ func testCredentials(t *testing.T, e env) {
 	cred := Credential(t, s, c, store.Secrets{AccessToken: "access-token-1", RefreshToken: "refresh-token-1"})
 	v, err := e.st.Credentials().Put(ctx, c.ID, cred)
 	ok(t, err)
-	if v != 1 {
-		t.Fatalf("the first version is %d", v)
-	}
+	failIf(t, v != 1, "the first version is %d", v)
 	got, version, err := e.st.Credentials().Get(ctx, c.ID)
 	ok(t, err)
-	if version != 1 || got.Kind != cred.Kind || !sameJSON(got.Meta, cred.Meta) || !reflect.DeepEqual(got.Sealed, cred.Sealed) {
-		t.Fatalf("read back %+v", got)
-	}
+	failIf(t, version != 1 || got.Kind != cred.Kind || !sameJSON(got.Meta, cred.Meta) || !reflect.DeepEqual(got.Sealed, cred.Sealed), "read back %+v", got)
 	plain, err := s.Open(got.Sealed, store.CredentialBinding(c.ID, c.Owner, store.KindOAuth, store.Meta{
 		Issuer: "https://auth.example.com", TokenEndpoint: "https://auth.example.com/token",
 	}, ""))
 	ok(t, err)
 	secrets, err := store.DecodeSecrets(plain)
 	ok(t, err)
-	if secrets.AccessToken != "access-token-1" || secrets.RefreshToken != "refresh-token-1" {
-		t.Fatalf("opened %+v", secrets)
-	}
+	failIf(t, secrets.AccessToken != "access-token-1" || secrets.RefreshToken != "refresh-token-1", "opened %+v", secrets)
 	v, err = e.st.Credentials().Put(ctx, c.ID, cred)
 	ok(t, err)
-	if v != 2 {
-		t.Fatalf("the second version is %d", v)
-	}
+	failIf(t, v != 2, "the second version is %d", v)
 	_, _, err = e.st.Credentials().Get(ctx, id.New(id.Connection))
 	is(t, err, store.ErrNotFound)
 	bad := cred
@@ -569,16 +535,12 @@ func testRefresh(t *testing.T, e env) {
 	for _, err := range errs {
 		ok(t, err)
 	}
-	if claims != 1 {
-		t.Fatalf("%d of 16 claimed", claims)
-	}
+	failIf(t, claims != 1, "%d of 16 claimed", claims)
 	claim := func(want bool) int64 {
 		t.Helper()
 		claimed, version, err := cr.ClaimRefresh(ctx, c.ID, 30*time.Second)
 		ok(t, err)
-		if claimed != want {
-			t.Fatalf("claimed %t, want %t", claimed, want)
-		}
+		failIf(t, claimed != want, "claimed %t, want %t", claimed, want)
 		return version
 	}
 	// A lease that lapsed is claimed again.
@@ -598,17 +560,13 @@ func testRefresh(t *testing.T, e env) {
 	is(t, cr.CompleteRefresh(ctx, c.ID, 1, stale), store.ErrVersionMoved)
 	got, version, err := cr.Get(ctx, c.ID)
 	ok(t, err)
-	if version != 2 || !reflect.DeepEqual(got.Sealed, next.Sealed) {
-		t.Fatalf("after a completion and a moved one: version %d", version)
-	}
+	failIf(t, version != 2 || !reflect.DeepEqual(got.Sealed, next.Sealed), "after a completion and a moved one: version %d", version)
 	claim(true)
 
 	// Put raises the version and ends the lease.
 	v, err := cr.Put(ctx, c.ID, next)
 	ok(t, err)
-	if v != 3 {
-		t.Fatalf("Put wrote version %d", v)
-	}
+	failIf(t, v != 3, "Put wrote version %d", v)
 	if got := claim(true); got != 3 {
 		t.Fatalf("the claim read version %d", got)
 	}
@@ -665,9 +623,7 @@ func AReconnectWinsOverARefresh(t *testing.T, st store.Store) {
 	ok(t, err)
 	claimed, from, err := st.Credentials().ClaimRefresh(ctx, c.ID, 30*time.Second)
 	ok(t, err)
-	if !claimed {
-		t.Fatal("the refresh was not claimed")
-	}
+	failIf(t, !claimed, "the refresh was not claimed")
 	confirmed := Credential(t, s, c, store.Secrets{AccessToken: "access-token-confirmed"})
 	_, err = st.Credentials().Put(ctx, c.ID, confirmed)
 	ok(t, err)
@@ -675,9 +631,7 @@ func AReconnectWinsOverARefresh(t *testing.T, st store.Store) {
 	is(t, st.Credentials().CompleteRefresh(ctx, c.ID, from, refreshed), store.ErrVersionMoved)
 	got, _, err := st.Credentials().Get(ctx, c.ID)
 	ok(t, err)
-	if !reflect.DeepEqual(got.Sealed, confirmed.Sealed) {
-		t.Fatal("the refresh overwrote the reconnect's credential")
-	}
+	failIf(t, !reflect.DeepEqual(got.Sealed, confirmed.Sealed), "the refresh overwrote the reconnect's credential")
 }
 
 // Flow is a flow of a connection, expiring at a time, with a sealed
@@ -725,14 +679,10 @@ func testFlows(t *testing.T, e env) {
 	ok(t, fs.Put(ctx, f))
 	got, err := fs.Get(ctx, c.ID)
 	ok(t, err)
-	if !sameFlow(got, f) || !got.CreatedAt.Equal(now) {
-		t.Fatalf("read back %+v", got)
-	}
+	failIf(t, !sameFlow(got, f) || !got.CreatedAt.Equal(now), "read back %+v", got)
 	got, err = fs.ByState(ctx, f.StateHash)
 	ok(t, err)
-	if got.ID != f.ID {
-		t.Fatalf("by state %s", got.ID)
-	}
+	failIf(t, got.ID != f.ID, "by state %s", got.ID)
 	_, err = fs.ByState(ctx, nil)
 	is(t, err, store.ErrNotFound)
 
@@ -745,9 +695,7 @@ func testFlows(t *testing.T, e env) {
 	ok(t, fs.Put(ctx, replaced))
 	got, err = fs.Get(ctx, c.ID)
 	ok(t, err)
-	if !sameFlow(got, replaced) || !got.Pending.Sealed.Zero() {
-		t.Fatalf("the replacement %+v", got)
-	}
+	failIf(t, !sameFlow(got, replaced) || !got.Pending.Sealed.Zero(), "the replacement %+v", got)
 	_, err = fs.ByState(ctx, f.StateHash)
 	is(t, err, store.ErrNotFound)
 	afterCallback := replaced
@@ -804,16 +752,12 @@ func testFlows(t *testing.T, e env) {
 	}
 	slices.Sort(taken)
 	slices.Sort(expired)
-	if !slices.Equal(taken, expired) {
-		t.Fatalf("taken %v, want each of %v once", taken, expired)
-	}
+	failIf(t, !slices.Equal(taken, expired), "taken %v, want each of %v once", taken, expired)
 	_, err = fs.Get(ctx, live.ID)
 	ok(t, err)
 	rest, err := fs.TakeExpired(ctx, now, 0)
 	ok(t, err)
-	if len(rest) != 0 {
-		t.Fatalf("%d left", len(rest))
-	}
+	failIf(t, len(rest) != 0, "%d left", len(rest))
 }
 
 func testRegistrations(t *testing.T, e env) {
@@ -826,24 +770,18 @@ func testRegistrations(t *testing.T, e env) {
 		ClientID: "client-1", Secret: secret}
 	kept, err := rs.Put(ctx, r)
 	ok(t, err)
-	if kept.ClientID != "client-1" || !reflect.DeepEqual(kept.Secret, secret) || !kept.RegisteredAt.Equal(e.clock.Now()) {
-		t.Fatalf("kept %+v", kept)
-	}
+	failIf(t, kept.ClientID != "client-1" || !reflect.DeepEqual(kept.Secret, secret) || !kept.RegisteredAt.Equal(e.clock.Now()), "kept %+v", kept)
 	second := r
 	second.ClientID, second.Secret = "client-2", store.Sealed{}
 	kept, err = rs.Put(ctx, second)
 	ok(t, err)
-	if kept.ClientID != "client-1" {
-		t.Fatalf("the second registration replaced the first: %s", kept.ClientID)
-	}
+	failIf(t, kept.ClientID != "client-1", "the second registration replaced the first: %s", kept.ClientID)
 	public := store.Registration{Issuer: "https://other.example.com", RedirectURI: r.RedirectURI, ClientID: "public"}
 	_, err = rs.Put(ctx, public)
 	ok(t, err)
 	got, err := rs.Get(ctx, public.Issuer, public.RedirectURI)
 	ok(t, err)
-	if got.ClientID != "public" || !got.Secret.Zero() {
-		t.Fatalf("a public client %+v", got)
-	}
+	failIf(t, got.ClientID != "public" || !got.Secret.Zero(), "a public client %+v", got)
 	ok(t, rs.Delete(ctx, r.Issuer, r.RedirectURI))
 	_, err = rs.Get(ctx, r.Issuer, r.RedirectURI)
 	is(t, err, store.ErrNotFound)
@@ -875,14 +813,10 @@ func testCalls(t *testing.T, e env) {
 	ok(t, cl.Insert(ctx, Call(Connection("bob", "x", store.StateConnected), now)))
 	rows, next, err := cl.List(ctx, c.ID, store.Page{Limit: 1})
 	ok(t, err)
-	if len(rows) != 1 || !reflect.DeepEqual(rows[0], push) || next != push.ID {
-		t.Fatalf("the first page %+v, next %q", rows, next)
-	}
+	failIf(t, len(rows) != 1 || !reflect.DeepEqual(rows[0], push) || next != push.ID, "the first page %+v, next %q", rows, next)
 	rows, next, err = cl.List(ctx, c.ID, store.Page{Cursor: next})
 	ok(t, err)
-	if len(rows) != 1 || !reflect.DeepEqual(rows[0], first) || next != "" {
-		t.Fatalf("the second page %+v, next %q", rows, next)
-	}
+	failIf(t, len(rows) != 1 || !reflect.DeepEqual(rows[0], first) || next != "", "the second page %+v, next %q", rows, next)
 }
 
 func testIdempotency(t *testing.T, e env) {
@@ -897,9 +831,7 @@ func testIdempotency(t *testing.T, e env) {
 	got, err := ix.Get(ctx, "alice", "key-1")
 	ok(t, err)
 	k.CreatedAt = e.clock.Now()
-	if got != k {
-		t.Fatalf("read back %+v", got)
-	}
+	failIf(t, got != k, "read back %+v", got)
 	_, err = ix.Get(ctx, "alice", "key-2")
 	is(t, err, store.ErrNotFound)
 }
@@ -917,9 +849,7 @@ func testPrune(t *testing.T, e env) {
 	ok(t, e.st.Calls().Insert(ctx, keep))
 	n, err := e.st.Calls().Prune(ctx, now.Add(-30*time.Minute), 3)
 	ok(t, err)
-	if n != 3 {
-		t.Fatalf("a prune of 3 removed %d", n)
-	}
+	failIf(t, n != 3, "a prune of 3 removed %d", n)
 	var mu sync.Mutex
 	removed := 0
 	for _, err := range race(2, func(int) error {
@@ -935,14 +865,10 @@ func testPrune(t *testing.T, e env) {
 	}) {
 		ok(t, err)
 	}
-	if removed != 4 {
-		t.Fatalf("two pruners removed %d of 4", removed)
-	}
+	failIf(t, removed != 4, "two pruners removed %d of 4", removed)
 	rows, _, err := e.st.Calls().List(ctx, c.ID, store.Page{})
 	ok(t, err)
-	if len(rows) != 1 || rows[0].ID != keep.ID {
-		t.Fatalf("left %+v", rows)
-	}
+	failIf(t, len(rows) != 1 || rows[0].ID != keep.ID, "left %+v", rows)
 
 	for i := range 3 {
 		ok(t, e.st.Idempotency().Put(ctx, store.IdempotencyKey{Subject: "alice", Key: fmt.Sprintf("k%d", i),
@@ -950,9 +876,7 @@ func testPrune(t *testing.T, e env) {
 	}
 	n, err = e.st.Idempotency().Prune(ctx, now.Add(-30*time.Minute), 0)
 	ok(t, err)
-	if n != 2 {
-		t.Fatalf("idempotency prune removed %d", n)
-	}
+	failIf(t, n != 2, "idempotency prune removed %d", n)
 	_, err = e.st.Idempotency().Get(ctx, "alice", "k0")
 	ok(t, err)
 }
@@ -1062,27 +986,19 @@ func testRotation(t *testing.T, e env) {
 		store.TableFlows:         {NotFirst: 2},
 		store.TableRegistrations: {NotFirst: 1},
 	}
-	if !reflect.DeepEqual(counts, want) {
-		t.Fatalf("before the rewrap %v, want %v", counts, want)
-	}
+	failIf(t, !reflect.DeepEqual(counts, want), "before the rewrap %v, want %v", counts, want)
 	if _, err := e.st.Rotation().RewrapBatch(ctx, "connections", rotated.Keys(), 1, rotated.Rewrap); err == nil {
 		t.Fatal("a table with no sealed values was rewrapped")
 	}
 	n, err := e.st.Rotation().RewrapBatch(ctx, store.TableCredentials, rotated.Keys(), 1, rotated.Rewrap)
 	ok(t, err)
-	if n != 1 {
-		t.Fatalf("a batch rewrapped %d", n)
-	}
+	failIf(t, n != 1, "a batch rewrapped %d", n)
 	n, err = store.Rewrap(ctx, e.st, old, store.RewrapBatchSize)
 	ok(t, err)
-	if n != 0 {
-		t.Fatalf("a sealer with one key rewrapped %d", n)
-	}
+	failIf(t, n != 0, "a sealer with one key rewrapped %d", n)
 	n, err = store.Rewrap(ctx, e.st, rotated, 1)
 	ok(t, err)
-	if n != 2 {
-		t.Fatalf("the rewrap moved %d rows, want the flow and the registration", n)
-	}
+	failIf(t, n != 2, "the rewrap moved %d rows, want the flow and the registration", n)
 	counts, err = store.Remaining(ctx, e.st, rotated)
 	ok(t, err)
 	want = map[string]store.KeyCount{
@@ -1090,26 +1006,20 @@ func testRotation(t *testing.T, e env) {
 		store.TableFlows:         {},
 		store.TableRegistrations: {},
 	}
-	if !reflect.DeepEqual(counts, want) {
-		t.Fatalf("after the rewrap %v, want %v", counts, want)
-	}
+	failIf(t, !reflect.DeepEqual(counts, want), "after the rewrap %v, want %v", counts, want)
 
 	// Every ciphertext byte is kept, and the new key alone opens them.
 	newOnly := Sealer(t, 2)
 	got, _, err := e.st.Credentials().Get(ctx, c.ID)
 	ok(t, err)
-	if !bytes.Equal(got.Sealed.Ciphertext, cred.Sealed.Ciphertext) || !bytes.Equal(got.Sealed.KeyID, newOnly.Keys().First) {
-		t.Fatal("the rewrap changed the ciphertext or left the old key")
-	}
+	failIf(t, !bytes.Equal(got.Sealed.Ciphertext, cred.Sealed.Ciphertext) || !bytes.Equal(got.Sealed.KeyID, newOnly.Keys().First), "the rewrap changed the ciphertext or left the old key")
 	_, err = newOnly.Open(got.Sealed, store.CredentialBinding(c.ID, c.Owner, store.KindOAuth, store.Meta{
 		Issuer: "https://auth.example.com", TokenEndpoint: "https://auth.example.com/token",
 	}, ""))
 	ok(t, err)
 	f, err := e.st.Flows().Get(ctx, pending.ID)
 	ok(t, err)
-	if !bytes.Equal(f.Verifier.Ciphertext, flow.Verifier.Ciphertext) || !bytes.Equal(f.Pending.Sealed.Ciphertext, flow.Pending.Sealed.Ciphertext) {
-		t.Fatal("the rewrap changed a flow's ciphertext")
-	}
+	failIf(t, !bytes.Equal(f.Verifier.Ciphertext, flow.Verifier.Ciphertext) || !bytes.Equal(f.Pending.Sealed.Ciphertext, flow.Pending.Sealed.Ciphertext), "the rewrap changed a flow's ciphertext")
 	_, err = newOnly.Open(f.Verifier, store.VerifierBinding(flow.ID, pending.ID))
 	ok(t, err)
 	r, err := e.st.Registrations().Get(ctx, "https://auth.example.com", "cb")
@@ -1118,9 +1028,7 @@ func testRotation(t *testing.T, e env) {
 	ok(t, err)
 	n, err = store.Rewrap(ctx, e.st, store.Sealer(must(store.NewSealer())), 1)
 	ok(t, err)
-	if n != 0 {
-		t.Fatal("a sealer with no key rewrapped")
-	}
+	failIf(t, n != 0, "a sealer with no key rewrapped")
 }
 
 func must[T any](v T, err error) T {
