@@ -111,8 +111,11 @@ flowchart TB
   added, and the request is forwarded to the connector and its answer
   streamed back ([[008-carrying-a-call]]).
 - **The dialer** is the only code that opens a connection to an address
-  outside the installation. It refuses every address that is not
-  public, at the moment it connects ([[009-outbound-requests]]).
+  a catalog entry or a person named. It refuses every address that is
+  not public, at the moment it connects ([[009-outbound-requests]]). The
+  addresses the operator configures, the database, the issuer, the
+  authorizer and the telemetry exporter, are reached without that
+  check.
 - **The issuer and the authorizer** answer who is calling and what the
   caller may do ([[004-identity-and-authorization]]).
 
@@ -162,8 +165,9 @@ connect their own account to the sender's connection
 2. **A credential is sealed at rest** under a key only Pons holds, and
    bound to its row, so a ciphertext copied to another row does not
    open ([[005-store-and-sealing]]).
-3. **A credential leaves Pons only toward its connector's hosts.** No
-   caller is handed one. A redirect to another host is followed without
+3. **A credential leaves Pons only toward its connector's hosts**, and
+   a refresh token or a client secret only toward the token endpoint
+   recorded with it. No caller is handed one. A redirect to another host is followed without
    it ([[009-outbound-requests]]).
 4. **One writer refreshes a connection.** Any number of callers may
    use a connection at once, and at most one of them trades its refresh
@@ -173,8 +177,8 @@ connect their own account to the sender's connection
    connection are the authorizer's answers. With no authorizer, an
    owner uses their own connections and nobody else's
    ([[004-identity-and-authorization]]).
-6. **Every outbound request goes through the dialer**, which reaches
-   public addresses only. An address a person supplied is never
+6. **Every request toward a connector or its authorization server goes
+   through the dialer**, which reaches public addresses only. An address a person supplied is never
    trusted to be what it says ([[009-outbound-requests]]).
 7. **A connection becomes usable only by its owner's confirmation**,
    given by a caller who may act for the owner and who holds a code
@@ -219,9 +223,10 @@ connect their own account to the sender's connection
 | `internal/config/` | configuration, read once into one typed value |
 | `test/stubs/` | a stub issuer, authorizer, connector and authorization server |
 
-The public packages import nothing that dials. `internal/dial` is the
-only package that imports `net` to open a connection, held by a test
-over the import graph.
+The public packages import nothing that dials. Outside the clients of
+the operator's own endpoints, `internal/dial` is the only package that
+opens a connection, held by a test over the import graph and the call
+sites.
 
 ## Not in this spec
 
@@ -237,6 +242,6 @@ The objects and their fields ([[002-objects]]); the routes
 |---|---|
 | Two replicas over one database serve the same connection: a connection made through one is used through the other, and a refresh started by one is not started again by the other | `TestTwoReplicasShareOneConnection` in the e2e tier |
 | A canary credential planted at a sign-in and at a pasted key appears in no response body, header, record, log line or error of any route | `TestNoCredentialLeavesButTowardItsConnector` |
-| No package but `internal/dial` opens a network connection to a configured or supplied address | `TestOnlyTheDialerDials`, over `go list -deps` and call sites |
+| No package but `internal/dial` opens a network connection to an address a catalog entry or a person named; the database driver, the issuer and authorizer clients and the telemetry exporter are the listed exceptions | `TestOnlyTheDialerDials`, over `go list -deps` and call sites |
 | The public packages `api`, `authorizer` and `catalog` import no package that dials | `TestPublicPackagesDialNothing` |
 | With no database configured the server starts on the memory store and says so in its first log line; with one configured and unreachable it does not start | `TestStoreSelection` |

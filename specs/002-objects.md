@@ -87,7 +87,7 @@ One owner's link to one connector.
 | `kind` | `mcp` or `http` | copied from the connector at create |
 | `auth` | `oauth`, `token`, `client_credentials`, `none` | copied from the connector at create |
 | `state` | `pending`, `connected`, `needs_reconnect` | below |
-| `reason` | string | present in `needs_reconnect`: `refresh_refused`, `revoked`, `credential_refused` or `scope_insufficient` |
+| `reason` | string | present in `needs_reconnect`: `refresh_refused`, `revoked` or `credential_refused` |
 | `account` | string | the account at the other service this connection acts as, when the service says: a login, an address, a workspace name. Never a secret |
 | `scopes` | list of strings | what the other service granted, when it says |
 | `address` | URL | where a caller reaches this connection ([[008-carrying-a-call]]) |
@@ -106,13 +106,18 @@ stateDiagram-v2
   connected --> needs_reconnect: a refresh is refused, the service revokes, or a key stops working
   needs_reconnect --> pending: reconnect
   connected --> pending: reconnect, to change account or scopes
+  pending --> connected: the flow of a reconnect expires, with no reason kept
+  pending --> needs_reconnect: the flow of a reconnect expires, with a reason kept
   connected --> [*]: delete
   needs_reconnect --> [*]: delete
 ```
 
 A connection in `pending` that had a credential before, because it is
 being reconnected, keeps answering calls with the old credential until
-the new one is confirmed. A delete removes the credential's ciphertext
+the new one is confirmed. When its flow expires instead, it goes back
+to the state it left: `needs_reconnect` when it still has a `reason`,
+`connected` otherwise. Only a connection that never had a credential is
+deleted when its flow expires. A delete removes the credential's ciphertext
 in the same transaction and then, where the service offers revocation,
 revokes the tokens there, which may fail without failing the delete.
 
