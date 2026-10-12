@@ -466,6 +466,12 @@ func decodeKey(entry string) (SealingKey, bool) {
 	return SealingKey{}, false
 }
 
+// LookupEnv resolves a variable a catalog names by reference, such as an
+// operator's client secret. It is read at each use, so a value can change
+// without a restart, and it is the one read of the environment outside
+// FromEnv.
+func LookupEnv(name string) (string, bool) { return os.LookupEnv(name) }
+
 // Variables lists every variable FromEnv reads, in the order of the table
 // of specs/011-distribution.md.
 func Variables() []string {
