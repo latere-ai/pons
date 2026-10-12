@@ -133,7 +133,7 @@ func TestDefaults(t *testing.T) {
 		OIDCIssuers: []string{"https://issuer.example.com"}, OIDCAudiences: []string{"pons"},
 		ClientName: "Pons", RecordsRetention: 720 * time.Hour,
 		MaxConnectionsPerOwner: 100, CreatesPerMinute: 10, MaxInflightPerSubject: 32, MaxInflight: 1024,
-		MaxRequestBytes: 4 << 20, CallHeaderTimeout: 30 * time.Second, StreamIdleTimeout: 5 * time.Minute,
+		MaxRequestBytes: 4 << 20, MaxForwardBytes: 2 << 30, CallHeaderTimeout: 30 * time.Second, StreamIdleTimeout: 5 * time.Minute,
 	}
 	if fmt.Sprint(s) != fmt.Sprint(want) {
 		t.Fatalf("defaults\n got %+v\nwant %+v", s, want)
@@ -171,6 +171,7 @@ func TestEveryVariableIsRead(t *testing.T) {
 		"PONS_MAX_INFLIGHT_PER_SUBJECT":  "3",
 		"PONS_MAX_INFLIGHT":              "4",
 		"PONS_MAX_REQUEST_BYTES":         "1024",
+		"PONS_MAX_FORWARD_BYTES":         "4096",
 		"PONS_CALL_HEADER_TIMEOUT":       "5s",
 		"PONS_STREAM_IDLE_TIMEOUT":       "1m",
 		"PONS_OUTBOUND_PROXY":            "http://user:pass@proxy.example.com:3128",
@@ -196,7 +197,7 @@ func TestEveryVariableIsRead(t *testing.T) {
 	case len(s.ReturnURLs) != 2 || s.ClientName != "Example" || s.ClientURI == "" || s.CatalogFile == "":
 		t.Errorf("sign-in settings %+v", s)
 	case s.RecordsRetention != 24*time.Hour || s.MaxConnectionsPerOwner != 5 || s.CreatesPerMinute != 2 ||
-		s.MaxInflightPerSubject != 3 || s.MaxInflight != 4 || s.MaxRequestBytes != 1024 ||
+		s.MaxInflightPerSubject != 3 || s.MaxInflight != 4 || s.MaxRequestBytes != 1024 || s.MaxForwardBytes != 4096 ||
 		s.CallHeaderTimeout != 5*time.Second || s.StreamIdleTimeout != time.Minute:
 		t.Errorf("limits %+v", s)
 	case s.OutboundProxy == nil || s.OutboundProxy.Host != "proxy.example.com:3128" || !s.DialAllowPrivate:
@@ -252,6 +253,14 @@ func TestRefusals(t *testing.T) {
 }
 
 // A secret and a key never print.
+// A variable a catalog names is read at use.
+func TestLookupEnv(t *testing.T) {
+	t.Setenv("PONS_TEST_LOOKUP", "value")
+	if v, ok := LookupEnv("PONS_TEST_LOOKUP"); !ok || v != "value" {
+		t.Fatalf("%q %v", v, ok)
+	}
+}
+
 func TestSecretsDoNotPrint(t *testing.T) {
 	s := NewSecret("the-bearer-value")
 	k := SealingKey{1, 2, 3}

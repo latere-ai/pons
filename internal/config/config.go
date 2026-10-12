@@ -36,6 +36,7 @@ const (
 	DefaultMaxInflightPerSubject  = 32
 	DefaultMaxInflight            = 1024
 	DefaultMaxRequestBytes        = 4 << 20
+	DefaultMaxForwardBytes        = 2 << 30
 	DefaultCallHeaderTimeout      = 30 * time.Second
 	DefaultStreamIdleTimeout      = 5 * time.Minute
 )
@@ -91,7 +92,10 @@ type Settings struct {
 	MaxInflightPerSubject  int // PONS_MAX_INFLIGHT_PER_SUBJECT
 	MaxInflight            int // PONS_MAX_INFLIGHT
 
-	MaxRequestBytes   int64         // PONS_MAX_REQUEST_BYTES
+	MaxRequestBytes int64 // PONS_MAX_REQUEST_BYTES
+	// MaxForwardBytes bounds a request body on a forwarding or git
+	// address (specs/014-http-forwarding.md).
+	MaxForwardBytes   int64         // PONS_MAX_FORWARD_BYTES
 	CallHeaderTimeout time.Duration // PONS_CALL_HEADER_TIMEOUT
 	StreamIdleTimeout time.Duration // PONS_STREAM_IDLE_TIMEOUT
 
@@ -159,7 +163,8 @@ func FromEnv(getenv func(string) string) (Settings, error) {
 		RecordsRetention:       DefaultRecordsRetention,
 		MaxConnectionsPerOwner: DefaultMaxConnectionsPerOwner, CreatesPerMinute: DefaultCreatesPerMinute,
 		MaxInflightPerSubject: DefaultMaxInflightPerSubject, MaxInflight: DefaultMaxInflight,
-		MaxRequestBytes: DefaultMaxRequestBytes, CallHeaderTimeout: DefaultCallHeaderTimeout,
+		MaxRequestBytes: DefaultMaxRequestBytes, MaxForwardBytes: DefaultMaxForwardBytes,
+		CallHeaderTimeout: DefaultCallHeaderTimeout,
 		StreamIdleTimeout: DefaultStreamIdleTimeout,
 	}
 	r := reader{getenv: getenv}
@@ -192,6 +197,7 @@ func FromEnv(getenv func(string) string) (Settings, error) {
 	r.count("PONS_MAX_INFLIGHT_PER_SUBJECT", &s.MaxInflightPerSubject)
 	r.count("PONS_MAX_INFLIGHT", &s.MaxInflight)
 	r.size("PONS_MAX_REQUEST_BYTES", &s.MaxRequestBytes)
+	r.size("PONS_MAX_FORWARD_BYTES", &s.MaxForwardBytes)
 	r.duration("PONS_CALL_HEADER_TIMEOUT", &s.CallHeaderTimeout)
 	r.duration("PONS_STREAM_IDLE_TIMEOUT", &s.StreamIdleTimeout)
 	s.OutboundProxy = r.proxy("PONS_OUTBOUND_PROXY")
