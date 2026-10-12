@@ -100,7 +100,7 @@ func Connection(owner, name string, state store.State) store.Connection {
 func Create(t testing.TB, st store.Store, cs ...store.Connection) {
 	t.Helper()
 	for _, c := range cs {
-		if err := st.Connections().Create(context.Background(), c, 0); err != nil {
+		if err := st.Connections().Create(t.Context(), c, 0); err != nil {
 			t.Fatalf("creating %s: %v", c.Name, err)
 		}
 	}
@@ -145,7 +145,7 @@ func Sealer(t testing.TB, bytes ...byte) *store.KeySealer {
 // is fails the test when err is not want.
 func is(t testing.TB, err, want error) {
 	t.Helper()
-	failIf(t, !errors.Is(err, want) && !(err == nil && want == nil), "got %v, want %v", err, want)
+	failIf(t, !errors.Is(err, want) && (err != nil || want != nil), "got %v, want %v", err, want)
 }
 
 // failIf fails the test when cond holds.
@@ -640,7 +640,7 @@ func Flow(t testing.TB, s store.Sealer, c store.Connection, expires time.Time) s
 	t.Helper()
 	f := store.Flow{
 		ID: id.New(id.Flow), Connection: c.ID, StateHash: []byte("state-" + c.ID),
-		Issuer: "https://auth.example.com", AuthorizationEndpoint: "https://auth.example.com/authorize",
+		Issuer: "https://auth.example.com", AuthorizationEndpoint: "https://auth.example.com/login",
 		TokenEndpoint: "https://auth.example.com/token", RevocationEndpoint: "https://auth.example.com/revoke",
 		IssParameterSupported: true, ClientID: "https://pons.example.com/v1/client",
 		RedirectURI: "https://pons.example.com/v1/callback", Resource: "https://mcp.example.com/mcp",

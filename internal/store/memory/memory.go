@@ -99,7 +99,13 @@ func (s *Store) Close() error { return nil }
 
 // one runs a single call as its own transaction.
 func (s *Store) one(ctx context.Context, fn func(*view) error) error {
-	return s.Tx(ctx, func(tx store.Tx) error { return fn(tx.(*view)) })
+	return s.Tx(ctx, func(tx store.Tx) error {
+		v, ok := tx.(*view)
+		if !ok {
+			return errors.New("memory: a transaction that is not the memory store's")
+		}
+		return fn(v)
+	})
 }
 
 func (s *Store) Connectors() store.Connectors       { return connectors{s: s} }
