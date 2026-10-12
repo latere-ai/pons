@@ -134,3 +134,108 @@ func TestHighestOf(t *testing.T) {
 		t.Fatal("no migration at all was read")
 	}
 }
+
+// Every method answers an error, and none panics, once the pool is closed:
+// a statement that fails is returned and never read as a row.
+func TestEveryMethodFailsOnAClosedPool(t *testing.T) {
+	ctx := context.Background()
+	s := pgtest.Open(t, false, postgres.Options{})
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	sealer := storetest.Sealer(t, 2, 1)
+	c := storetest.Connection("alice", "notion", store.StateConnected)
+	cred := storetest.Credential(t, sealer, c, store.Secrets{AccessToken: "access-token"})
+	flow := storetest.Flow(t, sealer, c, time.Now())
+	errs := map[string]error{}
+	add := func(name string, err error) { errs[name] = err }
+	add("tx", s.Tx(ctx, func(store.Tx) error { return nil }))
+	add("connector create", s.Connectors().Create(ctx, store.Connector{ID: "ctr_x", Owner: "a", Name: "n"}))
+	_, err := s.Connectors().Get(ctx, "ctr_x")
+	add("connector get", err)
+	_, _, err = s.Connectors().List(ctx, []string{"a"}, store.Page{})
+	add("connector list", err)
+	add("connector delete", s.Connectors().Delete(ctx, "ctr_x"))
+	add("connection create", s.Connections().Create(ctx, c, 0))
+	add("connection create capped", s.Connections().Create(ctx, c, 1))
+	_, err = s.Connections().Get(ctx, c.ID)
+	add("connection get", err)
+	_, _, err = s.Connections().List(ctx, store.Filter{Owners: []string{"a"}}, store.Page{})
+	add("connection list", err)
+	add("rename", s.Connections().Rename(ctx, c.ID, "x"))
+	add("move", s.Connections().Move(ctx, c.ID, store.StateConnected, store.StatePending, ""))
+	add("describe", s.Connections().Describe(ctx, c.ID, store.Account{}))
+	add("touch", s.Connections().Touch(ctx, c.ID, time.Now()))
+	add("connection delete", s.Connections().Delete(ctx, c.ID))
+	_, err = s.Connections().CountByState(ctx)
+	add("count", err)
+	_, err = s.Connections().InUse(ctx, "notion")
+	add("in use", err)
+	_, err = s.Credentials().Put(ctx, c.ID, cred)
+	add("credential put", err)
+	_, _, err = s.Credentials().Get(ctx, c.ID)
+	add("credential get", err)
+	_, _, err = s.Credentials().ClaimRefresh(ctx, c.ID, time.Second)
+	add("claim", err)
+	add("complete", s.Credentials().CompleteRefresh(ctx, c.ID, 1, cred))
+	add("release", s.Credentials().ReleaseRefresh(ctx, c.ID))
+	add("flow put", s.Flows().Put(ctx, flow))
+	_, err = s.Flows().Get(ctx, c.ID)
+	add("flow get", err)
+	_, err = s.Flows().ByState(ctx, flow.StateHash)
+	add("by state", err)
+	add("flow delete", s.Flows().Delete(ctx, c.ID))
+	_, err = s.Flows().TakeExpired(ctx, time.Now(), 0)
+	add("take expired", err)
+	_, err = s.Registrations().Put(ctx, store.Registration{Issuer: "i", RedirectURI: "r", ClientID: "c"})
+	add("registration put", err)
+	_, err = s.Registrations().Get(ctx, "i", "r")
+	add("registration get", err)
+	add("registration delete", s.Registrations().Delete(ctx, "i", "r"))
+	add("call insert", s.Calls().Insert(ctx, storetest.Call(c, time.Now())))
+	_, _, err = s.Calls().List(ctx, c.ID, store.Page{})
+	add("call list", err)
+	_, err = s.Calls().Prune(ctx, time.Now(), 0)
+	add("call prune", err)
+	add("key put", s.Idempotency().Put(ctx, store.IdempotencyKey{Subject: "a", Key: "k"}))
+	_, err = s.Idempotency().Get(ctx, "a", "k")
+	add("key get", err)
+	_, err = s.Idempotency().Prune(ctx, time.Now(), 0)
+	add("key prune", err)
+	_, err = s.Rotation().RewrapBatch(ctx, store.TableCredentials, sealer.Keys(), 0, sealer.Rewrap)
+	add("rewrap", err)
+	_, err = s.Rotation().CountNotFirst(ctx, sealer.Keys())
+	add("count not first", err)
+	for name, err := range errs {
+		if err == nil {
+			t.Errorf("%s on a closed pool answered no error", name)
+		}
+	}
+}
+
+// A value that is not JSON never reaches a json column.
+func TestJSONIsCheckedBeforeItIsBound(t *testing.T) {
+	ctx := context.Background()
+	s := pgtest.Open(t, false, postgres.Options{})
+	c := storetest.Connection("alice", "notion", store.StatePending)
+	storetest.Create(t, s, c)
+	bad := store.Connector{ID: "ctr_x", Owner: "a", Name: "n", Hosts: []string{"h.example.com"}}
+	for name, x := range map[string]func(*store.Connector){
+		"auth":  func(c *store.Connector) { c.Auth = []byte("{") },
+		"tools": func(c *store.Connector) { c.Tools = []byte("{") },
+	} {
+		b := bad
+		x(&b)
+		if err := s.Connectors().Create(ctx, b); err == nil {
+			t.Errorf("a connector whose %s is not JSON was written", name)
+		}
+	}
+	f := storetest.Flow(t, storetest.Sealer(t, 1), c, time.Now())
+	f.Pending.Meta = []byte("{")
+	if err := s.Flows().Put(ctx, f); err == nil {
+		t.Error("a flow whose pending meta is not JSON was written")
+	}
+	if _, err := s.Rotation().RewrapBatch(ctx, "connections", storetest.Sealer(t, 2, 1).Keys(), 0, nil); err == nil {
+		t.Error("a table with no sealed values was rewrapped")
+	}
+}
