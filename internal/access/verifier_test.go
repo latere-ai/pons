@@ -30,10 +30,7 @@ const audience = "pons"
 // operator is the operator client, trusting the stubs' authority.
 func operator(t testing.TB) *http.Client {
 	t.Helper()
-	roots, err := stubs.Roots()
-	if err != nil {
-		t.Fatal(err)
-	}
+	roots := stubs.Roots()
 	return dial.Operator(dial.OperatorOptions{Roots: roots})
 }
 
@@ -135,10 +132,7 @@ func TestWhatTheVerifierRefuses(t *testing.T) {
 		}
 	}
 	// An issuer that does not answer is a refusal a caller may retry.
-	roots, err := stubs.Roots()
-	if err != nil {
-		t.Fatal(err)
-	}
+	roots := stubs.Roots()
 	down, err := access.NewVerifier(access.VerifierOptions{
 		Issuers: []string{iss.URL()}, Audiences: []string{audience},
 		HTTP: dial.Operator(dial.OperatorOptions{Roots: roots, Timeout: 300 * time.Millisecond}),

@@ -39,23 +39,14 @@ type authority struct {
 	pool *x509.CertPool
 }
 
-var (
-	authorityOnce sync.Once
-	theAuthority  *authority
-	authorityErr  error
-)
+// theAuthority is the process's authority, made once on first use.
+var theAuthority = sync.OnceValue(newAuthority)
 
-// ca is the process's authority, made on first use.
-func ca() (*authority, error) {
-	authorityOnce.Do(func() { theAuthority, authorityErr = newAuthority() })
-	return theAuthority, authorityErr
-}
-
-func newAuthority() (*authority, error) {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, fmt.Errorf("stubs: the authority's key: %w", err)
-	}
+// newAuthority makes the authority. Like net/http/httptest, which panics
+// when it cannot listen, it panics when the system cannot make a key or a
+// certificate: a test cannot go on without one, and the panic names why.
+func newAuthority() *authority {
+	key := must(ecdsa.GenerateKey(elliptic.P256(), rand.Reader))
 	tmpl := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		Subject:               pkix.Name{CommonName: "Pons stub authority"},
@@ -65,46 +56,31 @@ func newAuthority() (*authority, error) {
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
 		BasicConstraintsValid: true,
 	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	if err != nil {
-		return nil, fmt.Errorf("stubs: the authority's certificate: %w", err)
-	}
-	cert, err := x509.ParseCertificate(der)
-	if err != nil {
-		return nil, fmt.Errorf("stubs: the authority's certificate: %w", err)
-	}
+	cert := must(x509.ParseCertificate(must(x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key))))
 	pool := x509.NewCertPool()
 	pool.AddCert(cert)
-	return &authority{key: key, cert: cert, pool: pool}, nil
+	return &authority{key: key, cert: cert, pool: pool}
+}
+
+// must is v, or a panic that names err.
+func must[T any](v T, err error) T {
+	if err != nil {
+		panic(fmt.Sprintf("stubs: %v", err))
+	}
+	return v
 }
 
 // Roots is the pool of the stubs' authority, the roots a server under test
 // verifies the stubs against.
-func Roots() (*x509.CertPool, error) {
-	a, err := ca()
-	if err != nil {
-		return nil, err
-	}
-	return a.pool, nil
-}
+func Roots() *x509.CertPool { return theAuthority().pool }
 
 // Certificate is a certificate of the stubs' authority for the names: each
 // a DNS name or an IP address.
-func Certificate(names ...string) (tls.Certificate, error) {
-	a, err := ca()
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return tls.Certificate{}, fmt.Errorf("stubs: a key: %w", err)
-	}
-	serial, err := rand.Int(rand.Reader, big.NewInt(1<<62))
-	if err != nil {
-		return tls.Certificate{}, fmt.Errorf("stubs: a serial: %w", err)
-	}
+func Certificate(names ...string) tls.Certificate {
+	a := theAuthority()
+	key := must(ecdsa.GenerateKey(elliptic.P256(), rand.Reader))
 	tmpl := &x509.Certificate{
-		SerialNumber: serial,
+		SerialNumber: must(rand.Int(rand.Reader, big.NewInt(1<<62))),
 		Subject:      pkix.Name{CommonName: names[0]},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(23 * time.Hour),
@@ -118,17 +94,13 @@ func Certificate(names ...string) (tls.Certificate, error) {
 			tmpl.DNSNames = append(tmpl.DNSNames, n)
 		}
 	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, a.cert, &key.PublicKey, a.key)
-	if err != nil {
-		return tls.Certificate{}, fmt.Errorf("stubs: a certificate: %w", err)
-	}
-	return tls.Certificate{Certificate: [][]byte{der, a.cert.Raw}, PrivateKey: key}, nil
+	der := must(x509.CreateCertificate(rand.Reader, tmpl, a.cert, &key.PublicKey, a.key))
+	return tls.Certificate{Certificate: [][]byte{der, a.cert.Raw}, PrivateKey: key}
 }
 
 // TB is the part of testing.TB the stubs use.
 type TB interface {
 	Helper()
-	Fatalf(format string, args ...any)
 	Cleanup(func())
 }
 
@@ -136,10 +108,7 @@ type TB interface {
 // 127.0.0.1 and the names, and stops it with the test.
 func serveTLS(t TB, h http.Handler, names ...string) *httptest.Server {
 	t.Helper()
-	cert, err := Certificate(append([]string{"127.0.0.1"}, names...)...)
-	if err != nil {
-		t.Fatalf("%v", err)
-	}
+	cert := Certificate(append([]string{"127.0.0.1"}, names...)...)
 	srv := httptest.NewUnstartedServer(h)
 	srv.TLS = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 	srv.StartTLS()

@@ -21,10 +21,7 @@ import (
 
 func client(t *testing.T) *http.Client {
 	t.Helper()
-	roots, err := stubs.Roots()
-	if err != nil {
-		t.Fatal(err)
-	}
+	roots := stubs.Roots()
 	return dial.Operator(dial.OperatorOptions{Roots: roots})
 }
 
@@ -91,7 +88,7 @@ func TestIssuerMintsForTheServer(t *testing.T) {
 	if got := iss.Subject("alice"); got != iss.URL()+"|alice" {
 		t.Fatalf("subject %q", got)
 	}
-	if _, err := stubs.Certificate("api.example.com", "10.0.0.1"); err != nil {
-		t.Fatal(err)
+	if c := stubs.Certificate("api.example.com", "10.0.0.1"); len(c.Certificate) != 2 {
+		t.Fatal("a certificate without its authority")
 	}
 }

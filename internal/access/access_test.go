@@ -577,10 +577,7 @@ func TestTheProbe(t *testing.T) {
 // New builds the mode the settings name.
 func TestNew(t *testing.T) {
 	iss := stubs.NewIssuer(t)
-	roots, err := stubs.Roots()
-	if err != nil {
-		t.Fatal(err)
-	}
+	roots := stubs.Roots()
 	s := config.Settings{OIDCIssuers: []string{iss.URL()}, OIDCAudiences: []string{audience}}
 	a, err := access.New(s, access.Options{Roots: roots})
 	if err != nil || a.Mode != access.ModeOwnerPolicy {
