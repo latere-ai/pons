@@ -55,7 +55,7 @@ memory store and is otherwise configured the same.
 | `internal/config/` | configuration, read once into one typed value |
 | `internal/id/` | prefixed, time-ordered identifiers |
 | `internal/version/` | the build's version, stamped by the linker |
-| `test/stubs/` | a stub issuer, authorizer, connector and authorization server |
+| `test/stubs/` | a stub issuer, authorizer, connector, authorization server, API and git host |
 | `deploy/base/` | manifests for a cluster, with no host or account in them |
 | `deploy/examples/generic/` | an example installation: settings, a catalog, the template of the Secrets, a pooler |
 | `docs/` | running it, the configuration reference, the catalog guide, the API guide |
@@ -169,6 +169,7 @@ binary reads a variable the table lacks.
 | `PONS_MAX_INFLIGHT_PER_SUBJECT` | 32 | [[008-carrying-a-call]] |
 | `PONS_MAX_INFLIGHT` | 1024 | [[008-carrying-a-call]] |
 | `PONS_MAX_REQUEST_BYTES` | 4 MiB | [[008-carrying-a-call]] |
+| `PONS_MAX_FORWARD_BYTES` | 2 GiB | [[014-http-forwarding]] |
 | `PONS_CALL_HEADER_TIMEOUT` | `30s` | [[008-carrying-a-call]] |
 | `PONS_STREAM_IDLE_TIMEOUT` | `5m` | [[008-carrying-a-call]] |
 | `PONS_OUTBOUND_PROXY` | none: requests leave directly | [[009-outbound-requests]] |
@@ -216,7 +217,7 @@ who decides, the authorizer or the owner policy, and warn when
 
 ### The stubs
 
-`test/stubs` holds four servers a test starts in its own process. Each
+`test/stubs` holds six servers a test starts in its own process. Each
 listens on loopback over TLS, with a certificate from one authority the
 package makes at start, since the dialer speaks https only. Each
 records every request it served, and each has switches a test sets on
@@ -227,6 +228,8 @@ the stub's value.
 | issuer | a discovery document, a key set, and tokens minted for a subject, an audience and a `session` claim | an expired token, another audience, a rotated key, an issuer that does not answer |
 | authorizer | the contract of [[004-identity-and-authorization]], answered from a table of subject, action and resource, with the limits of an allow | a deny, no answer, a slow answer, a malformed answer; it records every question |
 | connector | a Model Context Protocol server over streamable HTTP, with a few tools, some that only read, and one streamed answer; it records the credential each request carried | a `401`, an insufficient scope `403`, a redirect, a cookie, a slow stream, a stream that never ends, an oversized body, oversized headers, and an earlier protocol revision: `initialize`, a session, `GET` and `DELETE` |
+| API | a small JSON API in a code host's manner: a user, a list paged with a `Link` header, a write that records its body, a `3xx` within and one elsewhere; it records the credential each request carried | a `401`, a slow answer, a body past a limit |
+| git host | git's smart HTTP over a bare repository the test seeds, through `git http-backend` under `net/http/cgi`, so a real `git` client clones and pushes; it records the credential each request carried | a `401`; the test is skipped with a stated reason when `git` is not installed, and the gate's image has it |
 | authorization server | protected resource metadata on the connector, authorization server metadata, a fetch of Pons's client metadata document, dynamic registration, the proof key, refresh with rotation, revocation | one for each failure [[007-sign-in]] handles: no proof key in the metadata, no way to identify a client, a wrong or missing `iss`, metadata that names an inside address, a refused code, a refused refresh, a spent refresh token used again, a slow token endpoint, a person who declines |
 
 `stubs.Roots` is the authority's pool, and `stubs.Resolver` maps each

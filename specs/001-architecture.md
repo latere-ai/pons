@@ -187,9 +187,12 @@ connect their own account to the sender's connection
    that reached them through the browser that finished the sign-in
    ([[007-sign-in]]).
 8. **What a connector returns is carried, not read.** Pons parses a
-   request far enough to name the tool it calls and parses no result
-   for meaning. It adds nothing to an answer and follows no instruction
-   in one.
+   request far enough to name the tool it calls, or the refs a push
+   updates, and parses no result for meaning. It adds nothing to an
+   answer and follows no instruction in one. The one change it makes is
+   to the `Link` and `Location` headers of a forwarded answer, whose
+   URLs under the connector come back under Pons's address
+   ([[014-http-forwarding]]).
 9. **A record says that a call happened, never what it said.** No
    argument and no result is stored or logged
    ([[010-records-and-observability]]).

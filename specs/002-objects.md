@@ -90,7 +90,8 @@ One owner's link to one connector.
 | `reason` | string | why the credential stopped working: `refresh_refused`, `revoked` or `credential_refused`. Present in `needs_reconnect`, and in a `pending` connection being reconnected after a refusal |
 | `account` | string | the account at the other service this connection acts as, when the service says: a login, an address, a workspace name. Never a secret |
 | `scopes` | list of strings | what the other service granted, when it says |
-| `address` | URL | where a caller reaches this connection ([[008-carrying-a-call]]) |
+| `address` | URL | where a caller reaches this connection: the MCP address for kind `mcp` ([[008-carrying-a-call]]), the forwarding address for kind `http` ([[014-http-forwarding]]) |
+| `git_address` | URL | for kind `http` whose connector names `git.url`: where git reaches the connector's git host ([[014-http-forwarding]]) |
 | `tools` | `{read_only, hidden}` | the connector's marks, so a caller applies them by tool name |
 | `links` | `{manage}` | links a client may show, copied from the connector when read: `manage` changes what the other service grants ([[013-github-connector]]) |
 | `created_by` | subject | who made the request, which differs from `owner` when one acts for another |
@@ -185,7 +186,8 @@ That a call happened ([[010-records-and-observability]]).
 | `session` | the caller's `session` claim, when its token carries one |
 | `at`, `duration_ms` | when, and how long |
 | `method` | the protocol method, such as `tools/call`, or the HTTP method for kind `http` |
-| `tool` | the tool's name for `tools/call`; the path without its query for kind `http` |
+| `tool` | the tool's name for `tools/call`; the path without its query on a forwarding address; `git-upload-pack` or `git-receive-pack` on a git address |
+| `refs` | the count of refs a push updates, on a git address; absent otherwise |
 | `effect` | `read` or `write`, by the connector's marks |
 | `outcome` | `ok`, `denied`, `not_connected`, `upstream_error`, `upstream_refused`, `timeout`, `canceled` |
 | `status` | the connector's HTTP status, when it answered |

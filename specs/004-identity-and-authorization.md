@@ -99,7 +99,7 @@ action sends.
 | `Connection` | `connection.list` | none |
 | `Connection` | `connection.update` | `id`, `owner`, `connector`, `name`, `kind`, `auth` |
 | `Connection` | `connection.delete` | `id`, `owner`, `connector`, `name`, `kind`, `auth` |
-| `Connection` | `connection.use` | `id`, `owner`, `connector`, `name`, `kind`, `method`, and `tool` and `effect` when the request names a tool |
+| `Connection` | `connection.use` | `id`, `owner`, `connector`, `name`, `kind`, `method`, and `tool` and `effect` when the request names a tool, a path or a git service, and `refs` for a push ([[014-http-forwarding]]) |
 
 A member Pons does not know for a request is left out, never sent
 empty. `connector` is the connector reference of [[002-objects]]: a
@@ -202,6 +202,7 @@ type Limits struct {
     Connectors     []string // globs of connector references the caller may connect; empty is all
     ReadOnly       bool     // on a use: only tools whose effect is read
     Tools          []string // globs of tools the caller may call; empty is all
+    Refs           []string // globs of full ref names a push may update; empty is all
     CallsPerMinute int      // per connection and subject; 0 is no cap
 }
 ```
@@ -223,6 +224,7 @@ catalog's tool marks ([[006-catalog]]).
 | `read_only` | `connection.use` | a `tools/call` whose effect is `write`: `403 forbidden` on `tool` |
 | `tools` | `connection.use` | a `tools/call` of a tool no glob matches: `403 forbidden` on `tool` |
 | `calls_per_minute` | `connection.use` | `429 rate_limited`, retryable |
+| `refs` | `connection.use` | a push naming a ref no glob matches: `403 forbidden` on `refs` ([[014-http-forwarding]]) |
 
 The limits of any other allow are not read. With no `owner` on the
 allow, a create is recorded under the owner the request named, and

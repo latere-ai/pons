@@ -48,7 +48,7 @@ fields of [[002-objects]]:
 | `title` | yes | at most 60 characters |
 | `description` | no | at most 200 characters |
 | `icon` | no | an https URL |
-| `kind` | yes | `mcp` or `http` |
+| `kind` | yes | `mcp` or `http`. Kind `http` may also give `git` and `http`, whose members are [[014-http-forwarding]]'s |
 | `url` | yes | an https URL with a host, no user part and no fragment |
 | `hosts` | no | host patterns, below. The host of `url` when absent |
 | `auth` | yes | `type` and the members of that type, below |
@@ -179,7 +179,8 @@ person before a change learns which tools change something.
 ([[005-store-and-sealing]]). Its address is supplied by a person, so
 it is held to more than a catalog entry:
 
-- `kind` is `mcp`. Kind `http` waits for [[014-http-forwarding]].
+- `kind` is `mcp`. A connector of kind `http` comes from the catalog
+  alone, since its paths and headers are the operator's to judge.
 - `auth.type` is `oauth`, `token` or `none`. For `oauth`, discovery is
   `resource`, the request names the server, there is no registered
   client, and `auth` takes `scopes` alone. Pons identifies itself by
