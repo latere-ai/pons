@@ -1,0 +1,40 @@
+connectors:
+  - name: tracker
+    title: Example Tracker
+    description: Read and file the issues of your projects.
+    kind: mcp
+    url: https://mcp.tracker.example.com/mcp
+    auth:
+      type: oauth
+      discovery: issuer
+      issuer: https://login.example.com
+      client: {id: pons, secret: {env: TRACKER_CLIENT_SECRET}}
+      scopes: ["issues:read", "issues:write"]
+    tools:
+      read_only: ["search_*", "get_*", "list_*"]
+      hidden: ["delete_project"]
+  - name: search
+    title: Example Search
+    kind: mcp
+    url: https://api.search.example.net/mcp
+    auth:
+      type: token
+      inject: {header: X-Api-Key, format: "{value}"}
+      hint: Create a key under Settings, API keys, at search.example.net.
+    tools: {read_only: ["*"]}
+  - name: warehouse
+    title: Example Warehouse
+    kind: mcp
+    url: https://mcp.warehouse.example.org/mcp
+    hosts: ["mcp.warehouse.example.org"]
+    auth:
+      type: client_credentials
+      token_url: https://login.warehouse.example.org/oauth/token
+      scopes: ["query"]
+      audience: https://mcp.warehouse.example.org
+  - name: weather
+    title: Example Weather
+    kind: mcp
+    url: https://weather.example.org/mcp
+    auth: {type: none}
+    tools: {read_only: ["*"]}
