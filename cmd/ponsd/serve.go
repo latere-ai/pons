@@ -52,6 +52,14 @@ type Hooks struct {
 	// Roots are the authorities the operator client verifies against. Nil
 	// is the process's roots; a test passes the stubs'.
 	Roots *x509.CertPool
+	// Store, when it is not nil, is handed the store once it is open, for
+	// a test that reads what it holds.
+	Store func(store.Store)
+	// SweepEvery, when it is not zero, replaces how often the sweep runs.
+	SweepEvery time.Duration
+	// Grace, when it is not zero, replaces how long open requests are given
+	// after a signal.
+	Grace time.Duration
 }
 
 // server is everything one process serves with.
@@ -74,6 +82,9 @@ func open(ctx context.Context, s config.Settings, log *slog.Logger, hooks Hooks)
 		return nil, err
 	}
 	srv.store = st
+	if hooks.Store != nil {
+		hooks.Store(st)
+	}
 	if s.Durable() {
 		log.InfoContext(ctx, "store: postgres")
 	} else {
@@ -220,8 +231,12 @@ func serve(ctx context.Context, getenv func(string) string, logs io.Writer, hook
 
 	work, stopWork := context.WithCancel(context.WithoutCancel(ctx))
 	defer stopWork()
+	every := sweepEvery
+	if hooks.SweepEvery > 0 {
+		every = hooks.SweepEvery
+	}
 	go srv.rewrap(work)
-	go srv.sweep(work)
+	go srv.sweep(work, every)
 	if hooks.Ready != nil {
 		hooks.Ready <- ln.Addr().String()
 	}
@@ -231,7 +246,11 @@ func serve(ctx context.Context, getenv func(string) string, logs io.Writer, hook
 		return err
 	case <-ctx.Done():
 	}
-	stop, cancel := context.WithTimeout(context.WithoutCancel(ctx), grace)
+	wait := grace
+	if hooks.Grace > 0 {
+		wait = hooks.Grace
+	}
+	stop, cancel := context.WithTimeout(context.WithoutCancel(ctx), wait)
 	defer cancel()
 	err = httpSrv.Shutdown(stop)
 	if errors.Is(err, context.DeadlineExceeded) {
@@ -260,8 +279,8 @@ func (srv *server) rewrap(ctx context.Context) {
 
 // sweep removes old records and idempotency keys every sweepEvery, on every
 // replica.
-func (srv *server) sweep(ctx context.Context) {
-	tick := time.NewTicker(sweepEvery)
+func (srv *server) sweep(ctx context.Context, every time.Duration) {
+	tick := time.NewTicker(every)
 	defer tick.Stop()
 	for {
 		select {

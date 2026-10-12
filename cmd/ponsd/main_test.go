@@ -45,6 +45,9 @@ func TestOneCommandAndNoFlag(t *testing.T) {
 	if !strings.Contains(out.String(), version.String()) {
 		t.Fatalf("version printed %q", out.String())
 	}
+	if err := run(context.Background(), []string{"serve"}, func(string) string { return "" }, &out, &out); err == nil || !strings.Contains(err.Error(), "PONS_PUBLIC_URL") {
+		t.Errorf("serve with nothing set: %v", err)
+	}
 	for _, args := range [][]string{nil, {"serve", "--addr=:1"}, {"-version"}, {"start"}} {
 		err := run(context.Background(), args, func(string) string { return "" }, &out, &out)
 		if err == nil || !strings.Contains(err.Error(), "one command") {
