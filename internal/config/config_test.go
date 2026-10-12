@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -237,9 +238,7 @@ func TestRefusals(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			e := minimal()
-			for k, v := range tc.set {
-				e[k] = v
-			}
+			maps.Copy(e, tc.set)
 			_, err := FromEnv(e.get)
 			if err == nil || !strings.Contains(err.Error(), tc.names) {
 				t.Fatalf("want a refusal naming %s, got %v", tc.names, err)

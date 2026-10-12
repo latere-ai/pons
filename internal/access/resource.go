@@ -1,0 +1,64 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: Apache-2.0
+
+package access
+
+import (
+	"slices"
+
+	"latere.ai/x/pkg/authz"
+
+	"latere.ai/x/pons/authorizer"
+)
+
+// Connector is what a question about a connector carries. A catalog
+// connector has a name and no id or owner; an added one has an id and an
+// owner. Host is the host of the address a person asks to add.
+type Connector struct {
+	ID, Owner, Name, Kind, Host string
+}
+
+// Resource is the connector as the resource of an action. A member Pons
+// does not know is left out, never sent empty, and only the members the
+// action sends are carried.
+func (c Connector) Resource(action string) authz.Resource {
+	return build(authorizer.KindConnector, action, c.ID, map[string]string{
+		authorizer.FieldOwner: c.Owner, authorizer.FieldName: c.Name,
+		authorizer.FieldKind: c.Kind, authorizer.FieldHost: c.Host,
+	})
+}
+
+// Connection is what a question about a connection carries: a stored one,
+// with its id, or one a connect would make, with none.
+type Connection struct {
+	ID, Owner, Connector, Name, Kind, Auth string
+}
+
+// Resource is the connection as the resource of an action.
+func (c Connection) Resource(action string) authz.Resource {
+	return build(authorizer.KindConnection, action, c.ID, map[string]string{
+		authorizer.FieldOwner: c.Owner, authorizer.FieldConnector: c.Connector, authorizer.FieldName: c.Name,
+		authorizer.FieldKind: c.Kind, authorizer.FieldAuth: c.Auth,
+	})
+}
+
+// List is the resource of a list action, which names no object.
+func List(action string) authz.Resource {
+	return authz.NewResource(authorizer.Kind(action), "", nil)
+}
+
+// build keeps the members an action sends and that are known.
+func build(kind, action, id string, members map[string]string) authz.Resource {
+	fields := map[string]any{}
+	sends := authorizer.Fields(action)
+	for _, name := range sends {
+		if v := members[name]; v != "" && name != authorizer.FieldID {
+			fields[name] = v
+		}
+	}
+	if !slices.Contains(sends, authorizer.FieldID) {
+		// The id rides as resource.id, for the actions that send one.
+		id = ""
+	}
+	return authz.NewResource(kind, id, fields)
+}
