@@ -79,7 +79,7 @@ the same validation and serves nothing.
 | Member | Default | Meaning |
 |---|---|---|
 | `discovery` | `resource` for kind `mcp`, required for `http` | how the authorization server is found. `resource`: the server publishes its protected resource metadata. `issuer`: the entry names an authorization server with standard metadata. `none`: the entry gives the endpoints |
-| `issuer` | | an https URL. Required with `issuer`. With `resource`, required when `client` is given, naming the server that client is registered with. With `none`, optional: what an `iss` in an answer is compared with |
+| `issuer` | | an https URL. Required with `issuer`. With `resource`, required when `client` is given, naming the server that client is registered with. With `none`, optional: what an `iss` in an answer is compared with. An answer without `iss` is accepted only from a server the entry names, by `issuer` or by its endpoints ([[007-sign-in]]) |
 | `authorize_url`, `token_url` | | required with `discovery: none`, refused otherwise |
 | `revoke_url` | | optional with `discovery: none`, refused otherwise |
 | `client.id`, `client.secret` | | a client the operator registered with the service. `secret` is a reference, absent for a public client. Required with `discovery: none` |
@@ -145,8 +145,8 @@ match the bare name. A name says nothing about the address it resolves
 to, so the dialer of [[009-outbound-requests]] is the second check: it
 refuses an address that is not public when it connects, and sends a
 credential to a host of this list only. `hosts` governs a call. A
-refresh token or a client secret is sent only to the token endpoint
-recorded with it ([[007-sign-in]]).
+refresh token or a client secret is sent only to the token endpoint and
+the revocation endpoint recorded with it ([[007-sign-in]]).
 
 ### Tool marks
 
@@ -177,8 +177,12 @@ it is held to more than a catalog entry:
 - `kind` is `mcp`. Kind `http` waits for [[014-http-forwarding]].
 - `auth.type` is `oauth`, `token` or `none`. For `oauth`, discovery is
   `resource`, the request names the server, there is no registered
-  client, and `auth` takes `scopes` alone. For `token`, it takes
-  `inject` and `hint`.
+  client, and `auth` takes `scopes` alone. Pons identifies itself by
+  the connector's own client metadata document alone, and the
+  authorization server's metadata must set
+  `authorization_response_iss_parameter_supported` to `true`, since no
+  operator vetted that server ([[007-sign-in]]); otherwise the add is
+  `422 sign_in_unsupported`. For `token`, it takes `inject` and `hint`.
 - `url` is https on port 443, with no user part and no fragment, and
   its host passes the host rule. `hosts` is not taken: it is the host
   of `url`. `tools` is taken.
@@ -274,6 +278,6 @@ how the credential is placed and a hidden tool refused
 | A connector read through the API carries no client, no reference and no endpoint | `httpapi.TestConnectorShowsNoSecretReference` |
 | An IP literal in each notation, a single label, `localhost` and a name under `local`, `internal` or `home.arpa` are refused; `*.example.com` does not cover `example.com`; absent `hosts` are the host of `url` | `catalog.TestHostRule`, `catalog.TestHostsCoverTheURL` |
 | The effect is `read` only for a tool a `read_only` glob matches; a glob matches a whole name by case | `catalog.TestEffect`, `catalog.FuzzGlob` |
-| An added connector of kind `http`, on another port, with `hosts`, with a client or of type `client_credentials` is refused, and it is `404` to anyone but its owner | `httpapi.TestAddedConnectorRules`, `TestAnAddedConnectorIsItsOwnersAlone` |
+| An added connector of kind `http`, on another port, with `hosts`, with a client or of type `client_credentials` is refused; one of type `oauth` whose server takes no client metadata document or does not say it sends `iss` is `422 sign_in_unsupported`; and it is `404` to anyone but its owner | `httpapi.TestAddedConnectorRules`, `TestAnAddedConnectorIsItsOwnersAlone` |
 | A connection whose connector left the catalog is kept, answers `409` with `connector_removed`, and works again when the entry returns | `TestRemovedConnectorKeepsItsConnections` |
 | `catalog` imports no package that dials | `TestPublicPackagesDialNothing` |

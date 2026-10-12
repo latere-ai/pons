@@ -167,8 +167,10 @@ connect their own account to the sender's connection
    open ([[005-store-and-sealing]]).
 3. **A credential leaves Pons only toward its connector's hosts**, and
    a refresh token or a client secret only toward the token endpoint
-   recorded with it. No caller is handed one. A redirect to another host is followed without
-   it ([[009-outbound-requests]]).
+   and the revocation endpoint recorded with it; an access token goes to
+   that revocation endpoint only to be revoked. No caller is handed one.
+   A redirect to another host is followed without it
+   ([[009-outbound-requests]]).
 4. **One writer refreshes a connection.** Any number of callers may
    use a connection at once, and at most one of them trades its refresh
    token ([[007-sign-in]]).
@@ -221,12 +223,15 @@ connect their own account to the sender's connection
 | `internal/dial/` | the dialer |
 | `internal/httpapi/` | routes, errors, the OpenAPI document served |
 | `internal/config/` | configuration, read once into one typed value |
+| `internal/id/` | prefixed, time-ordered identifiers |
+| `internal/version/` | the build's version, stamped by the linker |
 | `test/stubs/` | a stub issuer, authorizer, connector and authorization server |
 
-The public packages import nothing that dials. Outside the clients of
-the operator's own endpoints, `internal/dial` is the only package that
-opens a connection, held by a test over the import graph and the call
-sites.
+The public packages import nothing that dials. `internal/dial` is the
+only package that opens a connection, the operator client toward the
+issuer and the authorizer included, which it builds. The database
+driver and the telemetry exporter are the two exceptions, held by a
+test over the import graph and the call sites.
 
 ## Not in this spec
 
@@ -242,6 +247,6 @@ The objects and their fields ([[002-objects]]); the routes
 |---|---|
 | Two replicas over one database serve the same connection: a connection made through one is used through the other, and a refresh started by one is not started again by the other | `TestTwoReplicasShareOneConnection` in the e2e tier |
 | A canary credential planted at a sign-in and at a pasted key appears in no response body, header, record, log line or error of any route | `TestNoCredentialLeavesButTowardItsConnector` |
-| No package but `internal/dial` opens a network connection to an address a catalog entry or a person named; the database driver, the issuer and authorizer clients and the telemetry exporter are the listed exceptions | `TestOnlyTheDialerDials`, over `go list -deps` and call sites |
+| No package but `internal/dial` opens a network connection to an address a catalog entry or a person named; the operator client is built inside `internal/dial`, and the database driver and the telemetry exporter are the two listed exceptions | `TestOnlyTheDialerDials`, over `go list -deps` and call sites |
 | The public packages `api`, `authorizer` and `catalog` import no package that dials | `TestPublicPackagesDialNothing` |
 | With no database configured the server starts on the memory store and says so in its first log line; with one configured and unreachable it does not start | `TestStoreSelection` |

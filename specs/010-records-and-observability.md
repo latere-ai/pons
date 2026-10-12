@@ -45,10 +45,11 @@ Which requests to a connection's address leave a record, what
 `method` and `tool` hold for each, and which `outcome` each way of
 ending is, are [[008-carrying-a-call]]'s: in short, one record per
 request whose connection was found, a refusal by the authorizer or a
-limit included, as `denied`. A request refused before that names no
-connection, and a failure Pons raises itself is no call of the
-connector; both are counted by the request metrics below and not
-recorded.
+limit included, as `denied`, at most once per subject and connection
+per minute. A request refused before that names no connection, and a
+`500` or `503` Pons raises itself is no call of the connector; both are
+counted by the request metrics below and not recorded. A `502` or `504`
+about the connector is recorded.
 
 The fields are those of [[002-objects]]. How each is filled:
 
@@ -78,8 +79,8 @@ requests covers the writes of the calls that end within it
 A record is read through `GET /connections/{id}/calls`, newest first,
 by a caller allowed `connection.read` ([[003-api]]). It is not changed
 after it is written. A deleted connection's records stay until their
-retention passes, since they are the only account of what was done
-with it.
+retention passes, for the operator; no route reads them, since the
+route needs the connection.
 
 ### Retention
 
@@ -124,8 +125,9 @@ anything else `failed`, and new tokens that lost to a reconnect are
 `superseded`. `pons.signins` counts each flow's end once.
 `pons.authorizer.calls` is fed by the `Observe` option of the
 authorizer client. `pons.connections` is an observable gauge over a
-count per state, read from the store at most once a minute per
-replica; every replica reports the whole installation's figure, so it
+count per state, read from the store with `CountByState`
+([[005-store-and-sealing]]) at most once a minute per replica; every
+replica reports the whole installation's figure, so it
 is read with a maximum and never summed.
 
 ### Traces

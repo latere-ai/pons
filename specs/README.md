@@ -27,9 +27,12 @@ flowchart LR
   complete --> superseded
 ```
 
-Specs 001 to 012 are `drafted`. Specs 013 and 014 are `vague`: a
-problem statement with a proposed shape and the questions that have to
-be answered before either is a design. Nothing is built.
+Specs 001 to 012 are `drafted`. The set was read as a whole on
+2026-10-12 by two readers working apart, one for security and one for
+consistency and the protocol, and the specs were revised from what they
+found. Specs 013 and 014 are `vague`: a problem statement with a
+proposed shape and the questions that have to be answered before either
+is a design. Nothing is built.
 
 ## Index
 

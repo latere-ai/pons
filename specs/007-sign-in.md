@@ -124,13 +124,15 @@ In the protocol's priority order:
 2. **A client metadata document**, when the metadata sets
    `client_id_metadata_document_supported` to `true` and
    `PONS_PUBLIC_URL` is https. The client id is the document's own
-   address, `{PONS_PUBLIC_URL}{base}/client`, which `GET /client`
-   serves with `Cache-Control: public, max-age=3600`:
+   address. Catalog connectors share one,
+   `{PONS_PUBLIC_URL}{base}/client`, which `GET /client` serves with
+   `Cache-Control: public, max-age=3600`:
 
    ```json
    {
      "client_id": "https://pons.example.com/v1/client",
      "client_name": "Pons",
+     "client_uri": "https://www.example.com",
      "redirect_uris": ["https://pons.example.com/v1/callback"],
      "grant_types": ["authorization_code", "refresh_token"],
      "response_types": ["code"],
@@ -139,12 +141,35 @@ In the protocol's priority order:
    ```
 
    `client_name` is `PONS_CLIENT_NAME`, the name a person reads on the
-   service's consent page.
-3. **Dynamic registration** (RFC 7591), which the protocol deprecates
-   and keeps for servers without the document, when the metadata has a
-   `registration_endpoint`. Pons registers the document's members less
-   `client_id`, plus `application_type`: `web`, or `native` when the
-   host of `PONS_PUBLIC_URL` is loopback. The answer is a Registration
+   service's consent page, and `client_uri` is `PONS_CLIENT_URI`, left
+   out when it is unset. A connector a person added has a document of
+   its own, `{PONS_PUBLIC_URL}{base}/client/{id}`, which
+   `GET /client/{id}` serves the same way, and `404` for an id that
+   names no added connector. Its `client_id` is that address and its
+   `client_name` is `PONS_CLIENT_NAME`, " for " and the connector's
+   title:
+
+   ```json
+   {
+     "client_id": "https://pons.example.com/v1/client/ctr_01jb2m7c0p5d8f2h6j9k3m4n7q",
+     "client_name": "Pons for Team wiki",
+     "client_uri": "https://www.example.com",
+     "redirect_uris": ["https://pons.example.com/v1/callback"],
+     "grant_types": ["authorization_code", "refresh_token"],
+     "response_types": ["code"],
+     "token_endpoint_auth_method": "none"
+   }
+   ```
+
+   The consent page then names that connector, and a consent a person
+   gave another connector at the same server is not reused for it. This
+   document is the only way Pons identifies itself for an added
+   connector ([[006-catalog]]).
+3. **Dynamic registration** (RFC 7591), for a catalog connector, which
+   the protocol deprecates and keeps for servers without the document,
+   when the metadata has a `registration_endpoint`. Pons registers the
+   shared document's members less `client_id`, plus `application_type`:
+   `web`, or `native` when the host of `PONS_PUBLIC_URL` is loopback. The answer is a Registration
    ([[002-objects]]) keyed by issuer and redirect address, its secret
    sealed, reused by later sign-ins at that issuer. Of two replicas
    that register at once the store keeps the first row. One the server
@@ -178,9 +203,13 @@ authorization server lists it in `scopes_supported`, since Pons wants a
 refresh token and may not assume one.
 
 Before the answer leaves, the flow ([[002-objects]]) records all of it
-with the validated issuer and endpoints and whether the metadata sets
-`authorization_response_iss_parameter_supported`. The callback reads
-the flow and nothing from the network.
+with the validated issuer, the authorization and token endpoints, the
+revocation endpoint (the metadata's `revocation_endpoint` or the
+entry's `revoke_url`, when there is one), and, as
+`iss_parameter_supported`, whether the metadata sets
+`authorization_response_iss_parameter_supported` to `true`. The
+callback reads the flow and nothing from the network, and the confirm
+keeps the issuer and the endpoints with the credential.
 
 ### The callback
 
@@ -191,14 +220,24 @@ browser to it.
    with a page saying the link has expired, and no redirect. A flow
    past its time is ended with `error=flow_expired`.
 2. **`iss` is validated** before the code is sent anywhere (RFC 9207,
-   section 2.4), as the protocol tables it:
+   section 2.4), as the protocol tables it, with its last row narrowed:
 
    | The metadata says `iss` is sent | `iss` in the answer | Pons |
    |---|---|---|
    | `true` | present | compares it with the recorded issuer |
    | `true` | absent | refuses the answer |
    | `false` or absent | present | compares it with the recorded issuer |
-   | `false` or absent | absent | goes on |
+   | `false` or absent | absent | goes on when the catalog names the flow's authorization server, and refuses the answer otherwise |
+
+   The catalog names it when the connection's catalog entry names its
+   `issuer`, or gives its endpoints under `discovery: none`. Without
+   `iss`, an answer does not say which server issued its code, and
+   every server returns to the one callback: a hostile server a person
+   added could send the person on to an honest one, and receive at its
+   own token endpoint the code the honest one issued, with its verifier
+   (RFC 9700, section 4.4). A connector a person adds is therefore
+   accepted only when its server says it sends `iss`
+   ([[006-catalog]]).
 
    The comparison is of strings (RFC 3986, section 6.2.1), with no case
    folding, port, slash or percent normalization after the form
@@ -211,7 +250,8 @@ browser to it.
 4. **The code is exchanged** at the flow's `token_endpoint` with
    `grant_type=authorization_code`, the code, the redirect address, the
    verifier, the `resource` and the client, in 15 seconds. A failure or
-   a `token_type` other than `Bearer` is `error=sign_in_failed`.
+   a `token_type` other than `Bearer` ends the flow with
+   `error=sign_in_failed`.
 5. **The tokens are sealed with the flow** as its pending credential
    ([[005-store-and-sealing]]), with the access token's expiry and the
    scopes the answer names, or the ones asked. They are not the
@@ -256,10 +296,17 @@ whatever `connection` a browser brings back would undo the rule.
 
 ### Where the browser returns
 
-`return_to` is an absolute URL with no user part and no fragment whose
-origin is one of `PONS_RETURN_ORIGINS`, or the connect is `400
-invalid_field`. The callback redirects to the flow's stored
-`return_to` and to no other address.
+`return_to` is an absolute URL with no user part and no fragment that
+equals an entry of `PONS_RETURN_URLS`, or starts with an entry that
+ends in `/`, compared as strings. A `.` or `..` segment in its path,
+encoded or not, is refused, since a browser would resolve it out from
+under its prefix. Anything else makes the connect or the reconnect
+`400 invalid_field`. An origin alone is not enough: the sender of a
+link could choose any page under it that shows its address or sends
+the browser on, receive the finish code there, and confirm their own
+connection with the receiver's account (RFC 9700, section 4.1.3). The
+callback redirects to the flow's stored `return_to` and to no other
+address.
 
 ### Connectors that name their authorization server
 
@@ -280,9 +327,9 @@ could end the grant. The store provides three primitives
 ([[005-store-and-sealing]]):
 
 ```go
-ClaimRefresh(ctx, connectionID, until time.Time) (claimed bool, version int64, err error)
+ClaimRefresh(ctx, connectionID, lease time.Duration) (claimed bool, version int64, err error)
 CompleteRefresh(ctx, connectionID, fromVersion int64, sealed SealedCredential) error
-ReleaseRefresh(ctx, connectionID)
+ReleaseRefresh(ctx, connectionID) error
 ```
 
 An access token within 60 seconds of its expiry, or one the connector
@@ -303,7 +350,7 @@ released and the new token used.
 | The token endpoint answers | What happens |
 |---|---|
 | new tokens | `CompleteRefresh` seals and writes them only while the version is still `fromVersion`, raises it and ends the claim. A rotated refresh token replaces the old one in that write; an answer with none keeps the old one. When the version moved, a confirm or a new key got there first: the new tokens are dropped and the stored credential is used |
-| `invalid_grant` | the connection moves to `needs_reconnect` with reason `refresh_refused`, the claim is released, and the call answers `409 connection_not_connected` |
+| `invalid_grant` | the connection moves to `needs_reconnect` with reason `refresh_refused`, or, when it is `pending` for a reconnect, keeps its state and takes the reason ([[002-objects]]); the claim is released, and the call answers `409 connection_not_connected` |
 | anything else: no answer, a timeout, a `5xx`, another error | `ReleaseRefresh`; the connection stays as it is, and that call fails with `502 connector_unavailable` |
 
 A token whose answer gave no lifetime is refreshed only when the
@@ -352,8 +399,15 @@ A key is tried once against the connector before it is stored
 ([[003-api]]), by the probe of [[008-carrying-a-call]]: a `401` or a
 `403` is `422 credential_refused`, no answer is `422
 connector_unreachable`, and either stores nothing.
-`PUT /connections/{id}/credential` tries a new key the same way,
-replaces the old in one write, and clears the connection's `reason`.
+
+`PUT /connections/{id}/credential` takes a new `credential.value` for a
+`token` connection, or a new `credential.client_id` and
+`credential.client_secret` for a `client_credentials` one; a connection
+of another `auth` is `409 wrong_kind`. It asks `connection.create` with
+the connection's `id` ([[004-identity-and-authorization]]), tries a key
+by the probe and a client by a first mint, as at connect, replaces the
+old in one write, and clears the connection's `reason`, which moves one
+in `needs_reconnect` to `connected` ([[002-objects]]).
 
 ### Reconnect
 
@@ -363,6 +417,12 @@ credential. The connection moves to `pending` and, while it has no
 `reason`, answers calls with its old credential until the confirm
 ([[002-objects]]), which replaces it. The old tokens are dropped and
 not revoked, since at some services that ends the new grant too.
+
+A connection's issuer is the one recorded with its credential at its
+first confirm, and it does not change. A reconnect whose discovery
+finds another issuer is `422 sign_in_unsupported` with `details.reason`
+`issuer_changed`, and nothing changes: a connector that moved to
+another authorization server is deleted and connected again.
 
 To get more scopes after a connector said the scope was insufficient
 ([[008-carrying-a-call]]), the caller passes the scopes it was told in
@@ -374,12 +434,14 @@ do, so nothing granted before is lost.
 
 `DELETE /connections/{id}` opens the credential, removes the row and
 the ciphertext in one transaction ([[002-objects]]), and then revokes
-where the service publishes a revocation endpoint: the issuer's
-`revocation_endpoint`, read as in discovery, or the entry's
-`revoke_url`. Pons sends the refresh token, or else the access token,
-with its `token_type_hint` and the client (RFC 7009), once, in 10
-seconds. A failure is logged without the token and does not fail the
-delete. Pons cannot revoke a pasted key.
+at the revocation endpoint recorded with the credential at the sign-in,
+when there is one. Pons sends the refresh token, or else the access
+token, with its `token_type_hint` and the client (RFC 7009), once, in
+10 seconds. A failure is logged without the token and does not fail the
+delete. A credential nothing can open, with no sealing key, under a key
+no longer listed or with a binding that does not match
+([[005-store-and-sealing]]), is removed without revoking. Pons cannot
+revoke a pasted key.
 
 ### The sweep
 
@@ -388,6 +450,11 @@ each handed by the store to one sweeper, and discards and revokes their
 pending credentials as a disconnect does. A `pending` connection that
 never had a credential is deleted with its flow. One being reconnected
 returns to `connected`, or to `needs_reconnect` when it has a `reason`.
+
+Ending a flow, at the callback or the confirm, sets its time to now: a
+mismatched `iss`, an answer with `error`, a failed exchange and a wrong
+code each do. The next sweep takes it like a flow that ran out, so no
+`pending` connection is left without a live flow.
 
 ## Not in this spec
 
@@ -404,15 +471,17 @@ no `account`: it asks for no identity scope a connector did not name.
 |---|---|
 | Discovery takes `resource_metadata` from the challenge, else the two well-known addresses in order, and refuses a document about another resource | `signin.TestProtectedResourceDiscovery` |
 | Authorization server metadata is fetched in priority order for an issuer with and without a path, and a different `issuer`, an http endpoint or no `S256` is `sign_in_unsupported` | `signin.TestAuthorizationServerMetadata` |
-| Pons identifies itself in order: the catalog client, the client metadata document, dynamic registration, else `sign_in_unsupported`; a catalog client is never used at another issuer | `signin.TestClientSelection` |
-| `GET /client` serves the document with its own address as `client_id`, one redirect address and `token_endpoint_auth_method` `none`; a registration is kept per issuer and reused | `httpapi.TestClientMetadataDocument`, `signin.TestRegistrationIsKeptPerIssuer` |
+| Pons identifies itself in order: the catalog client, the client metadata document, dynamic registration, else `sign_in_unsupported`; a catalog client is never used at another issuer, and an added connector is identified by its own document alone | `signin.TestClientSelection` |
+| `GET /client` serves the document with its own address as `client_id`, one redirect address and `token_endpoint_auth_method` `none`, and `client_uri` only when `PONS_CLIENT_URI` is set; `GET /client/{id}` serves an added connector's own, whose `client_name` names its title, and `404` for any other id; a registration is kept per issuer and reused | `httpapi.TestClientMetadataDocument`, `signin.TestRegistrationIsKeptPerIssuer` |
 | The authorization request carries the `S256` challenge, `state`, `resource` and the selected scopes, and the store holds only the hash of `state` and a sealed verifier | `signin.TestAuthorizationRequest`, `signin.TestScopeSelection` |
 | The four rows of the `iss` table hold, and a mismatch sends no code to any token endpoint; an unknown `state` is `400` with no redirect, and a second callback finds no flow | `signin.TestIssuerValidation`, `signin.TestCallbackIsOnce` |
-| A link sent to someone else connects nothing: the receiver's confirm is refused and the sender has no finish code; no connection has a credential before its confirm | `TestALinkSentToSomeoneElseConnectsNothing`, e2e tier |
+| A hostile server a person added that sends the person on to an honest server, whose answer carries no `iss`, receives no code and no verifier: the answer is refused at the callback | `signin.TestAMixUpWithoutIssIsRefused` |
+| A link sent to someone else connects nothing: the receiver's confirm is refused and the sender has no finish code; no connection has a credential before its confirm | `TestALinkSentToSomeoneElseConnectsNothing`, `TestTokensWaitForTheConfirm`, e2e tier |
+| A link's sender who chooses `return_to`, a page of an allowed origin outside the listed URLs and prefixes or a path with a dot segment, is refused at the connect, so the finish code reaches no page the sender chose | `TestASenderCannotChooseWhereTheCodeGoes`, e2e tier |
 | Connect, callback, confirm and a call work against the stub authorization server for each `discovery` value | `TestSignInEndToEnd`, e2e tier |
 | Of fifty callers on two replicas with an expiring token one reaches the token endpoint, all forward with the new token, and a rotated refresh token is stored in the same write | `TestRefreshHasOneWriter` against both store adapters, `signin.TestRotationIsOneWrite` |
-| `invalid_grant` moves the connection to `needs_reconnect` with `refresh_refused`; any other failure releases the claim, changes no state and answers `502` | `signin.TestRefreshFailures` |
+| `invalid_grant` moves the connection to `needs_reconnect` with `refresh_refused`, and a `pending` one being reconnected keeps its state and takes the reason; any other failure releases the claim, changes no state and answers `502` | `signin.TestRefreshFailures` |
 | A `client_credentials` token is minted once per process until 60 seconds before its expiry and appears in no table | `signin.TestMintedTokenIsNotStored` |
-| A reconnect for more scopes asks for the union of old and named scopes, and the old credential answers calls until the confirm | `signin.TestReconnectAsksForTheUnion`, `TestReconnectKeepsServing` |
-| A delete revokes at the service, and a failed revocation does not fail it; the sweep ends a late flow, revokes its pending credential and restores a reconnecting connection's state | `TestDeleteRevokesBestEffort`, `signin.TestSweep` |
+| A reconnect for more scopes asks for the union of old and named scopes, and the old credential answers calls until the confirm; a reconnect whose discovery finds another issuer is `422` with `issuer_changed` and changes nothing | `signin.TestReconnectAsksForTheUnion`, `TestReconnectKeepsServing`, `signin.TestReconnectKeepsItsIssuer` |
+| A delete revokes at the revocation endpoint recorded with the credential, a failed revocation does not fail it, and a credential nothing can open is removed without revoking; the sweep ends a late flow, and a flow ended by a wrong code or an error answer at its next tick, revokes its pending credential and restores a reconnecting connection's state | `TestDeleteRevokesBestEffort`, `signin.TestSweep` |
 | No token, code, verifier, `state` or finish code appears in a response, a log line, an error or a record | `TestNoCredentialLeavesButTowardItsConnector` |

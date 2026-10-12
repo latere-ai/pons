@@ -160,10 +160,14 @@ binary reads a variable the table lacks.
 | `PONS_AUTHORIZER_URL` | none: the owner policy | [[004-identity-and-authorization]] |
 | `PONS_AUTHORIZER_TOKEN_FILE` | none; required with the authorizer's URL | [[004-identity-and-authorization]] |
 | `PONS_CATALOG_FILE` | none: an empty catalog | [[006-catalog]] |
-| `PONS_RETURN_ORIGINS` | none: no sign-in can start | [[003-api]] |
+| `PONS_RETURN_URLS` | none: no sign-in can start | [[003-api]] |
 | `PONS_CLIENT_NAME` | `Pons` | [[007-sign-in]] |
 | `PONS_CLIENT_URI` | none: the member is left out | [[007-sign-in]] |
 | `PONS_RECORDS_RETENTION` | `720h` | [[010-records-and-observability]] |
+| `PONS_MAX_CONNECTIONS_PER_OWNER` | 100 | [[004-identity-and-authorization]] |
+| `PONS_CREATES_PER_MINUTE` | 10 | [[004-identity-and-authorization]] |
+| `PONS_MAX_INFLIGHT_PER_SUBJECT` | 32 | [[008-carrying-a-call]] |
+| `PONS_MAX_INFLIGHT` | 1024 | [[008-carrying-a-call]] |
 | `PONS_MAX_REQUEST_BYTES` | 4 MiB | [[008-carrying-a-call]] |
 | `PONS_CALL_HEADER_TIMEOUT` | `30s` | [[008-carrying-a-call]] |
 | `PONS_STREAM_IDLE_TIMEOUT` | `5m` | [[008-carrying-a-call]] |
@@ -175,12 +179,14 @@ binary reads a variable the table lacks.
 front adds one, that other services and browsers reach Pons at. Every
 address Pons hands out is this URL joined with `PONS_BASE_PATH` and the
 route: a connection's `address`, the redirect address it gives an
-authorization server, and the address of its client metadata document.
+authorization server, and the addresses of its client metadata
+documents.
 
 A duration is written as Go writes one, such as `30s` and `720h`. A
 size is a whole number of bytes. `PONS_OIDC_ISSUERS`,
-`PONS_OIDC_AUDIENCE` and `PONS_RETURN_ORIGINS` are comma-separated
-lists. `PONS_AUTHORIZER_TOKEN_FILE` names a file that holds the bearer,
+`PONS_OIDC_AUDIENCE` and `PONS_RETURN_URLS` are comma-separated
+lists; an entry of `PONS_RETURN_URLS` is an exact URL, or a prefix that
+ends in `/` ([[007-sign-in]]). `PONS_AUTHORIZER_TOKEN_FILE` names a file that holds the bearer,
 so a Secret is mounted and no variable carries it. The OpenTelemetry
 variables are read by the telemetry setup as the SDK defines them, and
 are the one exception to the prefix.
@@ -220,8 +226,8 @@ the stub's value.
 |---|---|---|
 | issuer | a discovery document, a key set, and tokens minted for a subject, an audience and a `session` claim | an expired token, another audience, a rotated key, an issuer that does not answer |
 | authorizer | the contract of [[004-identity-and-authorization]], answered from a table of subject, action and resource, with the limits of an allow | a deny, no answer, a slow answer, a malformed answer; it records every question |
-| connector | a Model Context Protocol server over streamable HTTP, with a few tools, some that only read, and one streamed answer; it records the credential each request carried | a `401`, an insufficient scope `403`, a redirect, a cookie, a slow stream, a stream that never ends, an oversized body, oversized headers |
-| authorization server | protected resource metadata on the connector, authorization server metadata, a fetch of Pons's client metadata document, dynamic registration, the proof key, refresh with rotation, revocation | one for each failure [[007-sign-in]] handles: no proof key in the metadata, no way to identify a client, a wrong `iss`, metadata that names an inside address, a refused code, a refused refresh, a spent refresh token used again, a slow token endpoint, a person who declines |
+| connector | a Model Context Protocol server over streamable HTTP, with a few tools, some that only read, and one streamed answer; it records the credential each request carried | a `401`, an insufficient scope `403`, a redirect, a cookie, a slow stream, a stream that never ends, an oversized body, oversized headers, and an earlier protocol revision: `initialize`, a session, `GET` and `DELETE` |
+| authorization server | protected resource metadata on the connector, authorization server metadata, a fetch of Pons's client metadata document, dynamic registration, the proof key, refresh with rotation, revocation | one for each failure [[007-sign-in]] handles: no proof key in the metadata, no way to identify a client, a wrong or missing `iss`, metadata that names an inside address, a refused code, a refused refresh, a spent refresh token used again, a slow token endpoint, a person who declines |
 
 `stubs.Roots` is the authority's pool, and `stubs.Resolver` maps each
 stub's name under `example.com` to its listener. A test hands both to

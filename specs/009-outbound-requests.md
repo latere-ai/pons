@@ -182,7 +182,7 @@ rule. Otherwise the request is not sent, with the reason
 | Secret | Bound to |
 |---|---|
 | a connection's credential: an access token, a key, a token a client's own grant minted | the connector's `hosts`; the one host of its `url` when the entry lists none |
-| the sign-in's secrets: a code with its verifier, a refresh token, a client secret | the one host of the endpoint recorded from validated metadata with the flow or the credential ([[007-sign-in]]) |
+| the sign-in's secrets: a code with its verifier, a refresh token, a client secret, and a token sent to be revoked | the one host of the token endpoint, or for a revocation of the revocation endpoint, recorded from validated metadata or the catalog with the flow or the credential ([[007-sign-in]]) |
 
 A catalog entry whose `hosts` do not match the host of its own `url` is
 refused when the catalog is read. The outside client keeps no cookie:
@@ -208,15 +208,17 @@ never cut short and used. Each value is one constant of `internal/dial`.
 No proxy is read from the environment: `HTTP_PROXY`, `HTTPS_PROXY` and
 `NO_PROXY` change nothing. `PONS_OUTBOUND_PROXY`, an `http` or `https`
 URL, sends every request of the outside client through the operator's
-own proxy as a tunnel to the name and the port. The four checks, the
-resolution and the address check still run inside Pons first, and a
-name with an address that is not public is never handed over.
+own proxy as a tunnel. The four checks, the resolution and the address
+check still run inside Pons first, and a name with an address that is
+not public is never handed over.
 
-The proxy resolves the name again, so behind a proxy Pons no longer
-connects to the address it checked. The proxy must apply the same rule
-and refuse every block of the table at the moment it connects. Its own
-address is the operator's and is not judged. The server logs at start
-that a proxy is in use, and never its user or password.
+Pons sends `CONNECT` to the address it checked and the port, not to the
+name, so the proxy resolves nothing again and the tunnel ends at the
+address that was judged. The name travels only inside the tunnel, as
+the TLS server name and in `Host`, and the certificate is verified for
+it as without a proxy. The proxy's own address is the operator's and
+is not judged. The server logs at start that a proxy is in use, and
+never its user or password.
 
 ### The switch for stubs
 
@@ -249,7 +251,7 @@ is stored, and the third holds if the second has a bug.
 
 ### Refusals
 
-| Name | `details.reason` | Kind |
+| Name | Means | Kind |
 |---|---|---|
 | `scheme_not_https` | the address is not an https address | rule |
 | `host_not_a_name` | the host is an address, a single label or a reserved name | rule |
@@ -264,10 +266,11 @@ is stored, and the third holds if the second has a bug.
 
 At a sign-in or an add, a refusal or a failure is `422
 connector_unreachable`. On a call it is `502 connector_unavailable`,
-and a timeout is `504 connector_timeout`. `details.reason` is the fixed
-sentence of the table: it names the rule and never a resolved address,
-a redirect's target or any part of an answer, so a refusal is no map of
-the installation's network. `retryable` is false for a rule and true
+and a timeout is `504 connector_timeout`. `details.reason` is the
+refusal's name, one word of the table's first column, as every
+`details.reason` of [[003-api]] is: it names the rule and never a
+resolved address, a redirect's target or any part of an answer, so a
+refusal is no map of the installation's network. `retryable` is false for a rule and true
 for a failure. Refusals and failures are counted by name
 ([[010-records-and-observability]]).
 
@@ -294,6 +297,6 @@ endpoint a secret belongs to ([[007-sign-in]]); how the catalog writes
 | A `3xx` to a forwarded call is `502 connector_unavailable` and nothing is sent to its target; a discovery fetch follows 3 hops and not a fourth, and refuses a hop to `http` or to a private address | `TestCarrierFollowsNoRedirect`, `dial.TestRedirects` |
 | A secret is written only into an `https` request whose host matches its binding, a request to any other host is not sent, and a caller's own `Host` is replaced; the outside client stores no cookie and sends no trace header to a connector | `dial.TestSecretIsBoundToItsHosts`, `dial.TestNoCookieAndNoTraceHeaderLeave` |
 | Headers over 64 KiB, a fetch's body over 1 MiB after decoding, a connect past 10 seconds and a metadata fetch past 15 seconds each end with their reason | `dial.TestLimits` |
-| A proxy variable of the environment is ignored; with `PONS_OUTBOUND_PROXY` every outside request leaves through the proxy, and a name with a private address is never handed to it | `dial.TestNoProxyFromTheEnvironment`, `dial.TestOutboundProxy` |
+| A proxy variable of the environment is ignored; with `PONS_OUTBOUND_PROXY` every outside request leaves through the proxy, its `CONNECT` names the checked address and never the name, and a name with a private address is never handed to it | `dial.TestNoProxyFromTheEnvironment`, `dial.TestOutboundProxy` |
 | With `PONS_DIAL_ALLOW_PRIVATE=1` the start logs a warning, and `ponsd check` and `/readyz` report it; without it a stub on loopback is refused | `TestAllowPrivateIsLoud` |
-| A refusal answers the code of its route with the fixed sentence of its rule, and no member of any response holds a resolved address | `TestRefusalsNameTheRuleAndNoAddress` |
+| A refusal answers the code of its route with its rule's name as `details.reason`, and no member of any response holds a resolved address | `TestRefusalsNameTheRuleAndNoAddress` |

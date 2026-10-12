@@ -68,11 +68,13 @@ that status passes on as the connector's.
 In order. The first failing step answers, and nothing after it runs.
 
 1. **The origin.** A request with an `Origin` header whose origin is
-   not one of `PONS_RETURN_ORIGINS` is `403 forbidden`, as the
-   transport requires of a server against DNS rebinding.
+   not the origin of an entry of `PONS_RETURN_URLS` is `403 forbidden`,
+   as the transport requires of a server against DNS rebinding.
 2. **The caller.** The bearer is verified
    ([[004-identity-and-authorization]]): `401 missing_token` or `401
-   invalid_token`.
+   invalid_token`. A subject with `PONS_MAX_INFLIGHT_PER_SUBJECT`
+   requests in flight, or a process with `PONS_MAX_INFLIGHT`, is `429
+   rate_limited` before the body is read.
 3. **The body**, for a `POST`. It is read up to
    `PONS_MAX_REQUEST_BYTES`, 4 MiB by default; a `Content-Length`
    above it is refused before a byte is read, and a body that runs past
@@ -225,6 +227,10 @@ caller:
 | `token` | `needs_reconnect` with reason `credential_refused`, and `409`. No retry |
 | `none` | the `401` passes on, less its `WWW-Authenticate`. Nothing changes |
 
+A connection in `pending` for a reconnect is not moved by a refusal: it
+keeps its state and takes the reason, so its confirm still applies, and
+it answers `409` from then on ([[002-objects]]).
+
 The attempt can always be made again: a `POST` body is held in memory,
 and a `GET` or `DELETE` has none. A refresh refused with `invalid_grant`
 is `409` with reason `refresh_refused`, and any other refresh failure
@@ -256,6 +262,8 @@ any request, of a session or not.
 | the first response header | `PONS_CALL_HEADER_TIMEOUT`, `30s` by default | `504 connector_timeout` |
 | between two reads of a body | `PONS_STREAM_IDLE_TIMEOUT`, `5m` by default | the answer is cut and the record says `timeout` |
 | requests in flight per connection per process | 16 | `429 rate_limited`, `Retry-After: 1` |
+| requests in flight per subject per process | `PONS_MAX_INFLIGHT_PER_SUBJECT`, 32 by default | `429 rate_limited`, `Retry-After: 1` |
+| requests in flight per process | `PONS_MAX_INFLIGHT`, 1024 by default | `429 rate_limited`, `Retry-After: 1` |
 
 A tool that works longer than the header timeout answers with a
 stream, whose headers arrive first, or the operator raises the timeout.
@@ -269,12 +277,15 @@ stream holds one of the 16 places for its life. The transport
 encourages a server to send keep-alive comments on it; one that sends
 none is cut after the idle timeout, and the caller opens it again.
 
-The places are a `latere.ai/x/pkg/semaphore` of 16 per connection,
-taken with `Acquire(ctx, 0)` so a request never queues.
-`CallsPerMinute` is a `latere.ai/x/pkg/ratelimit` bucket keyed by
-caller and connection. Both are per process: with n replicas a caller
-may make up to n times either limit. Every request to the address
-counts against `CallsPerMinute`.
+The places are `latere.ai/x/pkg/semaphore`s, of 16 per connection, of
+`PONS_MAX_INFLIGHT_PER_SUBJECT` per subject and of `PONS_MAX_INFLIGHT`
+for the process, each taken with `Acquire(ctx, 0)` so a request never
+queues. The last two hold whatever an allow says
+([[004-identity-and-authorization]]). `CallsPerMinute` is a
+`latere.ai/x/pkg/ratelimit` bucket keyed by caller and connection. All
+are per process: with n replicas a caller may make up to n times any of
+these limits. Every request to the address counts against
+`CallsPerMinute`.
 
 ### The probe
 
@@ -289,9 +300,10 @@ request of discovery, with no credential ([[007-sign-in]]).
    tools/list`, and a body whose `_meta` carries the protocol version,
    a `clientInfo` of `pons` and its version, and empty client
    capabilities.
-2. A `400`, `404` or `405` whose body is not a JSON-RPC error of the
-   current revision marks a connector of an earlier revision, as the
-   transport's backward compatibility describes. The probe then makes
+2. A `400` whose body is not a JSON-RPC error of the current revision
+   marks a connector of an earlier revision, as the transport's
+   backward compatibility describes; a `404` or a `405` does not. The
+   probe then makes
    that revision's `initialize` handshake, lists the tools in the
    session it opens, and ends the session with `DELETE`.
 3. The outcome is read from the status: `2xx` accepts the key, `401` or
@@ -305,9 +317,13 @@ The probe's answers reach no caller and are kept nowhere.
 
 One record per request whose connection was found at step 4, written
 when the answer ends ([[010-records-and-observability]]). A request
-refused before it, for its origin, its token or its body, named no call
-of a connection and is counted, not recorded. So is a failure of Pons's
-own, a `5xx` it raises itself.
+refused before it, for its origin, its token, a bound of step 2 or its
+body, named no call of a connection and is counted, not recorded. So is
+a failure of Pons's own, a `500` or `503` it raises itself. A `502` or
+`504` about the connector is recorded, as `upstream_error` or
+`timeout`. A denied call writes at most one record per subject and
+connection per minute on each replica; the rest are counted in
+`pons.calls` and not recorded.
 
 | How the request ended | `outcome` |
 |---|---|
@@ -373,7 +389,8 @@ Pons through this address: a caller arrives with a token.
 | A `3xx` is `502 connector_unavailable` and the redirect is not followed | `TestCarrierFollowsNoRedirect` |
 | A body over the limit is `413` before it is read; a body that is not one object, a duplicate or differently cased key, or a mirrored header that differs from the body is `400`; arguments are never decoded | `carry.TestParseOnlyTheMethodAndTool`, `carry.FuzzParse` |
 | A caller that may not use a connection gets `404 connection_not_found` for every request to it, a wrong kind included, and an oversized body is `413` whether the id exists or not; one question is asked per request | `carry.TestNothingTellsAnIdBeforeTheQuestion`, `TestADenyDoesNotConfirmAnId` |
-| The effect follows the marks; a writing tool under `ReadOnly`, a tool outside `Tools` and a hidden tool are `403`, a `tools/list` under `ReadOnly` passes, and the limit per minute and the seventeenth request in flight are `429`; a refused call opens no credential | `carry.TestLimitsOfAnAllow`, `carry.TestALimitRefusesBeforeTheCredential`, `TestAConnectionsConcurrencyIsBounded` |
+| The effect follows the marks; a writing tool under `ReadOnly`, a tool outside `Tools` and a hidden tool are `403`, a `tools/list` under `ReadOnly` passes, and the limit per minute and the seventeenth request in flight on one connection are `429`; a refused call opens no credential | `carry.TestLimitsOfAnAllow`, `carry.TestALimitRefusesBeforeTheCredential`, `TestAConnectionsConcurrencyIsBounded` |
+| A subject past `PONS_MAX_INFLIGHT_PER_SUBJECT` requests in flight, across its connections, and a process past `PONS_MAX_INFLIGHT` are `429` before the body is read, with no authorizer and under an allow that names no limit | `TestACallersConcurrencyIsBounded` |
 | A `pending` connection being reconnected is served with its old credential, and a connection whose connector left the catalog answers `409` with `connector_removed` | `TestReconnectKeepsServing`, `TestRemovedConnectorKeepsItsConnections` |
 | A `401` gets one refresh and one more attempt, a second moves the connection to `needs_reconnect` with `revoked`, and a pasted key moves at once with `credential_refused` | `carry.TestConnectorRefusesTheCredential` |
 | A scope challenge is `409` with `scope_insufficient` and the scopes, and the connection's state does not change | `carry.TestInsufficientScope` |
@@ -381,6 +398,7 @@ Pons through this address: a caller arrives with a token.
 | A session of an earlier revision is served across two replicas, its header passing both ways, and `GET` and `DELETE` reach the connector unchanged | `TestAnyReplicaServesASession`, e2e tier |
 | The header timeout is `504`, an idle stream is cut with outcome `timeout`, and a caller that goes away cancels the connector's request | `carry.TestTimeoutsAndCancel` |
 | The probe accepts a key with a `tools/list`, falls back to the handshake for a stub of an earlier revision, and refuses a key the stub answers `401` | `carry.TestProbe` |
-| Each request past step 3 writes one record with its method, tool, effect, outcome, status and sizes, and none holds an argument or a result | `TestEveryCallIsRecorded` |
+| Each request whose connection was found at step 4 writes one record with its method, tool, effect, outcome, status and sizes, and none holds an argument or a result; a `500` or `503` Pons raises leaves none, and a `502` or `504` about the connector leaves one | `TestEveryCallIsRecorded` |
+| Of many denied calls of one subject to one connection within a minute, one is recorded and every one is counted | `TestDeniedCallsAreRecordedOncePerMinute` |
 | A call with an expiring token refreshes once and streams its answer through the stub connector | `TestCallThatNeedsARefresh`, e2e tier |
 | A canary credential appears in no answer, header, record or log line of the address | `TestNoCredentialLeavesButTowardItsConnector` |

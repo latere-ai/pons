@@ -94,7 +94,7 @@ action sends.
 | `Connector` | `connector.read` | `name` for a catalog connector; `id` and `owner` for an added one; `kind` |
 | `Connector` | `connector.create` | `owner`, `kind`, `host` |
 | `Connector` | `connector.delete` | `id`, `owner` |
-| `Connection` | `connection.create` | `owner`, `connector`, `name`, `kind`, `auth`, and `id` when a confirm or a reconnect asks |
+| `Connection` | `connection.create` | `owner`, `connector`, `name`, `kind`, `auth`, and `id` when a confirm, a reconnect or a replaced key asks |
 | `Connection` | `connection.read` | `id`, `owner`, `connector`, `name`, `kind`, `auth` |
 | `Connection` | `connection.list` | none |
 | `Connection` | `connection.update` | `id`, `owner`, `connector`, `name`, `kind`, `auth` |
@@ -117,17 +117,18 @@ decides whether the caller may. A request that names none leaves
 says whose the new object is, in its limits, so Pons reads no claim to
 learn it.
 
-`connection.create` is asked at three moments. A connect sends no `id`.
-A confirm and a reconnect send the stored connection's `id` and its
-fields, so the caller who confirms must be allowed to act for the owner
-the connection already has ([[007-sign-in]]). An allow about a stored
-connection never moves it to another owner.
+`connection.create` is asked at four moments. A connect sends no `id`.
+A confirm, a reconnect and a replaced key send the stored connection's
+`id` and its fields, so the caller who confirms or gives a new
+credential must be allowed to act for the owner the connection already
+has ([[007-sign-in]]). An allow about a stored connection never moves
+it to another owner.
 
 `connection.use` is asked for every request to a connection's address
 ([[008-carrying-a-call]]), before the credential is opened.
-`GET /callback`, `GET /client` and `GET /openapi.yaml` ask nothing: the
-callback is held by its `state`, and the other two are public
-documents.
+`GET /callback`, `GET /client`, `GET /client/{id}` and
+`GET /openapi.yaml` ask nothing: the callback is held by its `state`,
+and the others are public documents.
 
 ### The question
 
@@ -197,7 +198,7 @@ package authorizer
 
 type Limits struct {
     Owner          string   // whose a created connection or connector is; empty is the caller's subject
-    MaxConnections int      // connections one owner may hold; 0 is no cap
+    MaxConnections int      // connections one owner may hold; 0 leaves the installation's cap
     Connectors     []string // globs of connector references the caller may connect; empty is all
     ReadOnly       bool     // on a use: only tools whose effect is read
     Tools          []string // globs of tools the caller may call; empty is all
@@ -234,12 +235,31 @@ other answers.
 
 A limit refuses a call after its allow, so the answer is a `403`, not a
 `404`. A refused call opens no credential, reaches no connector, and is
-recorded `denied`. `read_only` and `tools` bind `tools/call` alone; a
-list of tools is carried as it is ([[008-carrying-a-call]]).
+recorded `denied`, at most once per subject and connection per minute
+([[008-carrying-a-call]]). `read_only` and `tools` bind `tools/call`
+alone; a list of tools is carried as it is ([[008-carrying-a-call]]).
 
 `calls_per_minute` is counted per replica, in memory, with
 `latere.ai/x/pkg/ratelimit`, so N replicas admit up to N times the
 figure. It bounds a runaway caller and is no quota.
+
+### The installation's limits
+
+Four limits hold whatever the authorizer answers, and with no
+authorizer at all. Each is a variable of [[011-distribution]].
+
+| Variable | Default | Held |
+|---|---|---|
+| `PONS_MAX_CONNECTIONS_PER_OWNER` | 100 | as `max_connections`, under the same lock: `403 forbidden` on `owner` |
+| `PONS_CREATES_PER_MINUTE` | 10 | per subject, over `POST /connectors`, `POST /connections` and a reconnect, each of which fetches discovery documents: `429 rate_limited`, retryable |
+| `PONS_MAX_INFLIGHT_PER_SUBJECT` | 32 | requests of one subject in flight at connections' addresses ([[008-carrying-a-call]]): `429 rate_limited` |
+| `PONS_MAX_INFLIGHT` | 1024 | requests in flight at connections' addresses in one process ([[008-carrying-a-call]]): `429 rate_limited` |
+
+An allow's limits narrow these and never widen them: a
+`max_connections` of 0, or above `PONS_MAX_CONNECTIONS_PER_OWNER`, is
+held to the variable. Each refusal's `details.reason` names the limit
+and its figure. The rate and the counts in flight are kept per replica,
+in memory, as `calls_per_minute` is.
 
 ### The owner policy
 
@@ -261,8 +281,9 @@ A caller creates under its own subject only; reads, uses, updates and
 deletes the connections it owns; and sees the whole catalog and the
 connectors it added. Naming another owner is denied for every subject,
 so a service that connects for its users needs an authorizer. The
-policy has no administrators and names no limit: a use is held to no
-tool list and no rate. An allow is narrowed by the grants of the
+policy has no administrators and names no limit of its own: a use is
+held to no tool list and no rate beyond the installation's limits
+above. An allow is narrowed by the grants of the
 caller's token, with `authz.Restrict`, as an authorizer's is, and a
 token whose grants cannot be read is denied.
 
@@ -312,6 +333,7 @@ call's arguments, which Pons does not read.
 | The limits object carries exactly the 6 keys above, and `DecodeLimits` reads back what an authorizer renders | `authorizer.TestTheWireNamesEveryMemberAndNoOther` |
 | A create is recorded under the owner its allow names, else the owner the request named, else the caller's subject; a confirm and a reconnect do not move a connection to another owner | `TestWhoseACreateIs`, `TestAStoredConnectionKeepsItsOwner` |
 | Each member of `Limits` has a case in which an allow carrying it changes the outcome of a request: the connection cap, a connector outside the globs, a writing tool under `read_only`, a tool outside `tools`, and the rate; a call a limit refuses opens no credential, reaches no connector and is recorded `denied` | `TestEachMemberOfAnAllowChangesTheOutcome`, a case per member, which fails when a member has none; `carry.TestALimitRefusesBeforeTheCredential` |
+| With no authorizer, an owner's connection past `PONS_MAX_CONNECTIONS_PER_OWNER` is `403 forbidden` naming the limit, and a subject's create past `PONS_CREATES_PER_MINUTE` is `429 rate_limited`; under an authorizer, an allow's `max_connections` above the variable is held to it | `TestLimitsHoldWithNoAuthorizer` |
 | A list is narrowed by its allow's filter and by the request's `owner`, and the catalog is listed whatever the filter | `TestAListIsNarrowedByItsAllowsFilter` |
 | Under the owner policy a subject cannot read, list, use, rename, confirm or delete another subject's connection, cannot see another's added connector, and cannot create in another's name; with verified tokens of two owners against a running server, one reaches nothing of the other's | `access.TestTheOwnerPolicy`, `TestTheOwnerPolicyThroughTheAPI`, `TestAnotherOwnersTokenReachesNothing` |
 | The owner policy answers the contract's conformance suite and narrows an allow by the grants of a token; it and the stub authorizer deny the probe id, and a server is refused an endpoint that allows it | `access.TestOwnerPolicyConformance`, `access.TestOwnerPolicyNarrowsByTheGrants`, `TestTheServerRefusesAnEndpointThatAllowsTheProbe` |

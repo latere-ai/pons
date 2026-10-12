@@ -55,6 +55,7 @@ type Tx interface {
     Registrations() Registrations
     Calls() Calls
     Idempotency() Idempotency
+    Rotation() Rotation // the sealed values of every table, by key
 }
 
 type Connections interface {
@@ -66,14 +67,34 @@ type Connections interface {
     Describe(ctx context.Context, id string, a Account) error // account, scopes, expires_at
     Touch(ctx context.Context, id string, at time.Time) error // last_used_at
     Delete(ctx context.Context, id string) error              // with its credential and its flow
+    CountByState(ctx context.Context) (map[State]int64, error) // every owner's, for the pons.connections gauge
 }
 
 type Credentials interface {
     Put(ctx context.Context, connectionID string, c SealedCredential) (version int64, err error)
     Get(ctx context.Context, connectionID string) (c SealedCredential, version int64, err error)
-    ClaimRefresh(ctx context.Context, connectionID string, until time.Time) (claimed bool, version int64, err error)
+    ClaimRefresh(ctx context.Context, connectionID string, lease time.Duration) (claimed bool, version int64, err error)
     CompleteRefresh(ctx context.Context, connectionID string, fromVersion int64, sealed SealedCredential) error
     ReleaseRefresh(ctx context.Context, connectionID string) error
+}
+
+type Rotation interface {
+    // RewrapBatch rewraps the sealed values of up to limit rows of table that
+    // are under a listed key other than the first, in one transaction that
+    // locks its rows and skips rows another replica holds; n is how many.
+    RewrapBatch(ctx context.Context, table string, keys KeyIDs, limit int, rewrap func(Sealed) (Sealed, error)) (n int, err error)
+    // CountNotFirst counts, per table, the sealed values not under the first key.
+    CountNotFirst(ctx context.Context, keys KeyIDs) (map[string]KeyCount, error)
+}
+
+type KeyIDs struct {
+    First  []byte   // the id of the key that wraps
+    Listed [][]byte // the id of every listed key, the first included
+}
+
+type KeyCount struct {
+    NotFirst int64 // under a listed key other than the first: what a rewrap has left
+    NoKey    int64 // under no listed key: what ponsd check fails on
 }
 ```
 
@@ -100,15 +121,17 @@ columns `bytea`, and the columns marked json `jsonb`.
 | `connectors` | `id`, `owner`, `name`, `title`, `description`, `icon`, `kind`, `url`, `hosts` json, `auth` json, `tools` json, `created_at` | primary `id`; unique `(owner, name)` |
 | `connections` | `id`, `owner`, `name`, `connector`, `kind`, `auth`, `state`, `reason`, `account`, `scopes` json, `created_by`, `created_at`, `updated_at`, `last_used_at`, `expires_at` | primary `id`; unique `(owner, name)`; `(owner, id)` for a list; `(connector)` for `connector_in_use` |
 | `credentials` | `connection`, `kind`, `meta` json, the five sealed columns, `version`, `refresh_until`, `updated_at` | primary `connection`, a foreign key that cascades |
-| `flows` | `id`, `connection`, `state_hash`, `issuer`, `authorization_endpoint`, `token_endpoint`, `client_id`, `redirect_uri`, `resource`, `scopes` json, `return_to`, `finish_hash`, `pending_kind`, `pending_meta` json, `created_at`, `expires_at`, and the five sealed columns twice, prefixed `verifier_` and `pending_` | primary `id`; unique `connection`, a foreign key that cascades; unique `state_hash`; `(expires_at)` |
+| `flows` | `id`, `connection`, `state_hash`, `issuer`, `authorization_endpoint`, `token_endpoint`, `revocation_endpoint`, `iss_parameter_supported` boolean, `client_id`, `redirect_uri`, `resource`, `scopes` json, `return_to`, `finish_hash`, `pending_kind`, `pending_meta` json, `created_at`, `expires_at`, and the five sealed columns twice, prefixed `verifier_` and `pending_` | primary `id`; unique `connection`, a foreign key that cascades; unique `state_hash`; `(expires_at)` |
 | `registrations` | `issuer`, `redirect_uri`, `client_id`, `registered_at`, and the five sealed columns prefixed `secret_`, null when no secret was issued | primary `(issuer, redirect_uri)` |
 | `calls` | `id`, `connection`, `owner`, `connector`, `subject`, `session`, `at`, `duration_ms`, `method`, `tool`, `effect`, `outcome`, `status`, `bytes_in`, `bytes_out` | primary `id`; `(connection, id)` for a list; `(at)` for the sweep; no foreign key |
 | `idempotency_keys` | `subject`, `key`, `route`, `status`, `object`, `created_at` | primary `(subject, key)`; `(created_at)` |
 
 The five sealed columns are `key_id`, `wrapped_key`, `key_nonce`,
-`ciphertext` and `nonce`. `credentials.meta` is what [[002-objects]]
-keeps in the clear beside a credential of its kind; `version` starts at
-1. A connection's `address` and `tools` are derived, not stored, and a
+`ciphertext` and `nonce`. `credentials.meta`, and a flow's
+`pending_meta`, are what [[002-objects]] keeps in the clear beside a
+credential of its kind: for `oauth` the issuer, the token endpoint, the
+revocation endpoint and the `resource` a refresh sends among them.
+`version` starts at 1. A connection's `address` and `tools` are derived, not stored, and a
 catalog connector has no row ([[006-catalog]]).
 
 ### Connection state
@@ -118,8 +141,12 @@ state in one statement that matches only while the row is in `from`. A
 pair that is not an edge of the diagram in [[002-objects]] is
 `ErrIllegalMove` before any statement runs, from one Go table of edges
 both adapters read; a row no longer in `from` is `ErrStateMoved`.
-`reason` is set by a move to `needs_reconnect`, kept through a
-reconnect, and cleared by a move to `connected`.
+`reason` is set by a move to `needs_reconnect`, and by a refusal of a
+`pending` connection's old credential, which is a move from `pending`
+to `pending` and keeps the state, so the confirm still has its edge.
+It is kept through a reconnect and cleared by a move to `connected`:
+the confirm, and a replaced key that moves a connection out of
+`needs_reconnect`.
 
 `Delete`, the edge to the end from any state, removes the connection,
 its credential and its flow in one transaction, with cascading foreign
@@ -165,15 +192,19 @@ document of the members [[002-objects]] lists as sealed for its kind.
 
 | Sealed value | Binding |
 |---|---|
-| a connection's credential | `credential`, the connection id, the owner, the credential kind |
-| a flow's pending credential | the same four, of the connection it is for |
+| a connection's credential | `credential`, the connection id, the owner, the credential kind, the issuer, the token endpoint and the revocation endpoint kept in `meta`, and the `url` of a connector a person added, read from its row when the credential is opened; a member a credential does not have is empty |
+| a flow's pending credential | the same members, of the connection it is for, with the issuer and the endpoints the flow recorded |
 | a flow's proof-key verifier | `verifier`, the flow id, the connection id |
 | a registration's client secret | `registration`, the issuer, the redirect address |
 
 Each member of a binding is written as its length in 4 bytes and its
 bytes, so no two bindings share an encoding. A ciphertext copied to
 another connection, another owner, another kind, or from a verifier's
-columns into a credential's does not open. The wrap carries no
+columns into a credential's does not open. Nor does a credential whose
+issuer, token endpoint or revocation endpoint was rewritten in `meta`,
+or whose added connector's `url` was rewritten in `connectors`, so a
+writer of the database who changes where a secret goes makes it fail
+to open rather than go to the new place. The wrap carries no
 additional data, which is what lets a rotation rewrite the wrapped key
 and nothing else. A pending credential carries the binding of the
 credential it becomes, so a confirm moves ciphertext and opens nothing.
@@ -199,12 +230,13 @@ credential, so the connection's state does not move.
 ### Rotation
 
 Rotation is prepending a key and restarting. `serve` then rewraps in
-the background, 100 rows at a time, the sealed values of
-`credentials`, `flows` and `registrations` not under the first key.
-Each batch is one short transaction that locks its rows and skips rows
-another replica holds, so replicas share the work and a refresh waits
-one batch at most. `Rewrap` reads no ciphertext, so no plaintext exists
-during a rotation. A row under no listed key is skipped and counted.
+the background, by `RewrapBatch` of 100 rows at a time, the sealed
+values of `credentials`, `flows` and `registrations` under a listed key
+other than the first. Each batch is one short transaction that locks
+its rows and skips rows another replica holds, so replicas share the
+work and a refresh waits one batch at most. `Rewrap` reads no
+ciphertext, so no plaintext exists during a rotation. A value under no
+listed key is in no batch, and `CountNotFirst` counts it apart.
 `ponsd check` reports both figures per table and exits non-zero while
 the second is not zero. An old key is removed once the first is zero.
 
@@ -221,10 +253,12 @@ adapter is handed a `Sealer`, so neither can open what it holds.
 [[007-sign-in]] decides when a refresh is due and what an answer means.
 The store gives it three primitives over one column, `refresh_until`.
 
-- `ClaimRefresh(ctx, connectionID, until)` sets the lease to `until`
-  when the row has none or one that has lapsed, in one short statement,
-  and returns whether it did and the credential's `version`. Lapse is
-  judged by the store's clock, the database's in Postgres.
+- `ClaimRefresh(ctx, connectionID, lease)` sets the lease to end
+  `lease` from now when the row has none or one that has lapsed, in one
+  short statement, and returns whether it did and the credential's
+  `version`. The end and the lapse are both judged by the store's
+  clock, the database's in Postgres, so no replica's clock is compared
+  with another's.
 - `CompleteRefresh(ctx, connectionID, fromVersion, sealed)` writes the
   new credential, adds one to `version` and clears the lease, in one
   statement that matches only while `version` is still `fromVersion`.
@@ -235,8 +269,9 @@ The store gives it three primitives over one column, `refresh_until`.
 
 `Put`, which a confirm and a replaced key use, also adds one to
 `version` and clears the lease. The lease names no holder, so a writer
-sets `until` past the deadline of its own request to the other service,
-and one that fails after its lease lapsed leaves the column alone.
+asks for a lease longer than the deadline of its own request to the
+other service, and one that fails after its lease lapsed leaves the
+column alone.
 
 No database transaction is open while the other service is asked: the
 claim, the request and the completion are three steps, and a replica
@@ -291,8 +326,9 @@ set, sized by its `pool_max_conns`.
 
 ## Not in this spec
 
-A refresh's timing and a flow's steps ([[007-sign-in]]). The sweeps'
-schedule ([[010-records-and-observability]]). The catalog, a file
+A refresh's timing, a flow's steps and the flow sweep's schedule
+([[007-sign-in]]). The schedule of the record and idempotency sweeps
+([[010-records-and-observability]]). The catalog, a file
 ([[006-catalog]]). A key service outside the process. Backups.
 
 ## Acceptance criteria
@@ -304,7 +340,8 @@ schedule ([[010-records-and-observability]]). The catalog, a file
 | The connection's state moves only along the edges of the diagram, every other move is refused, and of two movers from one state one wins | `store.TestConnectionStateMachine`, run against both adapters |
 | `(owner, name)` is unique, and 8 creates racing at one remaining place under a cap yield one connection | the `Names` and `Cap` cases of the suite |
 | A delete removes the connection, its credential and its flow in one transaction | `TestDeleteRemovesTheCredentialFirst`, the `Delete` case of the suite |
-| A sealed value opens under its binding alone: copied to another connection, owner or kind, or from a verifier into a credential, it does not open; two seals of one value share no column | `store.TestACopiedCiphertextDoesNotOpen`, `store.TestEverySealIsFresh` |
+| A sealed value opens under its binding alone: copied to another connection, owner or kind, or from a verifier into a credential, it does not open; two seals of one value share no column but `key_id` | `store.TestACopiedCiphertextDoesNotOpen`, `store.TestEverySealIsFresh` |
+| A credential whose issuer, token endpoint or revocation endpoint was rewritten in the clear, or whose added connector's `url` was rewritten, does not open, and nothing is sent to the new address | `store.TestRewrittenEndpointDoesNotOpen` |
 | A canary credential, verifier and client secret appear in no column of any table of either adapter | `TestNoPlaintextAtRest`, over a dump of Postgres and the memory store's maps |
 | `Sealer.Open` is the only method that returns a plaintext, its only callers are `internal/signin` and `internal/carry`, and no adapter holds a `Sealer` | `TestOpenIsConfined`, over the parsed call sites |
 | The first key wraps, every listed key opens, a key's id is the first 8 bytes of its SHA-256, and a malformed or repeated entry stops the start and prints no key | `store.TestTheKeyList`, `TestAMalformedKeyStopsTheStart` |
@@ -314,6 +351,6 @@ schedule ([[010-records-and-observability]]). The catalog, a file
 | Of 16 callers that claim one refresh at once, one claims; a lapsed lease is claimed again; a release frees it; a completion on a moved version writes nothing; `Put` bumps the version and clears the lease | the `Refresh` case of the suite, `TestAReconnectWinsOverARefresh` |
 | No transaction is open across the request to the other service: with a pool of one connection, a refresh held at the stub blocks no other statement | `TestNoTransactionSpansARefresh` |
 | 100 calls through one connection within a minute write `last_used_at` once | `TestLastUsedIsWrittenOnceAMinute` |
-| Two creates racing on one idempotency key make one object, and no row holds a body, a `state` or a hash of one; `Prune` removes only rows older than its time, at most its limit, each once | `TestIdempotentCreate`, the `Prune` case of the suite |
+| Two creates racing on one idempotency key make one object, and no row holds a body, a `state` or a hash of one; `Prune` removes only rows older than its time, at most its limit, each once | `store.TestIdempotencyKeyRace`, the `Prune` case of the suite |
 | A schema ahead of the binary and a dirty migration each stop the start, naming the version; no package outside `internal/store` imports the driver or the migrator | `TestSchemaGuards`, `TestDriverIsConfined` |
 | With no database configured the server starts on the memory store and says so; with one configured and unreachable it does not start | `TestStoreSelection` |
