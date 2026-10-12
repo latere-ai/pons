@@ -69,13 +69,6 @@ func (c connector) ref() string {
 	return c.Name
 }
 
-func (c connector) owner() string {
-	if c.added != nil {
-		return c.added.Owner
-	}
-	return ""
-}
-
 // addedURL is the url a credential of an added connector is bound to, and
 // empty for a catalog connector.
 func (c connector) addedURL() string {

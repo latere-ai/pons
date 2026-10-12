@@ -65,19 +65,10 @@ type Server struct {
 	AllowPrivate bool
 
 	Log *slog.Logger
-	// Now is the clock. Nil takes time.Now.
-	Now func() time.Time
 	// IDs makes identifiers. Nil takes id.Default.
 	IDs *id.Generator
 
 	creates *ratelimit.Buckets
-}
-
-func (s *Server) now() time.Time {
-	if s.Now != nil {
-		return s.Now()
-	}
-	return time.Now()
 }
 
 func (s *Server) newID(prefix string) string {
