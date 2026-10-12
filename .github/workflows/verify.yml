@@ -1,0 +1,87 @@
+# Every push to main and every pull request runs the gate, the shared
+# pipeline of latere-ai/ci, and the checks that need the tree and nothing
+# else. Every third-party action is pinned by commit.
+name: verify
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same ref supersedes this run: its commit carries every
+# change this one would verify, and the runner is better spent on it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # While the repository is private the jobs that need Go alone run on the
+  # organization's self-hosted runner, because hosted minutes are metered
+  # for a private repository; the image job needs Docker and runs on a
+  # hosted runner. Once the repository is public every job runs on
+  # ubuntu-latest.
+  gate:
+    if: "!startsWith(github.ref, 'refs/tags/')"
+    uses: latere-ai/ci/.github/workflows/lateregate.yml@v1
+    with:
+      runs_on: linux-vm
+      test_os: '["linux-vm"]'
+
+  tidy:
+    name: go.mod and go.sum are tidy
+    if: "!startsWith(github.ref, 'refs/tags/')"
+    runs-on: linux-vm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # The runner keeps its module cache between runs; restoring a
+          # tarball over it fails on every file that exists.
+          cache: false
+      - run: go mod tidy -diff
+
+  # The server image on every push: it builds, it names its version, it
+  # stays under the size the distribution spec holds it to, it has no
+  # shell, and it starts and answers with a read-only root file system and
+  # no capability.
+  image:
+    name: the server image builds, starts and stays small
+    if: "!startsWith(github.ref, 'refs/tags/')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: docker build -t ponsd:candidate .
+      - name: The image reports its version
+        run: docker run --rm ponsd:candidate version | grep -q '^ponsd '
+      - name: The image is under 40 MiB and holds no shell
+        run: |
+          size=$(docker image inspect ponsd:candidate --format '{{.Size}}')
+          echo "the image is ${size} bytes"
+          [ "${size}" -lt $((40 * 1024 * 1024)) ] || { echo "the server image is over 40 MiB" >&2; exit 1; }
+          if docker run --rm --entrypoint /bin/sh ponsd:candidate -c true 2>/dev/null; then
+            echo "the server image holds a shell" >&2; exit 1
+          fi
+      - name: The image starts and answers with a read-only root file system
+        # The memory store and an issuer that is never asked: the probes
+        # need no token, and an issuer that does not answer at start is
+        # named and the server starts.
+        run: |
+          docker run -d --name ponsd --read-only --cap-drop ALL \
+            -e PONS_PUBLIC_URL=http://localhost:8080 \
+            -e PONS_OIDC_ISSUERS=https://issuer.example.com \
+            -p 127.0.0.1:8080:8080 ponsd:candidate serve
+          for _ in $(seq 1 50); do
+            if curl -fsS http://127.0.0.1:8080/livez > /dev/null; then
+              echo "the server answers"; exit 0
+            fi
+            sleep 0.2
+          done
+          docker logs ponsd
+          echo "the server did not answer" >&2; exit 1

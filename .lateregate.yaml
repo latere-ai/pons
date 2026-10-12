@@ -1,8 +1,13 @@
-# The gate configuration for pons.
-#
-# Only the spec tree is configured: the repository holds specs and no code
-# yet. The remaining blocks (license, identity, postgres, cover) arrive with
-# the scaffold, specs/011-distribution.md.
+# The shared quality bar, read by `go tool lateregate`. The gates live in
+# latere.ai/x/ci-gate, pinned in go.mod; only what is this repository's own
+# is here (specs/011-distribution.md).
+
+cover:
+  trim_prefix: latere.ai/x/pons/
+
+license:
+  spdx: Apache-2.0
+  holder: Latere AI
 
 spec:
   archive:
@@ -29,3 +34,31 @@ spec:
     - Acceptance criteria
   require_section_by_status:
     complete: [Outcome]
+
+# The identity shape of an open core (specs/004-identity-and-authorization.md):
+# ponsd verifies one token against the issuers it is given, hands every claim
+# to the authorizer it asks, and reads none of them. internal/access holds the
+# verifier and the authorizer client, and every handler of internal/httpapi
+# authenticates and asks through it.
+identity:
+  role: core
+  audience: pons
+  config_prefix: PONS
+  # Pons writes no resource under an API group of its own. A core names one,
+  # and this one exempts nothing from the rule that keeps a hosted
+  # installation's values out of the tree.
+  api_group: pons
+  # The audience is the default of a server somebody runs themselves; a plane
+  # that fronts it verifies an audience of its own.
+  reached_by: self-hosted
+  # Access is by role: the roles rule runs, and it is one way once set.
+  roles_only: true
+
+# The store of specs/005-store-and-sealing.md serves through
+# PONS_DATABASE_POOL_URL where an installation names a pooled endpoint and
+# falls back to PONS_DATABASE_URL. Migrations always take the direct one: the
+# migrator holds a session lock across its statements, which a
+# transaction-mode pooler loses between two.
+postgres:
+  role: pooled
+  prefix: PONS
