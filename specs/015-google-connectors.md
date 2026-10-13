@@ -199,7 +199,7 @@ set:
 |---|---|
 | APIs | the Gmail API, the Google Calendar API and the Google Drive API, enabled |
 | OAuth consent screen | the installation's name, support email, home page, privacy policy and terms; the domain of Pons's callback as an authorized domain |
-| Audience | Internal while only the operator's own organization connects; External, after Google's verification, for anyone |
+| Audience | Internal while only the operator's own organization connects; External for anyone else, in production status, with the limits below until Google verifies the client |
 | Data access | the scopes of the three entries |
 | Client | type Web application, with Pons's callback, `{PONS_PUBLIC_URL}{base}/callback`, as its one authorized redirect URI |
 
@@ -207,9 +207,11 @@ The client's id goes into the three entries and its secret into the
 installation's secret store, named by `client.secret`.
 
 An External client in Google's testing status takes only the test users
-it lists, and their refresh tokens end after seven days. To leave
-testing with these scopes, Google reviews the client: Calendar's scopes
-are sensitive and need the review alone; Gmail's and `drive.readonly`
+it lists, and their refresh tokens end after seven days. In production
+status, before Google has verified it, it takes any Google account,
+which sees Google's warning that the app is unverified, and at most 100
+users with these scopes. Verification lifts both: Calendar's scopes are
+sensitive and need Google's review alone; Gmail's and `drive.readonly`
 are restricted and need a security assessment beside it, renewed every
 year.
 
