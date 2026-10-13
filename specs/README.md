@@ -31,7 +31,9 @@ Specs 001 to 012 were read as a whole on 2026-10-12 by two readers
 working apart, one for security and one for consistency and the
 protocol, and were revised from what they found. Specs 013 and 014 were
 written after that reading: GitHub, the first connector, carried as git
-and its REST API through the forwarding and git addresses of 014.
+and its REST API through the forwarding and git addresses of 014. Spec
+015 adds Google's Gmail, Calendar and Drive the same way, through their
+REST APIs.
 
 v0.1.1, of 2026-10-13, is the first release with an image; v0.1.0
 published nothing. Steps 1 to 4 of the build order are built; of step 5
@@ -69,6 +71,7 @@ which of its criteria wait.
 | [012](012-security-and-threat-model.md) | Security and threat model: what is protected, who attacks, each defense and the test that holds it, and what is not defended | medium | in-progress | 001, 005, 007, 008, 009 |
 | [013](013-github-connector.md) | A code host's connector: GitHub through a GitHub App, signed in like any connector, with git and the REST API carried through Pons | medium | testing | 006, 007, 014 |
 | [014](014-http-forwarding.md) | Plain HTTP and git through a connection: a forwarding address and a git address, the credential added, a path held to its connector, and a push held to the refs an allow names | large | testing | 002, 003, 004, 006, 008, 009 |
+| [015](015-google-connectors.md) | Google's connectors: Gmail, Google Calendar and Google Drive, each signed in with Google on its own and carried as Google's REST APIs | small | in-progress | 006, 007, 013, 014 |
 
 ## Build order
 

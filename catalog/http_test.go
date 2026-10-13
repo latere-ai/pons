@@ -4,6 +4,7 @@
 package catalog_test
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,17 +18,23 @@ import (
 // entry the spec shows is the entry the test loads.
 func githubEntry(t *testing.T) string {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("..", "specs", "013-github-connector.md"))
+	return specYAML(t, "013-github-connector.md", "### The entry")
+}
+
+// specYAML is the first YAML block under heading in the spec file.
+func specYAML(t *testing.T, file, heading string) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "specs", file))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, after, ok := strings.Cut(string(raw), "### The entry\n")
+	_, after, ok := strings.Cut(string(raw), heading+"\n")
 	if !ok {
-		t.Fatal("spec 013 has no section The entry")
+		t.Fatalf("%s has no section %q", file, heading)
 	}
 	_, block, ok := strings.Cut(after, "```yaml\n")
 	if !ok {
-		t.Fatal("the entry of spec 013 has no yaml block")
+		t.Fatalf("the section %q of %s has no yaml block", heading, file)
 	}
 	block, _, _ = strings.Cut(block, "```")
 	return block
@@ -67,6 +74,59 @@ func TestTheGitHubEntry(t *testing.T) {
 	} {
 		if got := gh.RequestEffect(tc.method, tc.path); got != tc.want {
 			t.Errorf("%s %s: %s", tc.method, tc.path, got)
+		}
+	}
+}
+
+// The Google entries of spec 015 validate: kind http with no resource
+// member, the account read from a host under hosts, no revocation, the
+// authorization request's members in authorize_url's query, and Calendar's
+// free time query reading while a draft writes.
+func TestTheGoogleEntries(t *testing.T) {
+	c, err := catalog.Parse([]byte(specYAML(t, "015-google-connectors.md", "### The entries")), catalog.Options{LookupEnv: func(name string) (string, bool) {
+		return "a-client-secret-of-the-test", name == "GOOGLE_CLIENT_SECRET"
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Connectors) != 3 {
+		t.Fatalf("%d entries", len(c.Connectors))
+	}
+	for _, name := range []string{"gmail", "google-calendar", "google-drive"} {
+		g, ok := c.Get(name)
+		if !ok {
+			t.Fatalf("no %s entry", name)
+		}
+		a := g.Auth
+		if g.Kind != catalog.KindHTTP || g.ResourceFor() || g.GitURL() != "" || a.Discovery != catalog.DiscoveryNone ||
+			a.Issuer != "https://accounts.google.com" || a.RevokeURL != "" || a.Client == nil || a.Client.Secret == nil || a.Client.Secret.Env != "GOOGLE_CLIENT_SECRET" {
+			t.Fatalf("%s: %+v", name, g)
+		}
+		if a.Account == nil || a.Account.Field != "email" || !slices.Contains(g.HostPatterns(), "openidconnect.googleapis.com") {
+			t.Fatalf("%s account %+v hosts %v", name, a.Account, g.HostPatterns())
+		}
+		if !slices.Contains(a.Scopes, "openid") || !slices.Contains(a.Scopes, "email") || len(a.Scopes) < 4 {
+			t.Fatalf("%s scopes %v", name, a.Scopes)
+		}
+		u, err := url.Parse(a.AuthorizeURL)
+		if err != nil || u.Query().Get("access_type") != "offline" || u.Query().Get("prompt") != "consent select_account" {
+			t.Fatalf("%s authorize_url %q", name, a.AuthorizeURL)
+		}
+	}
+	cal, _ := c.Get("google-calendar")
+	gmail, _ := c.Get("gmail")
+	for _, tc := range []struct {
+		conn               catalog.Connector
+		method, path, want string
+	}{
+		{cal, "POST", "/calendar/v3/freeBusy", catalog.EffectRead},
+		{cal, "GET", "/calendar/v3/calendars/primary/events", catalog.EffectRead},
+		{cal, "POST", "/calendar/v3/calendars/primary/events", catalog.EffectWrite},
+		{gmail, "POST", "/gmail/v1/users/me/drafts", catalog.EffectWrite},
+		{gmail, "POST", "/gmail/v1/users/me/messages/send", catalog.EffectWrite},
+	} {
+		if got := tc.conn.RequestEffect(tc.method, tc.path); got != tc.want {
+			t.Errorf("%s %s %s: %s", tc.conn.Name, tc.method, tc.path, got)
 		}
 	}
 }
