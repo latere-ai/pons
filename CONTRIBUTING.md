@@ -24,10 +24,11 @@ issuer to point it at.
 The gate starts Postgres, and PgBouncer in front of it, in containers
 for the store's suite. Where no container runtime answers, that suite
 cannot run, and the coverage floor fails for the packages only it
-reaches: a skipped suite is never a green gate. If Testcontainers cannot
-start its reaper container under Podman, run the gate with
-`TESTCONTAINERS_RYUK_DISABLED=true`. The tests of the git address run a
-real `git`, and skip, saying so, where it is not installed.
+reaches: a skipped suite is never a green gate. Under Podman, where
+Testcontainers' reaper container cannot start, the helper turns the reaper
+off itself. It labels every container it starts, and each start first
+removes the ones a killed test binary left behind. The tests of the git
+address run a real `git`, and skip, saying so, where it is not installed.
 
 Install the hooks once with `make hooks`. They run formatting and license
 checks before a commit and the linter before a push, so you see a finding
