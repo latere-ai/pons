@@ -137,8 +137,8 @@ no token:
 `ponsd check` runs with the same environment as `serve` and answers
 whether that server would start, without serving. It reads the catalog,
 applies the schema, reads the issuers' keys, and asks the authorizer the
-probe. It exits `1` on anything `serve` would refuse, and on a sealed
-value no listed key opens.
+probe. It exits `1` on anything `serve` would refuse before it listens,
+and on a sealed value no listed key opens.
 
 ```sh
 podman run --rm \

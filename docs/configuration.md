@@ -107,7 +107,7 @@ status that is not zero and a line naming the variable, when:
 | `PONS_AUTHORIZER_URL` is set and the token file is unset, unreadable or empty, or the token file is set without the URL | the endpoint needs its bearer, and a bearer needs its endpoint |
 | the authorizer allows the probe | an endpoint that allows the reserved probe does not read the request ([Writing an authorizer](authorizer.md#failing-closed)) |
 | the catalog does not validate | one line per problem, naming the entry and the member ([The catalog](catalog.md#validation)) |
-| `PONS_ADDR` cannot be listened on | |
+| `PONS_ADDR` cannot be listened on | `serve` only; `ponsd check` does not listen |
 
 An issuer or an authorizer that does not answer at start does not stop
 it. The issuer's keys are read when its first token arrives, and every
