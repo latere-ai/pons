@@ -113,17 +113,24 @@ func TestTheGoogleEntries(t *testing.T) {
 			t.Fatalf("%s authorize_url %q", name, a.AuthorizeURL)
 		}
 	}
+	for name, base := range map[string]string{
+		"gmail": "https://gmail.googleapis.com/gmail/v1", "google-calendar": "https://www.googleapis.com/calendar/v3", "google-drive": "https://www.googleapis.com/drive/v3",
+	} {
+		if g, _ := c.Get(name); g.URL != base {
+			t.Errorf("%s's url is %q, want its product's versioned base %q", name, g.URL, base)
+		}
+	}
 	cal, _ := c.Get("google-calendar")
 	gmail, _ := c.Get("gmail")
 	for _, tc := range []struct {
 		conn               catalog.Connector
 		method, path, want string
 	}{
-		{cal, "POST", "/calendar/v3/freeBusy", catalog.EffectRead},
-		{cal, "GET", "/calendar/v3/calendars/primary/events", catalog.EffectRead},
-		{cal, "POST", "/calendar/v3/calendars/primary/events", catalog.EffectWrite},
-		{gmail, "POST", "/gmail/v1/users/me/drafts", catalog.EffectWrite},
-		{gmail, "POST", "/gmail/v1/users/me/messages/send", catalog.EffectWrite},
+		{cal, "POST", "/freeBusy", catalog.EffectRead},
+		{cal, "GET", "/calendars/primary/events", catalog.EffectRead},
+		{cal, "POST", "/calendars/primary/events", catalog.EffectWrite},
+		{gmail, "POST", "/users/me/drafts", catalog.EffectWrite},
+		{gmail, "POST", "/users/me/messages/send", catalog.EffectWrite},
 	} {
 		if got := tc.conn.RequestEffect(tc.method, tc.path); got != tc.want {
 			t.Errorf("%s %s %s: %s", tc.conn.Name, tc.method, tc.path, got)

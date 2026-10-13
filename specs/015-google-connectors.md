@@ -57,7 +57,7 @@ connectors:
     description: Read and search your mail, and write drafts for you to send.
     icon: https://www.gstatic.com/images/branding/product/2x/gmail_2020q4_48dp.png
     kind: http
-    url: https://gmail.googleapis.com
+    url: https://gmail.googleapis.com/gmail/v1
     hosts: ["gmail.googleapis.com", "openidconnect.googleapis.com"]
     auth:
       type: oauth
@@ -78,10 +78,10 @@ connectors:
     description: Read your calendars, find free time, and create and change events.
     icon: https://www.gstatic.com/images/branding/product/2x/calendar_2020q4_48dp.png
     kind: http
-    url: https://www.googleapis.com
+    url: https://www.googleapis.com/calendar/v3
     hosts: ["www.googleapis.com", "openidconnect.googleapis.com"]
     http:
-      read_only: ["POST /calendar/v3/freeBusy"]
+      read_only: ["POST /freeBusy"]
     auth:
       type: oauth
       discovery: none
@@ -103,7 +103,7 @@ connectors:
     description: Find and read your files, and save new files to your Drive.
     icon: https://www.gstatic.com/images/branding/product/2x/drive_2020q4_48dp.png
     kind: http
-    url: https://www.googleapis.com
+    url: https://www.googleapis.com/drive/v3
     hosts: ["www.googleapis.com", "openidconnect.googleapis.com"]
     auth:
       type: oauth
@@ -121,15 +121,23 @@ connectors:
       account: {url: https://openidconnect.googleapis.com/v1/userinfo, field: email}
 ```
 
-- **`url` is the API's host alone.** A caller writes Google's
-  documented path after the forwarding address, such as
-  `/gmail/v1/users/me/messages`, `/calendar/v3/calendars/primary/events`
-  or `/drive/v3/files`, and the upload paths beside them,
-  `/upload/gmail/v1/...` and `/upload/drive/v3/...`, are reached the
-  same way. Calendar and Drive share `www.googleapis.com`; a
-  connection's token holds only its own product's scopes, so Google
-  refuses it at the other's API, and an authorizer may hold `Tools` to a
-  product's paths.
+- **`url` is the product's API base, its version included**:
+  `https://gmail.googleapis.com/gmail/v1`,
+  `https://www.googleapis.com/calendar/v3` and
+  `https://www.googleapis.com/drive/v3`, the base Google's own client
+  libraries call, so a caller writes `/users/me/messages`,
+  `/calendars/primary/events` or `/files` after the forwarding address.
+  The first entries named the host alone and wanted Google's whole path
+  after the address; a smaller model, in every run checked on
+  2026-10-13, left out the `/gmail/v1` even with an example that showed
+  it, and took the base to be the product's. A connection reaches only
+  its own product's API this way, and nothing of the host's other
+  APIs. Google's upload addresses, `/upload/gmail/v1/...` and
+  `/upload/drive/v3/...`, sit outside the base and are not reached: a
+  draft carries its message in its JSON body, which needs no upload,
+  and a Drive file is created from its metadata alone, its content
+  written later by a change, so uploading a file's bytes waits for a
+  need.
 - **`discovery: none`.** Google publishes OpenID Connect metadata, but
   the two members below go on the authorization request, and only an
   entry that gives its endpoints gives `authorize_url`. The `issuer` is
@@ -175,7 +183,7 @@ connectors:
   endpoint and nothing else changes.
 - **Effects.** `GET` reads and every other method writes
   ([[014-http-forwarding]]), except Calendar's `POST
-  /calendar/v3/freeBusy`, a query for free time, which the entry marks
+  /freeBusy`, a query for free time, which the entry marks
   as reading.
 
 ### What an authorizer is expected to hold
@@ -186,9 +194,9 @@ answers a `connection.use` of these connections like this:
 
 | Connector | Writes admitted | Refused |
 |---|---|---|
-| `gmail` | drafts: create, change, delete, under `/gmail/v1/users/*/drafts` and `/upload/gmail/v1/users/*/drafts` | `.../messages/send`, `.../drafts/send`, and every other write |
-| `google-calendar` | events: create, change, delete, under `/calendar/v3/calendars/*/events` | every other write, calendars and their sharing included |
-| `google-drive` | files: create and change, under `/drive/v3/files` and `/upload/drive/v3/files` | a file's permissions, which share it, a delete, and every other write |
+| `gmail` | drafts: create, change, delete, under `/users/*/drafts` | `.../messages/send`, `.../drafts/send`, and every other write |
+| `google-calendar` | events: create, change, delete, under `/calendars/*/events` | every other write, calendars and their sharing included |
+| `google-drive` | files: create and change, under `/files` | a file's permissions, which share it, a delete, and every other write |
 
 Reads are admitted under the product's own paths. The rules are the
 authorizer's, not the catalog's: another installation may draw them
