@@ -27,22 +27,22 @@ will hear back within three business days.
   alone, and a request to a connection's address cannot leave that
   connection's service.
 
-## What is protected, and what proves it
+## What is protected
 
-Each row is who could attack, what Pons commits to against them, and the
-tests in this repository that hold it to its word. A control without a
+Each row is who could attack, and what Pons commits to against them.
+Each commitment is held by tests in this repository: a control without a
 test is a claim, and no claim is listed here. The list grows with the
 code.
 
-| Who | What Pons commits to | Proved by |
-|---|---|---|
-| a caller with a valid token of another owner | every route verifies the token and asks before it reads or acts; with no authorizer an owner reaches their own connections alone; a connection someone else owns answers exactly as one that does not exist | `TestADenyDoesNotConfirmAnId`, `TestTheOwnerPolicyThroughTheAPI`, `TestAnotherOwnersTokenReachesNothing` |
-| a caller when the authorizer cannot answer | a request with no decision does nothing and is refused; an authorizer that allows the reserved probe stops the start | `access.TestTheClientFailsClosed`, `httpapi.TestADenyAndAnOutageAnswerBeforeAnythingIsDone`, `TestTheServerRefusesAnEndpointThatAllowsTheProbe` |
-| a reader or a writer of the database | every credential is ciphertext under a key the database never holds, bound to its row; copied to another row it does not open, and neither does one whose endpoints or connector address were rewritten | `TestNoPlaintextAtRest`, `store.TestACopiedCiphertextDoesNotOpen`, `store.TestRewrittenEndpointDoesNotOpen` |
-| a reader of responses and logs | a pasted key, an issued token and a client's secret appear in no response, header, log line or database row, and reach only the service they belong to | `TestNoCredentialLeavesButTowardItsConnector` |
-| an address that aims at the installation's own network | an address a person adds is refused when it names an address, a private name or a port other than 443, and every request Pons makes to a service connects only to public addresses, checked on the address it connects to | `TestRefusalsNameTheRuleAndNoAddress`, `dial.TestConnectsToTheAddressItChecked`, `dial.TestAnyPrivateAnswerRefusesTheName` |
-| a caller of a connection's address | a path cannot climb out of the service's address, a redirect elsewhere is not followed, the caller's own `Authorization` and every header not listed are removed | `carry.TestAForwardedPathStaysOnItsConnector`, `carry.TestARedirectStaysOnItsConnector`, `carry.TestForwardedHeaders` |
-| a caller allowed to push to some branches | a push naming a ref outside the allow's `refs` is refused before any of its pack is sent to the service, and git prints the rule as the reason | `carry.TestAPushIsHeldToItsRefs`, `carry.TestARefusedPushSaysWhy` |
+| Who | What Pons commits to |
+|---|---|
+| a caller with a valid token of another owner | every route verifies the token and asks before it reads or acts; with no authorizer an owner reaches their own connections alone; a connection someone else owns answers exactly as one that does not exist |
+| a caller when the authorizer cannot answer | a request with no decision does nothing and is refused; an authorizer that allows the reserved probe stops the start |
+| a reader or a writer of the database | every credential is ciphertext under a key the database never holds, bound to its row; copied to another row it does not open, and neither does one whose endpoints or connector address were rewritten |
+| a reader of responses and logs | a pasted key, an issued token and a client's secret appear in no response, header, log line or database row, and reach only the service they belong to |
+| an address that aims at the installation's own network | an address a person adds is refused when it names an address, a private name or a port other than 443, and every request Pons makes to a service connects only to public addresses, checked on the address it connects to |
+| a caller of a connection's address | a path cannot climb out of the service's address, a redirect elsewhere is not followed, the caller's own `Authorization` and every header not listed are removed |
+| a caller allowed to push to some branches | a push naming a ref outside the allow's `refs` is refused before any of its pack is sent to the service, and git prints the rule as the reason |
 
 ## What is not defended
 

@@ -2,8 +2,8 @@
 
 What Pons promises the people whose credentials it holds and the
 operator who runs it, in plain terms. [SECURITY.md](../SECURITY.md) is
-the policy: each commitment with the test that holds it, what is out of
-scope, and how to report a vulnerability. Report one to
+the policy: what Pons commits to against each kind of attacker, what is
+out of scope, and how to report a vulnerability. Report one to
 security@latere.ai, never as a public issue.
 
 ## What Pons guarantees
