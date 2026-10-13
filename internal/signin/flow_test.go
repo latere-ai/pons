@@ -8,10 +8,12 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"latere.ai/x/pons/catalog"
 	"latere.ai/x/pons/internal/apierr"
 	"latere.ai/x/pons/internal/store"
 	"latere.ai/x/pons/test/stubs"
@@ -304,6 +306,42 @@ func TestGitHubManner(t *testing.T) {
 	m, err := members([]byte("access_token=a&token_type=bearer&expires_in=28800"))
 	if err != nil || text(m["access_token"]) != "a" || number(m["expires_in"]) != 28800 {
 		t.Fatalf("a form answer: %v %v", m, err)
+	}
+}
+
+// An authorize_url with a query, as Google's entries give it
+// (specs/015-google-connectors.md): the request carries the query's members
+// as written beside the sign-in's own, every member the sign-in adds is one
+// of catalog.AuthorizationMembers, and the sign-in connects.
+func TestTheAuthorizeURLsQueryIsKept(t *testing.T) {
+	r := newRig(t)
+	// The rig's entry names no issuer, so its answers carry no iss.
+	r.auth.Set(func(sw *stubs.AuthSwitches) { sw.IssSupported = false })
+	code := r.conns["code"]
+	code.Auth.AuthorizeURL = r.auth.AuthorizeURL() + "?access_type=offline&prompt=consent+select_account"
+	r.conns["code"] = code
+	_, address, _ := r.pending("alice", "code", nil)
+	u, err := url.Parse(address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+	if q.Get("access_type") != "offline" || q.Get("prompt") != "consent select_account" {
+		t.Fatalf("the query's members: %v", q)
+	}
+	for member, values := range q {
+		if member == "access_type" || member == "prompt" {
+			continue
+		}
+		if !slices.Contains(catalog.AuthorizationMembers, member) || len(values) != 1 {
+			t.Errorf("the sign-in set %s = %v, which catalog.AuthorizationMembers does not name", member, values)
+		}
+	}
+	if q.Get("client_id") != "pons-client" || q.Get("redirect_uri") != "https://pons.example.com/v1/callback" || len(q.Get("state")) != 43 {
+		t.Fatalf("the sign-in's members: %v", q)
+	}
+	if c := r.signIn("bob", "code"); c.State != store.StateConnected {
+		t.Fatalf("%+v", c)
 	}
 }
 

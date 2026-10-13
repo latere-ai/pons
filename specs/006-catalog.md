@@ -80,7 +80,7 @@ the same validation and serves nothing.
 |---|---|---|
 | `discovery` | `resource` for kind `mcp`, required for `http` | how the authorization server is found. `resource`: the server publishes its protected resource metadata. `issuer`: the entry names an authorization server with standard metadata. `none`: the entry gives the endpoints |
 | `issuer` | | an https URL. Required with `issuer`. With `resource`, required when `client` is given, naming the server that client is registered with. With `none`, optional: what an `iss` in an answer is compared with. An answer without `iss` is accepted only from a server the entry names, by `issuer` or by its endpoints ([[007-sign-in]]) |
-| `authorize_url`, `token_url` | | required with `discovery: none`, refused otherwise |
+| `authorize_url`, `token_url` | | required with `discovery: none`, refused otherwise. `authorize_url` may carry a query, for members a server needs on the authorization request, which the sign-in keeps beside its own; a query that names one of the sign-in's own members, such as `client_id`, `state` or `scope`, is refused ([[015-google-connectors]]) |
 | `revoke_url` | | optional with `discovery: none`, refused otherwise |
 | `client.id`, `client.secret` | | a client the operator registered with the service. `secret` is a reference, absent for a public client. Required with `discovery: none` |
 | `scopes` | | the scopes to ask for, in place of the ones the server names |

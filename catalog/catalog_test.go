@@ -181,6 +181,8 @@ func TestLoadRefusals(t *testing.T) {
 		"no title":              {"connectors:\n  - name: one\n    kind: mcp\n    url: https://one.example.com/mcp\n    auth: {type: none}\n", `title: is empty`},
 		"a long description":    {"connectors:\n  - name: one\n    description: " + strings.Repeat("d", 201) + "\n" + ok, `description: is longer`},
 		"a manage link on http": {"connectors:\n  - name: one\n" + ok + "    links: {manage: \"http://one.example.com/m\"}\n", `links.manage: is not https`},
+		"a sign-in member in authorize_url": {"connectors:\n  - name: one\n    title: T\n    kind: http\n    url: https://t.example.com\n    auth:\n      type: oauth\n      discovery: none\n      authorize_url: https://login.example.com/authorize?access_type=offline&client_id=other\n      token_url: https://login.example.com/token\n      client: {id: pons}\n",
+			`auth.authorize_url: is not taken with client_id in its query, which the sign-in sets`},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

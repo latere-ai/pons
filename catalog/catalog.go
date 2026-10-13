@@ -46,6 +46,13 @@ const (
 	MaxHintLength        = 200
 )
 
+// AuthorizationMembers are the members of an authorization request the
+// sign-in sets itself (specs/007-sign-in.md), which a query of
+// authorize_url may not name.
+var AuthorizationMembers = []string{
+	"response_type", "client_id", "redirect_uri", "code_challenge", "code_challenge_method", "state", "resource", "scope",
+}
+
 // The defaults of a token connector's inject.
 const (
 	DefaultInjectHeader = "Authorization"
@@ -721,6 +728,17 @@ func validateAuth(c Connector, added bool) []Problem {
 		for field, raw := range map[string]string{"auth.authorize_url": a.AuthorizeURL, "auth.token_url": a.TokenURL, "auth.revoke_url": a.RevokeURL} {
 			if raw != "" {
 				endpoint(field, raw)
+			}
+		}
+		// A query of authorize_url carries members a server needs on the
+		// authorization request, such as Google's access_type
+		// (specs/015-google-connectors.md); one the sign-in sets would be
+		// replaced, so it is refused instead of ignored.
+		if u, err := url.Parse(a.AuthorizeURL); a.AuthorizeURL != "" && err == nil {
+			for _, m := range AuthorizationMembers {
+				if u.Query().Has(m) {
+					bad("auth.authorize_url", "is not taken with "+m+" in its query, which the sign-in sets")
+				}
 			}
 		}
 		if a.Client != nil {

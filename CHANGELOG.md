@@ -6,6 +6,16 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+- Added: a catalog entry's `authorize_url` may carry a query, for
+  members a service needs on the authorization request, such as Google's
+  `access_type=offline`, which the sign-in sends beside its own. A query
+  that names one of the sign-in's own members, `response_type`,
+  `client_id`, `redirect_uri`, `code_challenge`, `code_challenge_method`,
+  `state`, `resource` or `scope`, is refused when the catalog loads; such
+  a member was replaced by the sign-in's before. The public package
+  `catalog` names them as `AuthorizationMembers`. Spec 015 gives catalog
+  entries for Gmail, Google Calendar and Google Drive.
+
 - Changed: the question to the authorizer names a connection's kind,
   `mcp` or `http`, as `connection_kind`, and a connector's as
   `connector_kind`. Both were sent as `kind`, a name the shared envelope
