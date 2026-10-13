@@ -312,13 +312,14 @@ sandbox is given a fresh one before then.
 A request to an address leaves a record, read with
 `GET /connections/{id}/calls`, once its token is verified, its path read
 and its connection found. A request refused before that leaves none: one
-with a bad token, `Origin` or path, one whose `Content-Length` is over
-the size limit, one past the caller's or the replica's limit of requests
-in flight, one the git address does not serve, a push Pons cannot read,
-and one to an id that names no connection. Nor does a
-request that failed inside Pons, a `500` or a `503`. A `denied` call is
-recorded at most once a minute per caller and connection on each
-replica, so the records show that a caller was refused, not how often.
+with a bad token, `Origin` or path, one with a method the forwarding
+address does not carry, one whose `Content-Length` is over the size
+limit, one past the caller's or the replica's limit of requests in
+flight, one the git address does not serve, a push Pons cannot read, and
+one to an id that names no connection. Nor does a request that failed
+inside Pons, a `500` or a `503`. A `denied` call is recorded at most
+once a minute per caller and connection on each replica, so the records
+show that a caller was refused, not how often.
 
 A record says a call happened, never what it said: no argument, result,
 header or query string.
