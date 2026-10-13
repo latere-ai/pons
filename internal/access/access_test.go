@@ -119,6 +119,54 @@ func TestTheEnvelopeCarriesTheCallerAndTheQuestion(t *testing.T) {
 	}
 }
 
+// Every member of every question Pons builds reaches the authorizer, over
+// the envelope's JSON, as it was built: a connection's kind and a
+// connector's arrive under their own names, and no field is dropped.
+func TestEveryMemberReachesTheAuthorizer(t *testing.T) {
+	s := stubs.NewAuthorizer(t)
+	az := asking(t, s, nil)
+	conn := access.Connection{
+		ID: "con_1", Owner: alice, Connector: "github", Name: "github", Kind: "http", Auth: "oauth",
+		Method: http.MethodPost, Tool: "git-receive-pack", Effect: "write", Refs: []string{"refs/heads/agents/a"},
+	}
+	ctr := access.Connector{ID: "ctr_1", Owner: alice, Name: "wiki", Kind: "mcp", Host: "wiki.example.com"}
+	for i, action := range authorizer.Actions() {
+		var sent authz.Resource
+		if authorizer.Kind(action) == authorizer.KindConnector {
+			sent = ctr.Resource(action)
+		} else {
+			sent = conn.Resource(action)
+		}
+		if len(sent.Fields) != len(authorizer.Fields(action)) {
+			t.Fatalf("%s builds %v, its fields are %v", action, sent.Fields, authorizer.Fields(action))
+		}
+		if _, err := az.Authorize(t.Context(), caller(alice), access.Question{Action: action, Resource: sent}); err != nil {
+			t.Fatal(err)
+		}
+		got := s.Requests()[i].Resource
+		want, arrived := asJSON(t, sent.Fields), asJSON(t, got.Fields)
+		if got.Kind != sent.Kind || got.ID != sent.ID || arrived != want {
+			t.Errorf("%s sent %s %q %s, and %s %q %s arrived", action, sent.Kind, sent.ID, want, got.Kind, got.ID, arrived)
+		}
+	}
+	if got := s.Requests()[len(authorizer.Actions())-1].Resource; got.String(authorizer.FieldConnectionKind) != "http" {
+		t.Fatalf("a use's connection kind arrived as %+v", got)
+	}
+}
+
+// asJSON is a resource's fields as JSON, an empty object for none.
+func asJSON(t *testing.T, fields map[string]any) string {
+	t.Helper()
+	if len(fields) == 0 {
+		return "{}"
+	}
+	raw, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
 // The endpoint Pons asks answers the contract for every row of the
 // vocabulary: the stub authorizer, as the test tiers start it.
 // A list of connections names the owner it asks for and no other member;

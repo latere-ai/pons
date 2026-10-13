@@ -85,21 +85,28 @@ it has another shape.
 
 Published as Go constants in the public package `authorizer`, with
 `Vocabulary()`, an `authz.Vocabulary` whose core is `pons`, for an
-authorizer to validate against, and `Fields` for the members each
-action sends.
+authorizer to validate against, `Fields` for the fields each action
+sends, and `SendsID` for whether it sends the id of a stored object.
 
-| Kind | Action | Resource fields sent |
+| Kind | Action | Resource members sent |
 |---|---|---|
 | `Connector` | `connector.list` | none |
-| `Connector` | `connector.read` | `name` for a catalog connector; `id` and `owner` for an added one; `kind` |
-| `Connector` | `connector.create` | `owner`, `kind`, `host` |
+| `Connector` | `connector.read` | `name` for a catalog connector; `id` and `owner` for an added one; `connector_kind` |
+| `Connector` | `connector.create` | `owner`, `connector_kind`, `host` |
 | `Connector` | `connector.delete` | `id`, `owner` |
-| `Connection` | `connection.create` | `owner`, `connector`, `name`, `kind`, `auth`, and `id` when a confirm, a reconnect or a replaced key asks |
-| `Connection` | `connection.read` | `id`, `owner`, `connector`, `name`, `kind`, `auth` |
+| `Connection` | `connection.create` | `owner`, `connector`, `name`, `connection_kind`, `auth`, and `id` when a confirm, a reconnect or a replaced key asks |
+| `Connection` | `connection.read` | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth` |
 | `Connection` | `connection.list` | `owner` when the request names one |
-| `Connection` | `connection.update` | `id`, `owner`, `connector`, `name`, `kind`, `auth` |
-| `Connection` | `connection.delete` | `id`, `owner`, `connector`, `name`, `kind`, `auth` |
-| `Connection` | `connection.use` | `id`, `owner`, `connector`, `name`, `kind`, `method`, and `tool` and `effect` when the request names a tool, a path or a git service, and `refs` for a push ([[014-http-forwarding]]) |
+| `Connection` | `connection.update` | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth` |
+| `Connection` | `connection.delete` | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth` |
+| `Connection` | `connection.use` | `id`, `owner`, `connector`, `name`, `connection_kind`, `method`, and `tool` and `effect` when the request names a tool, a path or a git service, and `refs` for a push ([[014-http-forwarding]]) |
+
+The shared envelope keeps two names for the resource itself:
+`resource.kind`, the kind of the table's first column, and
+`resource.id`, the id of a stored object. It drops a field of either
+name on the wire, so no field of the vocabulary takes one. `id` in the
+table is the envelope's own; the kind of a connector or a connection,
+`mcp` or `http`, is sent as `connector_kind` or `connection_kind`.
 
 A member Pons does not know for a request is left out, never sent
 empty. `connector` is the connector reference of [[002-objects]]: a
@@ -347,6 +354,7 @@ Remains: the same for the address of kind `mcp`, with the MCP carrier.
 | `access.TestWhatTheVerifierRefuses`, `access.TestTheSkewOnExpAndNbf` | written |
 | `TestAServerWithNoIssuerIsRefused`, `TestAnAuthorizerNeedsItsTokenFile` | written |
 | `authorizer.TestTheVocabularyIsTheSpecs`, `access.TestTheRowsAreTheSpecs` | written |
+| `authorizer.TestNoFieldTakesANameTheEnvelopeKeeps`, `authorizer.TestEveryFieldSurvivesTheWire`, `access.TestEveryMemberReachesTheAuthorizer` | written, the last against the stub authorizer |
 | `httpapi.TestEveryRouteAsksItsAction`, `httpapi.TestADenyAndAnOutageAnswerBeforeAnythingIsDone` | written, over both stores |
 | `access.TestTheEnvelopeCarriesTheCallerAndTheQuestion`, `carry.TestAUseAsksWithItsTool` | written |
 | `access.TestAuthorizerConformance` | written, against the stub authorizer over TLS |
@@ -372,6 +380,7 @@ Remains: the same for the address of kind `mcp`, with the MCP carrier.
 | A token for another audience, of an unlisted issuer, expired or not yet valid past the skew, or with a bad signature is `invalid_token` with the reason, and the error never repeats the token | `access.TestWhatTheVerifierRefuses`, `access.TestTheSkewOnExpAndNbf` |
 | A server that lists no issuer does not start and names the variable; an authorizer URL with no token file does the same | `TestAServerWithNoIssuerIsRefused`, `TestAnAuthorizerNeedsItsTokenFile` |
 | The constants of `authorizer` are the vocabulary table above, in its order with its fields, and the table of routes has one row per route of the contract, each asking the action of [[003-api]] | `authorizer.TestTheVocabularyIsTheSpecs`, `access.TestTheRowsAreTheSpecs` |
+| No field of any action is named `kind` or `id`, and every field of every action, its kind and its id reach an authorizer through the envelope's JSON as Pons built them | `authorizer.TestNoFieldTakesANameTheEnvelopeKeeps`, `authorizer.TestEveryFieldSurvivesTheWire`, `access.TestEveryMemberReachesTheAuthorizer` |
 | Every route asks its action before it acts; a deny and an outage are answered with nothing done, over both stores | `httpapi.TestEveryRouteAsksItsAction`, `httpapi.TestADenyAndAnOutageAnswerBeforeAnythingIsDone` |
 | The authorizer receives the subject, every claim verbatim, the action and the resource, and a use carries `tool` and `effect` when the request names a tool and neither when it does not | `access.TestTheEnvelopeCarriesTheCallerAndTheQuestion`, `carry.TestAUseAsksWithItsTool` |
 | The endpoint Pons asks answers the contract for every row of the vocabulary | `access.TestAuthorizerConformance`, which runs `authz/conformance` against the stub authorizer |

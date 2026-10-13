@@ -24,7 +24,7 @@ type Connector struct {
 func (c Connector) Resource(action string) authz.Resource {
 	return build(authorizer.KindConnector, action, c.ID, map[string]string{
 		authorizer.FieldOwner: c.Owner, authorizer.FieldName: c.Name,
-		authorizer.FieldKind: c.Kind, authorizer.FieldHost: c.Host,
+		authorizer.FieldConnectorKind: c.Kind, authorizer.FieldHost: c.Host,
 	})
 }
 
@@ -42,7 +42,7 @@ type Connection struct {
 func (c Connection) Resource(action string) authz.Resource {
 	r := build(authorizer.KindConnection, action, c.ID, map[string]string{
 		authorizer.FieldOwner: c.Owner, authorizer.FieldConnector: c.Connector, authorizer.FieldName: c.Name,
-		authorizer.FieldKind: c.Kind, authorizer.FieldAuth: c.Auth,
+		authorizer.FieldConnectionKind: c.Kind, authorizer.FieldAuth: c.Auth,
 		authorizer.FieldMethod: c.Method, authorizer.FieldTool: c.Tool, authorizer.FieldEffect: c.Effect,
 	})
 	if len(c.Refs) > 0 && slices.Contains(authorizer.Fields(action), authorizer.FieldRefs) {
@@ -63,17 +63,16 @@ func ListOf(action, owner string) authz.Resource {
 	return build(authorizer.Kind(action), action, "", map[string]string{authorizer.FieldOwner: owner})
 }
 
-// build keeps the members an action sends and that are known.
+// build keeps the fields an action sends and that are known, and the id
+// for the actions that send one, as resource.id.
 func build(kind, action, id string, members map[string]string) authz.Resource {
 	fields := map[string]any{}
-	sends := authorizer.Fields(action)
-	for _, name := range sends {
-		if v := members[name]; v != "" && name != authorizer.FieldID {
+	for _, name := range authorizer.Fields(action) {
+		if v := members[name]; v != "" {
 			fields[name] = v
 		}
 	}
-	if !slices.Contains(sends, authorizer.FieldID) {
-		// The id rides as resource.id, for the actions that send one.
+	if !authorizer.SendsID(action) {
 		id = ""
 	}
 	return authz.NewResource(kind, id, fields)

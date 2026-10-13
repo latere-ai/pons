@@ -28,7 +28,7 @@ func TestAUseAsksWithItsTool(t *testing.T) {
 	c := r.keyed()
 	r.send(http.MethodGet, address(c, "http")+"/repos/acme/app?x=1", "alice", nil)
 	q := r.az.questions()[0]
-	want := map[string]any{"owner": subject("alice"), "connector": "api", "name": "api", "kind": "http", "method": "GET", "tool": "/repos/acme/app", "effect": "read"}
+	want := map[string]any{"owner": subject("alice"), "connector": "api", "name": "api", "connection_kind": "http", "method": "GET", "tool": "/repos/acme/app", "effect": "read"}
 	if q.Action != authorizer.ActionConnectionUse || q.Resource.ID != c.ID || len(q.Resource.Fields) != len(want) {
 		t.Fatalf("asked %+v", q)
 	}

@@ -24,9 +24,11 @@
 // A subject is the issuer and the sub joined, "https://issuer.example.com|alice",
 // and the claims are the token's, verbatim. Pons reads none of them.
 //
-// The resource carries its members flat beside its kind and id, under the
-// names of the Field constants; Fields lists the members each action may
-// send. A member Pons does not know for a request is absent, never empty.
+// The resource carries its fields flat beside its kind and id, under the
+// names of the Field constants; Fields lists the fields each action may
+// send, and SendsID whether it sends the id of a stored object. No field
+// is named kind or id, which the envelope keeps for the resource itself.
+// A field Pons does not know for a request is absent, never empty.
 //
 // An allow may carry limits, the Limits type in its JSON form. A member the
 // endpoint does not set is left out. DecodeLimits is the reading half, and

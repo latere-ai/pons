@@ -56,15 +56,22 @@ const (
 	ActionConnectionUse = "connection.use"
 )
 
-// The members a resource carries beside its kind. FieldID is the id of a
-// stored object, which the envelope carries as resource.id.
+// The fields a resource carries beside its kind and id. The envelope keeps
+// the names kind and id for the resource itself, resource.kind and
+// resource.id, and drops a field of either name on the wire, so no field
+// takes them: the id of a stored object is the envelope's own, for the
+// actions SendsID names, and the kind of a connector or a connection, mcp
+// or http, is FieldConnectorKind or FieldConnectionKind.
 const (
-	FieldID    = "id"
 	FieldOwner = "owner"
 	// FieldName is a catalog connector's name, or a connection's.
 	FieldName = "name"
-	// FieldKind is mcp or http.
-	FieldKind = "kind"
+	// FieldConnectorKind is a connector's kind, mcp or http, on the
+	// actions about a connector.
+	FieldConnectorKind = "connector_kind"
+	// FieldConnectionKind is a connection's kind, mcp or http, copied from
+	// its connector, on the actions about a connection.
+	FieldConnectionKind = "connection_kind"
 	// FieldHost is the host of the address a person asks to add.
 	FieldHost = "host"
 	// FieldConnector is a connector reference: a catalog name, or the id
@@ -82,28 +89,30 @@ const (
 	FieldRefs   = "refs"
 )
 
-// action is one row of the vocabulary table.
+// action is one row of the vocabulary table: its name, its kind, the
+// fields it sends, and whether it sends the id of a stored object.
 type action struct {
 	name, kind string
 	fields     []string
+	id         bool
 }
 
-// connection is the members of a stored connection.
-var connection = []string{FieldID, FieldOwner, FieldConnector, FieldName, FieldKind, FieldAuth}
+// connection is the fields of a stored connection.
+var connection = []string{FieldOwner, FieldConnector, FieldName, FieldConnectionKind, FieldAuth}
 
 // table is the vocabulary of specs/004-identity-and-authorization.md, in its
 // order, with the fields each action sends.
 var table = []action{
-	{ActionConnectorList, KindConnector, nil},
-	{ActionConnectorRead, KindConnector, []string{FieldName, FieldID, FieldOwner, FieldKind}},
-	{ActionConnectorCreate, KindConnector, []string{FieldOwner, FieldKind, FieldHost}},
-	{ActionConnectorDelete, KindConnector, []string{FieldID, FieldOwner}},
-	{ActionConnectionCreate, KindConnection, []string{FieldOwner, FieldConnector, FieldName, FieldKind, FieldAuth, FieldID}},
-	{ActionConnectionRead, KindConnection, connection},
-	{ActionConnectionList, KindConnection, []string{FieldOwner}},
-	{ActionConnectionUpdate, KindConnection, connection},
-	{ActionConnectionDelete, KindConnection, connection},
-	{ActionConnectionUse, KindConnection, []string{FieldID, FieldOwner, FieldConnector, FieldName, FieldKind, FieldMethod, FieldTool, FieldEffect, FieldRefs}},
+	{ActionConnectorList, KindConnector, nil, false},
+	{ActionConnectorRead, KindConnector, []string{FieldName, FieldOwner, FieldConnectorKind}, true},
+	{ActionConnectorCreate, KindConnector, []string{FieldOwner, FieldConnectorKind, FieldHost}, false},
+	{ActionConnectorDelete, KindConnector, []string{FieldOwner}, true},
+	{ActionConnectionCreate, KindConnection, []string{FieldOwner, FieldConnector, FieldName, FieldConnectionKind, FieldAuth}, true},
+	{ActionConnectionRead, KindConnection, connection, true},
+	{ActionConnectionList, KindConnection, []string{FieldOwner}, false},
+	{ActionConnectionUpdate, KindConnection, connection, true},
+	{ActionConnectionDelete, KindConnection, connection, true},
+	{ActionConnectionUse, KindConnection, []string{FieldOwner, FieldConnector, FieldName, FieldConnectionKind, FieldMethod, FieldTool, FieldEffect, FieldRefs}, true},
 }
 
 // vocabulary is the table as the shared contract reads it, built once. A
@@ -144,8 +153,8 @@ func Kind(name string) string {
 // Known reports whether name is an action of the table.
 func Known(name string) bool { return vocabulary.Known(name) }
 
-// Fields lists the members an action's resource may carry beside its kind,
-// each sent when it is known. The value is a fresh copy.
+// Fields lists the fields an action's resource may carry beside its kind
+// and id, each sent when it is known. The value is a fresh copy.
 func Fields(name string) []string {
 	for _, a := range table {
 		if a.name == name {
@@ -153,4 +162,16 @@ func Fields(name string) []string {
 		}
 	}
 	return nil
+}
+
+// SendsID reports whether an action's resource carries the id of a stored
+// object, as resource.id, when it is about one: a connect sends none, and a
+// confirm, a reconnect and a replaced key send the stored connection's.
+func SendsID(name string) bool {
+	for _, a := range table {
+		if a.name == name {
+			return a.id
+		}
+	}
+	return false
 }

@@ -223,8 +223,9 @@ installation:
   answered 200 by GitHub. The first try was refused by the installation's
   authorizer, which read no connection kind: the shared authorizer
   envelope keeps `kind` for the resource itself and drops a field of
-  that name. That was fixed in the authorizer. The field's name is a
-  defect of [[004-identity-and-authorization]] to rename.
+  that name. That was fixed in the authorizer, which took the kind from
+  the connector, and the field is now `connection_kind`
+  ([[004-identity-and-authorization]]).
 - **Push.** A push to a branch under `refs/heads/agents/` landed on
   GitHub with the agent as its author; a push to another branch and one
   to `main` were refused before any of the pack left, as the allow's

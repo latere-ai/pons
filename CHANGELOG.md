@@ -6,6 +6,17 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+- Changed: the question to the authorizer names a connection's kind,
+  `mcp` or `http`, as `connection_kind`, and a connector's as
+  `connector_kind`. Both were sent as `kind`, a name the shared envelope
+  keeps for the resource itself and drops from the fields, so no
+  authorizer ever received them. In the public package `authorizer`,
+  `FieldKind` is replaced by `FieldConnectionKind` and
+  `FieldConnectorKind`, and `FieldID` leaves `Fields`, since the id is
+  the envelope's `resource.id`: `SendsID` reports whether an action
+  sends one. An authorizer that read the kind of the resource's fields
+  read nothing before, and reads the new names now.
+
 - Changed: a push that names a ref outside the refs its caller may update
   is refused the way a git host refuses one, so git prints the reason.
   It was answered `403` with a JSON body, of which git printed only

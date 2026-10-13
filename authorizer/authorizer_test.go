@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"sort"
@@ -20,10 +21,12 @@ import (
 	"latere.ai/x/pons/authorizer"
 )
 
-// specRow is one row of the vocabulary table of spec 004.
+// specRow is one row of the vocabulary table of spec 004: the fields it
+// names, and whether it names the envelope's id.
 type specRow struct {
 	kind, action string
 	fields       []string
+	id           bool
 }
 
 // specTable reads the vocabulary table of spec 004.
@@ -49,7 +52,10 @@ func specTable(t *testing.T) []specRow {
 		}
 		r := specRow{kind: m[1], action: m[2]}
 		for _, w := range word.FindAllStringSubmatch(m[3], -1) {
-			if !slices.Contains(r.fields, w[1]) {
+			switch {
+			case w[1] == "id":
+				r.id = true
+			case !slices.Contains(r.fields, w[1]):
 				r.fields = append(r.fields, w[1])
 			}
 		}
@@ -89,12 +95,88 @@ func TestTheVocabularyIsTheSpecs(t *testing.T) {
 		if got := authorizer.Fields(r.action); !slices.Equal(got, r.fields) {
 			t.Errorf("%s sends %v, the spec says %v", r.action, got, r.fields)
 		}
+		if got := authorizer.SendsID(r.action); got != r.id {
+			t.Errorf("%s sends an id: %v, the spec says %v", r.action, got, r.id)
+		}
 	}
-	if authorizer.Known("connection.steal") || authorizer.Kind("connection.steal") != "" || authorizer.Fields("x") != nil {
+	if authorizer.Known("connection.steal") || authorizer.Kind("connection.steal") != "" || authorizer.Fields("x") != nil || authorizer.SendsID("x") {
 		t.Error("a string outside the table is an action")
 	}
 	if v.Label(authorizer.KindConnection) != "Connections" {
 		t.Error("the kinds carry no label")
+	}
+}
+
+// The envelope keeps kind and id for the resource itself and drops a field
+// of either name, so no action's fields take one: a connection's kind named
+// kind never reached an authorizer.
+func TestNoFieldTakesANameTheEnvelopeKeeps(t *testing.T) {
+	for _, action := range authorizer.Actions() {
+		for _, f := range authorizer.Fields(action) {
+			if f == "kind" || f == "id" {
+				t.Errorf("%s sends a field named %q, which the envelope keeps for the resource", action, f)
+			}
+		}
+	}
+}
+
+// A question with every field of its action set, its kind and its id,
+// encoded as Pons posts it and decoded as an authorizer reads it, carries
+// each of them as it was sent.
+func TestEveryFieldSurvivesTheWire(t *testing.T) {
+	for _, action := range authorizer.Actions() {
+		fields := map[string]any{}
+		for _, f := range authorizer.Fields(action) {
+			fields[f] = "the " + f
+		}
+		if slices.Contains(authorizer.Fields(action), authorizer.FieldRefs) {
+			fields[authorizer.FieldRefs] = []any{"refs/heads/agents/a", "refs/heads/agents/b"}
+		}
+		id := ""
+		if authorizer.SendsID(action) {
+			id = "con_01"
+		}
+		sent := authz.Request{
+			Subject: "https://issuer.example.com|alice", Issuer: "https://issuer.example.com", Sub: "alice",
+			Action: action, Resource: authz.NewResource(authorizer.Kind(action), id, fields),
+		}
+		raw, err := json.Marshal(sent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got authz.Request
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Action != action || got.Resource.Kind != authorizer.Kind(action) || got.Resource.ID != id {
+			t.Errorf("%s arrived as %s on %q %q", action, got.Action, got.Resource.Kind, got.Resource.ID)
+		}
+		if len(got.Resource.Fields) != len(fields) {
+			t.Errorf("%s sent %d fields and %d arrived: %v", action, len(fields), len(got.Resource.Fields), got.Resource.Fields)
+		}
+		for name, want := range fields {
+			if v, ok := got.Resource.Fields[name]; !ok || !reflect.DeepEqual(v, want) {
+				t.Errorf("%s: %s arrived as %v, %v", action, name, v, ok)
+			}
+		}
+	}
+}
+
+// What the table holds is spelled once: the connector's kind on the
+// actions about a connector, the connection's on those about a connection.
+func TestEachKindIsNamedForItsResource(t *testing.T) {
+	for _, action := range authorizer.Actions() {
+		fields := authorizer.Fields(action)
+		switch authorizer.Kind(action) {
+		case authorizer.KindConnector:
+			if slices.Contains(fields, authorizer.FieldConnectionKind) {
+				t.Errorf("%s sends a connection's kind", action)
+			}
+		case authorizer.KindConnection:
+			if slices.Contains(fields, authorizer.FieldConnectorKind) {
+				t.Errorf("%s sends a connector's kind", action)
+			}
+		}
 	}
 }
 
