@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"latere.ai/x/pkg/authz/stub"
 
@@ -86,15 +87,24 @@ func TestCloneThroughTheGitAddress(t *testing.T) {
 	if strings.Contains(s.everything(), "the-forge-key-of-alice") || strings.Contains(s.dump(), "the-forge-key-of-alice") {
 		t.Fatal("the key left toward somewhere but its git host")
 	}
-	calls := s.do("GET", "/v1/connections/"+c["id"].(string)+"/calls?limit=200", "alice", nil).json(t)["items"].([]any)
+	// A record is written once its answer is out, so the last one may
+	// land a moment after git has finished.
+	var calls []any
 	pushes, sessions := 0, 0
-	for _, item := range calls {
-		rec := item.(map[string]any)
-		if rec["tool"] == "git-receive-pack" && rec["method"] == "POST" {
-			pushes++
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		calls = s.do("GET", "/v1/connections/"+c["id"].(string)+"/calls?limit=200", "alice", nil).json(t)["items"].([]any)
+		pushes, sessions = 0, 0
+		for _, item := range calls {
+			rec := item.(map[string]any)
+			if rec["tool"] == "git-receive-pack" && rec["method"] == "POST" {
+				pushes++
+			}
+			if rec["session"] == "ses_clone" {
+				sessions++
+			}
 		}
-		if rec["session"] == "ses_clone" {
-			sessions++
+		if pushes == 2 {
+			break
 		}
 	}
 	if pushes != 2 || sessions != len(calls) {

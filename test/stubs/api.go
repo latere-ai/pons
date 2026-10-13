@@ -177,6 +177,11 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	a.mu.Lock()
 	a.requests = append(a.requests, rec)
+	if r.URL.Path == "/upload" {
+		// What arrived counts this upload alone from the moment it is
+		// recorded.
+		a.received = 0
+	}
 	refused := a.refuseAll || a.refused[rec.Credential]
 	slow, login, servers, scopes, needs := a.slow, a.login, a.servers, a.scopes, a.needs
 	a.mu.Unlock()
@@ -314,9 +319,6 @@ func (a *API) stream(w http.ResponseWriter, r *http.Request) {
 // upload reads the body in pieces, counting each as it arrives, so a test
 // sees a body reach the stub before its sender has finished.
 func (a *API) upload(w http.ResponseWriter, r *http.Request) {
-	a.mu.Lock()
-	a.received = 0
-	a.mu.Unlock()
 	buf := make([]byte, 4<<10)
 	var total int64
 	for {
