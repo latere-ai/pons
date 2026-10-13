@@ -96,6 +96,18 @@ func conform(schema, value any, where string) []string {
 	if s == nil {
 		return nil
 	}
+	if branches, ok := s["oneOf"].([]any); ok {
+		// One branch takes the value whole, or the value departs from each.
+		var all []string
+		for _, b := range branches {
+			problems := conform(b, value, where)
+			if len(problems) == 0 {
+				return nil
+			}
+			all = append(all, problems...)
+		}
+		return all
+	}
 	if enum, ok := s["enum"].([]any); ok && !slices.Contains(enum, value) {
 		return []string{fmt.Sprintf("%s is %v, outside %v", where, value, enum)}
 	}
@@ -205,7 +217,7 @@ func TestTheContractIsTheServedRoutes(t *testing.T) {
 		if !ok {
 			t.Errorf("%s %s has no row in the table of routes", rt.Method, rt.Path)
 		}
-		if (row.Action == "") != (rt.Path == "/openapi.yaml") {
+		if (row.Action == "") != slices.Contains(public, rt) {
 			t.Errorf("%s %s asks %q", rt.Method, rt.Path, row.Action)
 		}
 	}
@@ -278,6 +290,14 @@ func TestRoutesNeedABearer(t *testing.T) {
 		if rt.Path == "/openapi.yaml" {
 			if a.status != http.StatusOK || !strings.Contains(string(a.body), "openapi: 3.1.0") {
 				t.Errorf("the contract answered %d", a.status)
+			}
+			continue
+		}
+		if slices.Contains(public, rt) {
+			// The documents and the callback take no token, and answer
+			// what they answer anyone.
+			if a.status == http.StatusUnauthorized {
+				t.Errorf("%s %s asks for a token", rt.Method, path)
 			}
 			continue
 		}

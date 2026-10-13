@@ -79,6 +79,8 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request, c acce
 		if len(req.Scopes) > 0 {
 			return apierr.OnField(apierr.CodeInvalidField, "scopes", "no_sign_in")
 		}
+	} else if err := s.returnTo(req.ReturnTo); err != nil {
+		return err
 	}
 	res := access.Connection{Owner: req.Owner, Connector: conn.ref(), Name: name, Kind: conn.Kind, Auth: conn.Auth.Type}
 	d, err := s.ask(r, c, authorizer.ActionConnectionCreate, res.Resource(authorizer.ActionConnectionCreate))
@@ -96,13 +98,14 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request, c acce
 		// An added connector is its owner's alone.
 		return apierr.OnField(apierr.CodeConnectorNotFound, "connector", "")
 	}
-	if conn.Auth.Type == catalog.AuthOAuth {
-		return apierr.Fail(apierr.CodeSignInUnsupported, "sign_in_not_available")
-	}
-
 	row := store.Connection{
 		ID: s.newID(id.Connection), Owner: owner, Name: name, Connector: conn.ref(), Kind: conn.Kind,
 		Auth: conn.Auth.Type, State: store.StateConnected, CreatedBy: c.Subject,
+	}
+	limit := d.Limits.Cap(s.MaxConnectionsPerOwner)
+	if conn.Auth.Type == catalog.AuthOAuth {
+		err := s.connectBySignIn(w, r, c, conn, row, req, limit)
+		return createError(err, limit)
 	}
 	var sealed *store.SealedCredential
 	if secrets != nil {
@@ -115,7 +118,6 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request, c acce
 		}
 		sealed = &sc
 	}
-	limit := d.Limits.Cap(s.MaxConnectionsPerOwner)
 	ctx := r.Context()
 	made, err := s.idempotent(r, c, r.Header.Get("Idempotency-Key"), routeConnect, row.ID, func(tx store.Tx) error {
 		if err := tx.Connections().Create(ctx, row, limit); err != nil {
@@ -127,15 +129,21 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request, c acce
 		_, err := tx.Credentials().Put(ctx, row.ID, *sealed)
 		return err
 	})
+	if err != nil {
+		return createError(err, limit)
+	}
+	return s.writeConnection(w, r, made, http.StatusCreated)
+}
+
+// createError is the route error of a create the store refused.
+func createError(err error, limit int) error {
 	switch {
 	case errors.Is(err, store.ErrNameTaken):
 		return apierr.OnField(apierr.CodeNameTaken, "name", "")
 	case errors.Is(err, store.ErrLimitReached):
 		return apierr.OnField(apierr.CodeForbidden, "owner", "max_connections="+strconv.Itoa(limit))
-	case err != nil:
-		return err
 	}
-	return s.writeConnection(w, r, made, http.StatusCreated)
+	return err
 }
 
 // credentialOf checks the credential a request carries against the way
@@ -440,13 +448,14 @@ func (s *Server) replaceCredential(w http.ResponseWriter, r *http.Request, c acc
 }
 
 // deleteConnection is DELETE /connections/{id}: the row, its credential and
-// its flow in one transaction.
+// its flow in one transaction, and then a revocation where the credential
+// recorded an endpoint for one.
 func (s *Server) deleteConnection(w http.ResponseWriter, r *http.Request, c access.Caller) error {
 	row, err := s.stored(r, c, authorizer.ActionConnectionDelete)
 	if err != nil {
 		return err
 	}
-	switch err := s.Store.Connections().Delete(r.Context(), row.ID); {
+	switch err := s.Signin.Disconnect(r.Context(), row); {
 	case errors.Is(err, store.ErrNotFound):
 		return apierr.Fail(apierr.CodeConnectionNotFound, "")
 	case err != nil:

@@ -201,7 +201,8 @@ func newHarnessOn(t testing.TB, st store.Store, opts ...option) *harness {
 	}
 	outside := dial.New(dial.Options{Resolver: stubs.Resolver(), Roots: stubs.Roots(), Permit: stubs.Permit(h.up.ports()...)})
 	h.srv.Signin = &signin.Signin{Store: st, Sealer: sealer, Dial: outside, Resolve: h.srv.Resolve,
-		PublicURL: h.srv.PublicURL, BasePath: h.srv.BasePath, Log: h.srv.Log}
+		PublicURL: h.srv.PublicURL, BasePath: h.srv.BasePath, Log: h.srv.Log, ClientName: "Pons",
+		ReturnURLs: []string{"https://app.example.com/done", "https://app.example.com/settings/"}}
 	h.srv.Carrier = &carry.Carrier{
 		Store: st, Sealer: sealer, Auth: tokens{}, Authz: h.authz, Dial: outside, Signin: h.srv.Signin, Resolve: h.srv.Resolve,
 		PublicURL: h.srv.PublicURL, BasePath: h.srv.BasePath, MaxForwardBytes: 1 << 20,

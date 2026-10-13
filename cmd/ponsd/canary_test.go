@@ -92,6 +92,22 @@ func exercise(t *testing.T, s *stack, canary string) {
 	call(http.MethodGet, git+"/info/refs?service=git-upload-pack", "alice", nil)
 	call(http.MethodPost, git+"/git-upload-pack", "alice", "0000", "Content-Type", "application/x-git-upload-pack-request")
 	call(http.MethodGet, "/v1/connections/"+forge+"/calls", "alice", nil)
+	// A sign-in in GitHub's manner at the stub, whose issued tokens hold the
+	// canary: the connect, the browser's callback, the confirm, a call, a
+	// reconnect, and the documents that name Pons.
+	upstreamOf(t).auth.Set(func(sw *stubs.AuthSwitches) {
+		sw.GitHub, sw.IssSupported, sw.TokenPrefix = true, false, canary+"-issued-"
+	})
+	begun := call(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": "github", "return_to": returnURL}).json(t)
+	signed := begun["connection"].(map[string]any)["id"].(string)
+	back, _ := s.browser(t, begun["authorization_url"].(string))
+	call(http.MethodPost, "/v1/connections/"+signed+"/confirm", "alice", map[string]any{"code": back.Query().Get("code")})
+	call(http.MethodGet, "/v1/connections/"+signed+"/http/repos/acme/app/issues", "alice", nil)
+	call(http.MethodPost, "/v1/connections/"+signed+"/reconnect", "alice", map[string]any{"return_to": returnURL})
+	call(http.MethodGet, "/v1/callback?state=no-flow-has-this&code="+canary+"-code", "", nil)
+	call(http.MethodGet, "/v1/client", "", nil)
+	call(http.MethodGet, "/v1/client/"+ctr, "", nil)
+	call(http.MethodDelete, "/v1/connections/"+signed, "alice", nil)
 	call(http.MethodDelete, "/v1/connections/"+added, "alice", nil)
 	call(http.MethodDelete, "/v1/connectors/"+ctr, "alice", nil)
 }
@@ -135,9 +151,13 @@ func TestNoCredentialLeavesButTowardItsConnector(t *testing.T) {
 			s.do(http.MethodGet, "/v1/connectors/code", "alice", nil)
 			everything := s.everything() + s.dump()
 			// The key's one place is the stub it belongs to, in the place
-			// its connector takes it.
-			if creds := upstreamOf(t).api.Credentials(); !slices.Contains(creds, "Bearer "+canary+"-forge") {
+			// its connector takes it, and an issued token's the same.
+			creds := upstreamOf(t).api.Credentials()
+			if !slices.Contains(creds, "Bearer "+canary+"-forge") {
 				t.Fatalf("the key never reached its connector: %v", creds)
+			}
+			if !slices.ContainsFunc(creds, func(c string) bool { return strings.HasPrefix(c, "Bearer "+canary+"-issued-") }) {
+				t.Fatalf("an issued token never reached its connector: %v", creds)
 			}
 			for _, value := range []string{canary, catalogSecret} {
 				for _, form := range encodings(value) {

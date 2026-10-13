@@ -425,8 +425,13 @@ func TestReplacingACredential(t *testing.T) {
 	if !strings.HasSuffix(api["address"].(string), "/connections/"+api["id"].(string)+"/http") {
 		t.Fatalf("the address of kind http: %v", api["address"])
 	}
-	code := h.connect("alice", "code", "", "")
-	if code.code() != apierr.CodeSignInUnsupported {
+	if code := h.connect("alice", "code", "", ""); code.code() != apierr.CodeMissingField {
+		t.Fatalf("an oauth connect with no return_to: %d %s", code.status, code.body)
+	}
+	code := h.do(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": "code", "return_to": "https://app.example.com/done"})
+	started := code.json(t)
+	if code.status != http.StatusCreated || !strings.HasPrefix(started["authorization_url"].(string), "https://code.example.com/authorize?") ||
+		started["connection"].(map[string]any)["state"] != "pending" {
 		t.Fatalf("an oauth connect: %d %s", code.status, code.body)
 	}
 }

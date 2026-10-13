@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -68,14 +69,21 @@ func request(h *harness, rt Route, ctr, con string) (path string, body any, head
 		body = map[string]any{"name": "renamed"}
 	case rt.Method == http.MethodPut:
 		body = map[string]any{"credential": map[string]any{"value": "a-new-key-of-alice"}}
+	case strings.HasSuffix(rt.Path, "/confirm"):
+		body = map[string]any{"code": "a-code-no-flow-has"}
+	case strings.HasSuffix(rt.Path, "/reconnect"):
+		body = map[string]any{"return_to": "https://app.example.com/done"}
 	}
 	return path, body, headers
 }
 
 // Every route asks its action, once, before it acts.
 func TestEveryRouteAsksItsAction(t *testing.T) {
+	// A confirm with no flow and a reconnect of a key answer an error after
+	// their question.
+	after := map[string]int{"/connections/{id}/confirm": http.StatusGone, "/connections/{id}/reconnect": http.StatusConflict}
 	for _, rt := range Routes() {
-		if rt.Path == "/openapi.yaml" {
+		if slices.Contains(public, rt) {
 			continue
 		}
 		t.Run(rt.Method+" "+rt.Path, func(t *testing.T) {
@@ -87,7 +95,7 @@ func TestEveryRouteAsksItsAction(t *testing.T) {
 			}
 			path, body, headers := request(h, rt, ctr, con)
 			a := h.do(rt.Method, path, "alice", body, headers...)
-			if a.status >= 300 {
+			if want, ok := after[rt.Path]; (ok && a.status != want) || (!ok && a.status >= 300) {
 				t.Fatalf("%d %s", a.status, a.body)
 			}
 			asked := h.authz.questions()[before:]
@@ -134,7 +142,7 @@ func TestADenyAndAnOutageAnswerBeforeAnythingIsDone(t *testing.T) {
 			h := newHarnessOn(t, open(t))
 			ctr, con := fixture(t, h)
 			for _, rt := range Routes() {
-				if rt.Path == "/openapi.yaml" || rt.Method == http.MethodGet {
+				if slices.Contains(public, rt) || rt.Method == http.MethodGet {
 					continue
 				}
 				path, body, headers := request(h, rt, ctr, con)

@@ -93,10 +93,6 @@ func TestCreateByKey(t *testing.T) {
 	if items := s.do(http.MethodGet, "/v1/connections", "alice", nil).json(t)["items"].([]any); len(items) != 4 {
 		t.Fatalf("a refused credential stored a connection: %d", len(items))
 	}
-	// A connector whose people sign in waits for the sign-in.
-	if a := s.connect("alice", "tracker", "", nil); a.status != http.StatusUnprocessableEntity || a.code() != "sign_in_unsupported" {
-		t.Fatalf("oauth: %d %s", a.status, a.body)
-	}
 }
 
 // A credential value shorter than 8 bytes is refused and nothing is
@@ -444,7 +440,7 @@ func TestAListIsNarrowedByItsAllowsFilter(t *testing.T) {
 		t.Fatalf("widened by owner: %v", got)
 	}
 	catalogItems := s.do(http.MethodGet, "/v1/connectors", "carol", nil).json(t)["items"].([]any)
-	if len(catalogItems) != 5 {
+	if len(catalogItems) != 6 {
 		t.Fatalf("the catalog under an empty filter: %d items", len(catalogItems))
 	}
 }

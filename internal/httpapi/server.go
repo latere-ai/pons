@@ -112,6 +112,8 @@ var routes = []route{
 	{http.MethodGet, "/connections", (*Server).listConnections},
 	{http.MethodGet, "/connections/{id}", (*Server).readConnection},
 	{http.MethodPatch, "/connections/{id}", (*Server).renameConnection},
+	{http.MethodPost, "/connections/{id}/confirm", (*Server).confirm},
+	{http.MethodPost, "/connections/{id}/reconnect", (*Server).reconnect},
 	{http.MethodPut, "/connections/{id}/credential", (*Server).replaceCredential},
 	{http.MethodDelete, "/connections/{id}", (*Server).deleteConnection},
 	{http.MethodGet, "/connections/{id}/calls", (*Server).listCalls},
@@ -139,12 +141,22 @@ var carried = []Route{
 // Routes lists every route the server serves below the base path, the
 // carrier's and the contract itself included.
 func Routes() []Route {
-	out := make([]Route, 0, len(routes)+len(carried)+1)
+	out := make([]Route, 0, len(routes)+len(carried)+len(public))
 	for _, rt := range routes {
 		out = append(out, Route{rt.method, rt.path})
 	}
 	out = append(out, carried...)
-	return append(out, Route{http.MethodGet, "/openapi.yaml"})
+	return append(out, public...)
+}
+
+// public are the routes that take no token: where the other service returns
+// a person's browser, the documents that name Pons to an authorization
+// server, and the contract.
+var public = []Route{
+	{http.MethodGet, "/callback"},
+	{http.MethodGet, "/client"},
+	{http.MethodGet, "/client/{id}"},
+	{http.MethodGet, "/openapi.yaml"},
 }
 
 // Handler is the whole surface: the probes at the root and the API below
@@ -163,6 +175,9 @@ func (s *Server) Handler() http.Handler {
 			return handle(s, w, r, c)
 		}))
 	}
+	mux.HandleFunc("GET "+b+"/callback", s.callback)
+	mux.HandleFunc("GET "+b+"/client", s.clientDocument)
+	mux.HandleFunc("GET "+b+"/client/{id}", s.clientDocument)
 	mux.HandleFunc("GET "+b+"/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/yaml")
 		if _, err := w.Write(api.OpenAPI); err != nil {

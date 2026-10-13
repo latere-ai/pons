@@ -28,6 +28,8 @@ tags:
     description: One owner's link to one connector.
   - name: addresses
     description: Where a caller reaches a connection, with a token of its own.
+  - name: sign-in
+    description: What the other service and its authorization server reach without a token.
   - name: contract
     description: This document.
 paths:
@@ -133,10 +135,12 @@ paths:
       description: |
         A connector that takes a key (`token`), a client of the owner's own
         (`client_credentials`) or nothing (`none`) is connected at once,
-        and the answer is the connection, `connected`. The credential is
-        write-only: no route returns it. A connector whose people sign in
-        (`oauth`) needs the sign-in, which this server does not offer yet:
-        `422 sign_in_unsupported`.
+        and the answer is the connection, `connected`; a key is tried
+        against the connector and a client minted for once before either is
+        kept. The credential is write-only: no route returns it. A
+        connector whose people sign in (`oauth`) answers the connection,
+        `pending`, with the address to send the person's browser to; it is
+        connected by the confirm.
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
@@ -146,10 +150,13 @@ paths:
             schema: {$ref: "#/components/schemas/Connect"}
       responses:
         "201":
-          description: The connection.
+          description: The connection, or a connection pending with the address of its sign-in.
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/Connection"}
+              schema:
+                oneOf:
+                  - {$ref: "#/components/schemas/Connection"}
+                  - {$ref: "#/components/schemas/Started"}
         "400": {$ref: "#/components/responses/Error"}
         "401": {$ref: "#/components/responses/Error"}
         "403": {$ref: "#/components/responses/Error"}
@@ -238,6 +245,68 @@ paths:
         "204": {description: Disconnected.}
         "401": {$ref: "#/components/responses/Error"}
         "404": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+  /connections/{id}/confirm:
+    post:
+      tags: [connections]
+      operationId: confirm
+      summary: Confirm a sign-in
+      description: |
+        Finish a sign-in with the code the browser brought back to the
+        client's return address. The caller must be allowed to act for the
+        connection's owner, and a client confirms only a connection its own
+        session started. A wrong code spends the sign-in.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Confirm"}
+      responses:
+        "200":
+          description: The connection, connected.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Connection"}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "410": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+  /connections/{id}/reconnect:
+    post:
+      tags: [connections]
+      operationId: reconnect
+      summary: Sign in again
+      description: |
+        Start a new sign-in for a connection of a connector whose people
+        sign in, to change its account or its scopes, or after the service
+        stopped taking its credential. The connection keeps answering calls
+        with its old credential until the confirm. Scopes named are asked
+        with the ones granted before.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Reconnect"}
+      responses:
+        "200":
+          description: The connection, pending, with the address of its sign-in.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Started"}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "422": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
         "503": {$ref: "#/components/responses/Error"}
   /connections/{id}/credential:
     put:
@@ -474,6 +543,55 @@ paths:
         "503": {$ref: "#/components/responses/Error"}
         "504": {$ref: "#/components/responses/Error"}
         default: {$ref: "#/components/responses/Forwarded"}
+  /callback:
+    get:
+      tags: [sign-in]
+      operationId: callback
+      summary: Where the other service returns a person's browser
+      description: |
+        The redirect address Pons gives every authorization server. It
+        takes no token: it finds the sign-in by its state, and sends the
+        browser on to the client's return address with the connection and
+        a code to confirm, or an error.
+      security: []
+      responses:
+        "302": {description: To the sign-in's return address.}
+        "400":
+          description: A page that says the link has expired; no redirect.
+          content:
+            text/html:
+              schema: {type: string}
+  /client:
+    get:
+      tags: [sign-in]
+      operationId: clientDocument
+      summary: The client metadata document of the catalog's connectors
+      security: []
+      responses:
+        "200":
+          description: How Pons names itself to an authorization server.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientDocument"}
+  /client/{id}:
+    get:
+      tags: [sign-in]
+      operationId: addedClientDocument
+      summary: The client metadata document of a connector a person added
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The id of a connector a person added.
+          schema: {type: string}
+      responses:
+        "200":
+          description: How Pons names itself to an authorization server, for this connector.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientDocument"}
+        "404": {$ref: "#/components/responses/Error"}
   /openapi.yaml:
     get:
       tags: [contract]
@@ -629,6 +747,38 @@ components:
         return_to: {type: string, format: uri, description: Where the browser goes after a sign-in.}
         credential: {$ref: "#/components/schemas/Credential"}
         scopes: {type: array, items: {type: string}, description: Scopes to ask for at a sign-in.}
+    Confirm:
+      type: object
+      required: [code]
+      additionalProperties: false
+      properties:
+        code: {type: string, description: The code the browser brought back to the return address.}
+    Reconnect:
+      type: object
+      required: [return_to]
+      additionalProperties: false
+      properties:
+        return_to: {type: string, format: uri, description: Where the browser goes after the sign-in.}
+        scopes: {type: array, items: {type: string}, description: Scopes to ask for beside the ones granted before.}
+    Started:
+      type: object
+      required: [connection, authorization_url]
+      additionalProperties: false
+      properties:
+        connection: {$ref: "#/components/schemas/Connection"}
+        authorization_url: {type: string, format: uri, description: Where to send the person's browser to sign in.}
+    ClientDocument:
+      type: object
+      required: [client_id, client_name, redirect_uris, grant_types, response_types, token_endpoint_auth_method]
+      additionalProperties: false
+      properties:
+        client_id: {type: string, format: uri}
+        client_name: {type: string}
+        client_uri: {type: string, format: uri}
+        redirect_uris: {type: array, items: {type: string, format: uri}}
+        grant_types: {type: array, items: {type: string}}
+        response_types: {type: array, items: {type: string}}
+        token_endpoint_auth_method: {type: string, enum: [none]}
     Rename:
       type: object
       required: [name]

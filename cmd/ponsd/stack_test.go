@@ -27,9 +27,14 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	// The example catalog names its one secret by this variable.
-	if err := os.Setenv("TRACKER_CLIENT_SECRET", "tracker-client-secret-of-the-tests"); err != nil {
-		panic(err)
+	// The example catalog names its one secret by this variable, and the
+	// GitHub-shaped entry of the tests its client's by the other.
+	for name, value := range map[string]string{
+		"TRACKER_CLIENT_SECRET": "tracker-client-secret-of-the-tests", "GITHUB_APP_CLIENT_SECRET": githubSecret,
+	} {
+		if err := os.Setenv(name, value); err != nil {
+			panic(err)
+		}
 	}
 	pgtest.Main(m)
 }
@@ -76,6 +81,7 @@ func upstreamOf(t testing.TB) *upstream {
 	u := &upstream{api: stubs.NewAPI(t), auth: stubs.NewAuthServer(t)}
 	u.auth.AddClient("wh", "")
 	u.auth.AddClient("wh-client", "")
+	u.auth.AddClient(githubClient, githubSecret)
 	if tt, ok := t.(*testing.T); ok {
 		if _, err := stubs.GitPath(); err == nil {
 			u.git = stubs.NewGitHost(tt)
@@ -107,9 +113,20 @@ func (u *upstream) gitURL() string {
 	return u.api.URL()
 }
 
+// The client of the GitHub-shaped entry at the stub authorization server.
+const (
+	githubClient = "Iv23exampleclientid"
+	githubSecret = "github-app-client-secret-of-the-tests"
+)
+
+// returnURL is where a browser returns to after a sign-in, one of
+// PONS_RETURN_URLS.
+const returnURL = "https://app.example.com/connections/done"
+
 // catalogFile writes the example catalog, its warehouse minting at the
 // stub, with an entry of kind http at the stub API and git host, "forge",
-// which takes a key, and the entries given beside them.
+// which takes a key, one in GitHub's shape, "github", which signs people in
+// at the stub authorization server, and the entries given beside them.
 func catalogFile(t testing.TB, extra string) string {
 	t.Helper()
 	u := upstreamOf(t)
@@ -123,6 +140,28 @@ func catalogFile(t testing.TB, extra string) string {
     git: {url: "` + u.gitURL() + `", inject: {scheme: basic, username: x-access-token}}
     http: {pass_back: ["X-RateLimit-*"]}
     auth: {type: token}
+  - name: github
+    title: GitHub
+    description: Clone, change and push the repositories you choose, and work with their issues and pull requests.
+    kind: http
+    url: ` + u.api.URL() + `
+    git:
+      url: "` + u.gitURL() + `"
+      inject: {scheme: basic, username: x-access-token}
+    hosts: ["api.example.com", "git.example.com"]
+    http:
+      pass: ["X-GitHub-Api-Version"]
+      pass_back: ["X-RateLimit-*", "X-GitHub-Request-Id"]
+    auth:
+      type: oauth
+      discovery: none
+      authorize_url: ` + u.auth.AuthorizeURL() + `
+      token_url: ` + u.auth.TokenURL() + `
+      client: {id: ` + githubClient + `, secret: {env: GITHUB_APP_CLIENT_SECRET}}
+      resource: false
+      account: {url: "` + u.api.URL() + `/user", field: login}
+    links:
+      manage: https://github.com/apps/pons-example/installations/new
 `
 	path := filepath.Join(t.TempDir(), "catalog.yaml")
 	if err := os.WriteFile(path, []byte(example+forge+extra), 0o600); err != nil {
@@ -210,6 +249,7 @@ func environment(t testing.TB, iss *stubs.Issuer, over map[string]string) map[st
 		"PONS_CATALOG_FILE": catalogFile(t, ""),
 		// A test makes more connections in a minute than a person does.
 		"PONS_CREATES_PER_MINUTE": "1000",
+		"PONS_RETURN_URLS":        returnURL + ",https://app.example.com/settings/",
 	}
 	maps.Copy(env, over)
 	for k, v := range over {
