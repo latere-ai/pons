@@ -12,7 +12,8 @@ will hear back within three business days.
 
 ## State
 
-Pons has no release yet. The design is in [`specs/`](specs/README.md),
+The first release with an image is v0.1.1, of 2026-10-13. The design is
+in [`specs/`](specs/README.md),
 and the threat model is
 [`specs/012-security-and-threat-model.md`](specs/012-security-and-threat-model.md).
 The commitments below are the ones the code already holds, each with the
