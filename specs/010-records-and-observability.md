@@ -8,7 +8,7 @@ depends_on:
 affects: [internal/carry/, internal/store/, internal/httpapi/, internal/dial/, cmd/ponsd/]
 effort: medium
 created: 2026-10-12
-updated: 2026-10-12
+updated: 2026-10-13
 author: changkun
 ---
 
@@ -221,13 +221,19 @@ probes with the checks `store`, `sealing` and `catalog` and the dial
 line, `otel.Handler` over every route with the probes skipped, and an
 unclassified error logged with any URL cut to its scheme, host and path.
 
-Remains: writing a record when a call ends, the metrics, the spans of a
-call and of an outbound request, and the test over the keys of every log
-call, all of which come with the carrier.
+A record is written when a call to a forwarding or a git address ends,
+after its last byte, with a context of its own; a denied call once a
+minute per subject and connection on a replica; a failure of Pons's own
+leaves none; a write that fails is logged. One line is logged per call
+when it ends.
+
+Remains: the metrics, the spans of a call and of an outbound request, the
+test over the keys of every log call, and the records of the address of
+kind `mcp`.
 
 | Criterion | State |
 |---|---|
-| `carry.TestACallLeavesOneRecord`, `carry.TestEveryOutcomeIsRecorded`, `carry.TestAStreamIsRecordedWhenItEnds`, `carry.TestARecordFailureNeverFailsTheCall` | not written: they need the carrier |
+| `carry.TestACallLeavesOneRecord`, `carry.TestEveryOutcomeIsRecorded`, `carry.TestAStreamIsRecordedWhenItEnds`, `carry.TestARecordFailureNeverFailsTheCall` | held for the forwarding address by `carry.TestForwardedRequestsAreRecorded`, `carry.TestTimeoutsAndCancel`, `carry.TestAnIdleStreamIsCut` and `carry.TestInsufficientScope`; the tests of these names wait for the MCP address |
 | `TestRetentionSweep` | written, over both stores |
 | `TestNoCredentialLeavesButTowardItsConnector`, `TestATrickedSessionObtainsNoCredential` | the first written for the routes that exist, over responses, logs and the store; spans, metrics and the second wait for the carrier |
 | `TestMetricLabelsAreBounded`, `TestEachMetricCountsItsEvent` | not written: no metric is recorded yet |

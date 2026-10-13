@@ -6,7 +6,7 @@ depends_on: []
 affects: [cmd/ponsd/, internal/, authorizer/, api/]
 effort: large
 created: 2026-10-12
-updated: 2026-10-12
+updated: 2026-10-13
 author: changkun
 ---
 
@@ -246,15 +246,19 @@ The objects and their fields ([[002-objects]]); the routes
 ## Implementation status
 
 Built: the binary and its three commands; the package layout of the
-table above, but `internal/signin` and `internal/carry`; the memory and
+table above; the memory and
 the Postgres stores with the first log line naming the one in use; the
 dialer, which builds every client, transport and dialer of the module,
 the operator client toward the issuer and the authorizer included; the
 owner policy and the authorizer client; invariants 1, 2, 5, 6 and 10 for
 the routes that exist.
 
-Remains: the sign-in and the carrier, so invariants 3, 4, 7, 8 and 9 have
-no code path yet, and a credential is never opened.
+The carrier of the forwarding and git addresses, and the sign-in's token
+endpoint, refresh by one writer and minted tokens: invariants 3, 4, 8 and
+9 hold for them.
+
+Remains: the sign-in's flow and its confirm, so invariant 7 has no code
+path yet, and the MCP carrier.
 
 | Criterion | State |
 |---|---|

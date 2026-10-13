@@ -7,7 +7,7 @@ depends_on:
 affects: [api/, catalog/, internal/store/, internal/id/]
 effort: medium
 created: 2026-10-12
-updated: 2026-10-12
+updated: 2026-10-13
 author: changkun
 ---
 
@@ -209,10 +209,13 @@ as sealed columns with its meta in the clear and the 8-byte floor; flows
 and registrations in both stores; the state machine as one Go table both
 stores read (`store.Edges`).
 
-Remains: the moves the sign-in and the carrier make (a confirm, a
-reconnect, a refusal by the connector), the flow's use, and
-`git_address`, which needs the `git` member of a catalog entry
-([[014-http-forwarding]]); the API omits it until then.
+A connection of kind `http` carries `git_address` when its connector
+names `git.url`, and the carrier moves a connection whose credential the
+connector refuses, or keeps a pending one's state and gives it the
+reason.
+
+Remains: the moves the sign-in makes (a confirm, a reconnect) and the
+flow's use.
 
 | Criterion | State |
 |---|---|

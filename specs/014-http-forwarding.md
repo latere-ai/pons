@@ -1,6 +1,6 @@
 ---
 title: "Plain HTTP and git through a connection: a forwarding address and a git address, the credential added, a path held to its connector, and a push held to the refs an allow names"
-status: drafted
+status: in-progress
 track: core
 depends_on:
   - specs/002-objects.md
@@ -12,7 +12,7 @@ depends_on:
 affects: [internal/carry/, internal/httpapi/, catalog/, authorizer/, api/]
 effort: large
 created: 2026-10-12
-updated: 2026-10-12
+updated: 2026-10-13
 author: changkun
 ---
 
@@ -38,11 +38,11 @@ git and for the API beside it.
 
 ## Current state
 
-Nothing is built. The carrier of [[008-carrying-a-call]] forwards one
-kind of request, a Model Context Protocol message, and this spec reuses
-its steps, its header rules, its handling of a refused credential and
-its record. What is new is what is read from a request: a path instead
-of a tool, and for a push the refs it updates.
+Built; see Implementation status. The carrier of [[008-carrying-a-call]]
+forwards a Model Context Protocol message, and this spec reuses its
+steps, its header rules, its handling of a refused credential and its
+record. What is new is what is read from a request: a path instead of a
+tool, and for a push the refs it updates.
 
 ## Design
 
@@ -55,7 +55,9 @@ A connector of kind `http` ([[006-catalog]]) gives:
 | `url` | the API's base, such as `https://api.example.com`. Required |
 | `git.url` | optional: the git host's base, such as `https://git.example.com` |
 | `git.inject` | where the credential goes on a git request: `{scheme: bearer}` by default, or `{scheme: basic, username: <name>}`, which sends `Authorization: Basic` of the username and the token |
-| `http.read_only` | optional: `METHOD path-glob` patterns of requests that only read, beyond `GET`, `HEAD` and `OPTIONS` |
+| `http.read_only` | optional: `METHOD path-glob` patterns of requests that only read, beyond `GET`, `HEAD` and `OPTIONS`: a method in capitals, one space, and a glob over the path below the address, which starts with a slash, such as `POST /search/*` |
+| `http.pass` | optional: request headers passed toward the connector beside the carrier's own, such as an API version header. Not the credential's header, and not one the carrier sets or removes itself |
+| `http.pass_back` | optional: globs of response header names passed back to the caller, matched without regard to case, such as `X-RateLimit-*` |
 
 `hosts` must cover the host of `url` and of `git.url`. The credential
 of an `oauth` or `client_credentials` connection is placed as
@@ -77,18 +79,22 @@ wrong_kind`, as in [[008-carrying-a-call]].
 
 **A path cannot leave its connector.** Before it is joined, `{path}` is
 refused with `400 invalid_request` when it holds a `.` or `..`
-segment, an empty segment, a backslash, an encoded slash or backslash
-(`%2F`, `%5C`, in either case), an encoded dot segment, or a control
-character, and when it is longer than 2048 bytes. The joined URL keeps
-the connector's scheme, host and port: nothing in a request names
-another.
+segment, an empty segment, a trailing slash included, a backslash, an
+encoded slash or backslash (`%2F`, `%5C`, in either case), an encoded
+dot segment, or a control character, and when it is longer than 2048
+bytes. The checks read the path as the caller escaped it, before any
+router cleans or decodes it. An empty `{path}` is the connector's `url`
+itself. The joined URL keeps the connector's scheme, host and port:
+nothing in a request names another.
 
 **The git address takes git's smart HTTP alone.** A request is served
-only when its path ends in `/info/refs` with the query `service` set to
-`git-upload-pack` or `git-receive-pack`, or in `/git-upload-pack` or
-`/git-receive-pack` with method `POST`. Any other request to the git
-address is `404 connection_not_found`, so the address serves no web
-page of the git host.
+only when it is a `GET` whose path ends in `/info/refs` with the query
+`service` set to `git-upload-pack` or `git-receive-pack`, or a `POST`
+whose path ends in `/git-upload-pack` or `/git-receive-pack`. Any other
+request to the git address is `404 connection_not_found`, so the
+address serves no web page of the git host. A connection whose
+connector names no `git.url` has no git address: a request to it is
+`409 wrong_kind`.
 
 ### One request
 
@@ -131,7 +137,8 @@ streams the rest of the request, the pack, untouched.
 - A request with a `Content-Encoding` is `400 invalid_request`. Git
   does not compress a push, so a compressed one is not git's.
 - Commands that do not parse, or that run past either bound, are `400
-  invalid_request`.
+  invalid_request`. A push from a shallow clone begins with `shallow`
+  lines, which name no ref and are read past; a signed push is not taken.
 
 A fetch and a clone are not read: what a caller may read is decided by
 the question alone.
@@ -147,6 +154,10 @@ The git address passes what git sends: `Accept`, `Accept-Encoding`,
 `Git-Protocol`. Everything else is removed as [[008-carrying-a-call]]
 removes it, the caller's `Authorization` first.
 
+A caller that names no `Accept-Encoding` is asked for none at the
+connector, `identity`, so the transport undoes no coding of an answer
+that passes through unread.
+
 Back to the caller, both pass the status, the body, `Content-Type`,
 `Content-Length`, `Content-Encoding`, `Cache-Control`, `ETag`,
 `Last-Modified`, `Retry-After`, and headers matching `http.pass_back`
@@ -160,9 +171,11 @@ stays on Pons. A `Link` URL elsewhere is dropped from the header. This
 is the one place Pons changes an answer, and it changes only that
 header: a URL inside a body is passed as the connector wrote it.
 
-**A redirect.** A `3xx` whose `Location` starts with the connector's
-`url`, or `git.url` on the git address, passes with that prefix
-rewritten to the address. A `3xx` anywhere else is `502
+**A redirect.** A `3xx` whose `Location`, resolved against the request
+it answers, starts with the connector's `url`, or `git.url` on the git
+address, at a boundary of its path, passes with that prefix rewritten
+to the address. A `3xx` with no `Location`, such as `304`, passes as it
+came. A `3xx` anywhere else is `502
 connector_unavailable` with `details.reason` `redirect_elsewhere`: Pons
 follows no redirect, and a caller that followed one would leave Pons
 without the credential.
@@ -173,6 +186,16 @@ As [[008-carrying-a-call]] says, with one difference: the body is not
 buffered, so a `401` is retried after a refresh only for a request with
 no body. A request with a body answers the `401` the connector gave,
 and the connection's next request uses the refreshed credential.
+
+### The probe of a key
+
+A key pasted for a connector of kind `http` is tried once before it is
+stored ([[007-sign-in]]): one `GET` of the connector's `url` with the
+key in its place, through the dialer, in 15 seconds. A `401` or a `403`
+refuses it, `422 credential_refused`; no answer is `422
+connector_unreachable`; any other status accepts it, since the service
+answered without refusing the key, and many an API answers its base
+with a `404`. The answer is kept nowhere.
 
 ### How a caller in a sandbox uses it
 
@@ -197,6 +220,33 @@ One record per request, as [[010-records-and-observability]] says.
 `method` is the HTTP method and `tool` is the path without its query or
 the git service. A push's record also counts its refs, in a column
 `refs`, and holds no ref name.
+
+## Implementation status
+
+Built in `internal/carry`, served before the router of `internal/httpapi`
+so the path is judged as the caller escaped it: both addresses, the path
+rules, the four requests of the git address, the effect, the question
+with `method`, `tool`, `effect` and `refs`, a push's commands read
+before its pack and held to `Refs`, the body streamed and bounded by
+`PONS_MAX_FORWARD_BYTES`, the headers each way, `Link` and `Location`
+moved under the address, a `3xx` elsewhere as `redirect_elsewhere`, a
+refused credential, the scope challenge, records with the count of
+refs, and the probe of a key. A body that runs past its bound after the
+connection was found is recorded `denied`, as a bound Pons holds.
+
+| Criterion | State |
+|---|---|
+| `carry.TestAForwardedPathStaysOnItsConnector` | written |
+| `carry.TestTheGitAddressServesGitAlone` | written; skipped with its reason where `git` is not installed |
+| `TestCloneThroughTheGitAddress` | written, in the e2e tier, with a real `git` |
+| `carry.TestAPushIsHeldToItsRefs` | written, with a real `git` |
+| `carry.TestTheEffectOfAForwardedRequest` | written |
+| `carry.TestAForwardedBodyStreams` | written |
+| `carry.TestLinksComeBackToTheAddress` | written |
+| `carry.TestARedirectStaysOnItsConnector` | written |
+| `carry.TestForwardedHeaders` | written |
+| `carry.TestARefusedForwardedRequest` | written |
+| `carry.TestForwardedRequestsAreRecorded` | written |
 
 ## Not in this spec
 

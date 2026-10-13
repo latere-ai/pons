@@ -28,3 +28,18 @@ here is refused before it is pushed.
 - Added: Postgres through `PONS_DATABASE_URL`, served through
   `PONS_DATABASE_POOL_URL` when a pooler is in front; with neither the
   server runs on a store in memory and says so.
+- Added: a connector of kind `http` takes `git` and `http` in the
+  catalog: a git host beside its API, where the credential goes on a git
+  request, the requests that only read, and the headers that pass each
+  way.
+- Added: a connection of kind `http` is reached at two addresses: its
+  `address`, which forwards plain HTTP to the connector's API, and its
+  `git_address`, which carries git's clone, fetch and push to the
+  connector's git host. The credential is added on the way out and the
+  caller's own token removed; a path cannot leave its connector, a
+  redirect elsewhere is not followed, and a push is held to the refs the
+  authorizer's allow names. Each request leaves a call record.
+- Added: a key pasted for a connector of kind `http` is tried against
+  the connector before it is kept, and a client of `client_credentials`
+  is minted for once; a refused one answers `422 credential_refused` and
+  nothing is stored.

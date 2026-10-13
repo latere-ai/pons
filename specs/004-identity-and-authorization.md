@@ -8,7 +8,7 @@ depends_on:
 affects: [authorizer/, internal/access/, internal/httpapi/, internal/carry/]
 effort: medium
 created: 2026-10-12
-updated: 2026-10-12
+updated: 2026-10-13
 author: changkun
 ---
 
@@ -329,9 +329,12 @@ and `PONS_CREATES_PER_MINUTE`; the probe at start and in `ponsd check`.
 `Limits` carries `refs` beside the six members the first draft listed,
 so the key list above and its criterion name seven.
 
-Remains: everything a use asks and holds (`connection.use`, `read_only`,
-`tools`, `refs`, `calls_per_minute`, the counts in flight and the
-`session` claim), which comes with the carrier.
+A use of the forwarding and git addresses asks `connection.use` with
+`method`, `tool`, `effect` and a push's `refs`, and holds `read_only`,
+`tools`, `refs`, `calls_per_minute` and the counts in flight; the
+`session` claim is copied into the record ([[014-http-forwarding]]).
+
+Remains: the same for the address of kind `mcp`, with the MCP carrier.
 
 | Criterion | State |
 |---|---|
@@ -340,20 +343,20 @@ Remains: everything a use asks and holds (`connection.use`, `read_only`,
 | `TestAServerWithNoIssuerIsRefused`, `TestAnAuthorizerNeedsItsTokenFile` | written |
 | `authorizer.TestTheVocabularyIsTheSpecs`, `access.TestTheRowsAreTheSpecs` | written |
 | `httpapi.TestEveryRouteAsksItsAction`, `httpapi.TestADenyAndAnOutageAnswerBeforeAnythingIsDone` | written, over both stores |
-| `access.TestTheEnvelopeCarriesTheCallerAndTheQuestion`, `carry.TestAUseAsksWithItsTool` | the first written; the second waits for the carrier |
+| `access.TestTheEnvelopeCarriesTheCallerAndTheQuestion`, `carry.TestAUseAsksWithItsTool` | written |
 | `access.TestAuthorizerConformance` | written, against the stub authorizer over TLS |
 | `access.TestWhatTheClientRemembers`, `access.TestACreateIsAlwaysAsked`, `access.TestOneRetryOnAConnectionFailure` | written |
-| `carry.TestAnAllowIsRememberedPerTool` | not written: it needs the carrier |
+| `carry.TestAnAllowIsRememberedPerTool` | written, against the stub authorizer |
 | `TestADenyDoesNotConfirmAnId` | written for the routes that exist |
 | `access.TestTheClientFailsClosed`, `authorizer.TestDecodeRefusesWhatItCannotHold` | written |
 | `authorizer.TestTheWireNamesEveryMemberAndNoOther` | written, with seven keys |
 | `TestWhoseACreateIs`, `TestAStoredConnectionKeepsItsOwner` | written; the second for a replaced key, the confirm and the reconnect wait for the sign-in |
-| `TestEachMemberOfAnAllowChangesTheOutcome`, `carry.TestALimitRefusesBeforeTheCredential` | the first written with cases for the owner, the cap and the connectors, and an exact list of the members waiting for the carrier, which only shrinks; the second waits for the carrier |
+| `TestEachMemberOfAnAllowChangesTheOutcome`, `carry.TestALimitRefusesBeforeTheCredential` | written, a case per member and the list of members waiting empty |
 | `TestLimitsHoldWithNoAuthorizer` | written |
 | `TestAListIsNarrowedByItsAllowsFilter` | written |
 | `access.TestTheOwnerPolicy`, `TestTheOwnerPolicyThroughTheAPI`, `TestAnotherOwnersTokenReachesNothing` | written for the routes that exist |
 | `access.TestOwnerPolicyConformance`, `access.TestOwnerPolicyNarrowsByTheGrants`, `TestTheServerRefusesAnEndpointThatAllowsTheProbe` | written |
-| `carry.TestTheSessionClaimIsCopiedNotRead` | not written: it needs the carrier |
+| `carry.TestTheSessionClaimIsCopiedNotRead` | written |
 
 ## Acceptance criteria
 

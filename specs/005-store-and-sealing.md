@@ -8,7 +8,7 @@ depends_on:
 affects: [internal/store/, internal/config/, cmd/ponsd/]
 effort: large
 created: 2026-10-12
-updated: 2026-10-12
+updated: 2026-10-13
 author: changkun
 ---
 
@@ -347,8 +347,13 @@ nothing and is no error, a move with an empty reason keeps the reason, and
 `InUse` answers whether a connection names a connector, which a delete of
 an added connector reads.
 
-Remains: the callers of `Open` (the sign-in and the carrier) and what
-they do with a value no key opens.
+The carrier and the sign-in open a credential through one function,
+`signin.Open`; a value no listed key opens answers `503
+sealing_unavailable`, is logged with the connection's id, and moves no
+state.
+
+Remains: what the sign-in does with a flow's verifier and pending
+credential.
 
 | Criterion | State |
 |---|---|

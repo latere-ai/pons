@@ -7,7 +7,7 @@ depends_on:
 affects: [internal/dial/, catalog/, internal/config/]
 effort: large
 created: 2026-10-12
-updated: 2026-10-12
+updated: 2026-10-13
 author: changkun
 ---
 
@@ -295,8 +295,14 @@ operator client. A URL with a user part is refused as `scheme_not_https`,
 since it is not an https address of the form the rule admits and the
 table names no other refusal for it.
 
-Remains: the callers of the outside client, the sign-in and the carrier,
-and the counts of refusals ([[010-records-and-observability]]).
+The outside client's callers are built: the carrier forwards each call
+through it with `Forward`, which bounds the call by the carrier's header
+wait and idle time rather than the sign-in's 15 seconds for a request
+that carries a secret, and answers a `3xx` as it came for the carrier to
+judge; the sign-in sends its token requests through it with the secret
+bound to the endpoint's host.
+
+Remains: the counts of refusals ([[010-records-and-observability]]).
 
 | Criterion | State |
 |---|---|
@@ -306,7 +312,7 @@ and the counts of refusals ([[010-records-and-observability]]).
 | `catalog.TestHostRule`, `dial.TestChecksBeforeResolving`, `dial.TestPorts` | written |
 | `TestTheHostRuleHasOneImplementation`, `catalog.TestHostsCoverTheURL` | written |
 | `dial.TestCertificateIsVerifiedForTheName`, `TestNothingTurnsVerificationOff` | written |
-| `TestCarrierFollowsNoRedirect`, `dial.TestRedirects` | the second written; the first waits for the carrier |
+| `TestCarrierFollowsNoRedirect`, `dial.TestRedirects` | the second written, with `dial.TestAForwardedCallIsTheCarriers`; the first held for the forwarding address by `carry.TestARedirectStaysOnItsConnector` |
 | `dial.TestSecretIsBoundToItsHosts`, `dial.TestNoCookieAndNoTraceHeaderLeave` | written |
 | `dial.TestLimits` | written |
 | `dial.TestNoProxyFromTheEnvironment`, `dial.TestOutboundProxy` | written |

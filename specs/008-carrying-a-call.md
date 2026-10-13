@@ -1,6 +1,6 @@
 ---
 title: "Carrying a call: the address, what is forwarded and what is removed, the credential's place, streaming, the tool a request names, failures"
-status: drafted
+status: in-progress
 track: core
 depends_on:
   - specs/002-objects.md
@@ -12,7 +12,7 @@ depends_on:
 affects: [internal/carry/, internal/httpapi/]
 effort: xlarge
 created: 2026-10-12
-updated: 2026-10-12
+updated: 2026-10-13
 author: changkun
 ---
 
@@ -35,7 +35,10 @@ gives a client.
 
 ## Current state
 
-Nothing is built. Two designs in sibling projects are the precedent. A
+The steps are built for the forwarding and git addresses of
+[[014-http-forwarding]]; the address of kind `mcp` is not. See
+Implementation status. Two designs in sibling projects are the
+precedent. A
 model gateway seals each provider's credential and opens it only to
 forward one call, which is the custody here. A sandbox control plane's
 egress gateway places a secret in the header its owner named, toward
@@ -277,10 +280,11 @@ stream holds one of the 16 places for its life. The transport
 encourages a server to send keep-alive comments on it; one that sends
 none is cut after the idle timeout, and the caller opens it again.
 
-The places are `latere.ai/x/pkg/semaphore`s, of 16 per connection, of
+The places are counts kept under one lock, of 16 per connection, of
 `PONS_MAX_INFLIGHT_PER_SUBJECT` per subject and of `PONS_MAX_INFLIGHT`
-for the process, each taken with `Acquire(ctx, 0)` so a request never
-queues. The last two hold whatever an allow says
+for the process, each taken without waiting so a request never queues,
+and a subject's or a connection's count is dropped when it reaches
+zero, so the counts do not grow with the subjects that ever called. The last two hold whatever an allow says
 ([[004-identity-and-authorization]]). `CallsPerMinute` is a
 `latere.ai/x/pkg/ratelimit` bucket keyed by caller and connection. All
 are per process: with n replicas a caller may make up to n times any of
@@ -290,7 +294,8 @@ these limits. Every request to the address counts against
 ### The probe
 
 The probe is this forwarder sending requests of its own, with no
-caller. It tries a pasted key before it is stored ([[003-api]],
+caller. What follows is the probe of a connector of kind `mcp`; one of
+kind `http` is probed by a `GET` of its `url` ([[014-http-forwarding]]). It tries a pasted key before it is stored ([[003-api]],
 [[007-sign-in]]), with the key in its place, and makes the first
 request of discovery, with no credential ([[007-sign-in]]).
 
@@ -367,6 +372,41 @@ sequenceDiagram
   P-->>C: the final response, the stream ends
   P->>D: write the call record
 ```
+
+## Implementation status
+
+Built in `internal/carry` for the forwarding and git addresses of
+[[014-http-forwarding]], in the order of One request: the origin, the
+caller and its places in flight, the body's bound, the connection, the
+effect, the question, the kind, the limits of the allow (`ReadOnly`,
+`Tools`, `Refs`, `CallsPerMinute` and the connection's 16 places), the
+state, the credential opened and refreshed by one writer or minted, the
+dialer with the credential bound to the connector's hosts, the answer
+streamed and flushed per read with the idle bound, the refusal of a
+credential and the scope challenge, and the record, denied calls once a
+minute per subject and connection.
+
+Remains: the address of kind `mcp`, which answers `404` until it is
+served, and what is read from its body: the method and the tool, the
+mirrored headers, the earlier revisions' `GET`, `DELETE` and sessions,
+and the probe of a key by `tools/list`. Until then a key of kind `mcp` is
+stored without a probe ([[003-api]]).
+
+| Criterion | State |
+|---|---|
+| `carry.TestRequestHeaders`, `carry.TestAnswerPassesUnchanged`, `carry.TestResponseHeaders`, `carry.TestStreamIsFlushedPerEvent`, `carry.TestParseOnlyTheMethodAndTool`, `carry.FuzzParse`, `carry.TestProbe` | not written: the MCP address |
+| `TestCarrierFollowsNoRedirect` | for the forwarding address, `carry.TestARedirectStaysOnItsConnector`; the MCP address waits |
+| `carry.TestNothingTellsAnIdBeforeTheQuestion`, `TestADenyDoesNotConfirmAnId` | the second written for a use of the forwarding address |
+| `carry.TestLimitsOfAnAllow`, `carry.TestALimitRefusesBeforeTheCredential`, `TestAConnectionsConcurrencyIsBounded` | the second written, with the connection's places; the others wait for the MCP address |
+| `TestACallersConcurrencyIsBounded` | the places are held by `carry.TestALimitRefusesBeforeTheCredential`; the e2e case waits |
+| `TestReconnectKeepsServing`, `TestRemovedConnectorKeepsItsConnections` | the first with the sign-in; the second written, the `409` through `carry.TestTheStateOfAConnection` |
+| `carry.TestConnectorRefusesTheCredential`, `carry.TestInsufficientScope` | the first as `carry.TestARefusedForwardedRequest`; the second written |
+| `carry.TestOriginIsChecked` | held by `carry.TestForwardedHeaders` |
+| `TestAnyReplicaServesASession` | not written: sessions are the MCP address's |
+| `carry.TestTimeoutsAndCancel` | written for the forwarding address, with `carry.TestAnIdleStreamIsCut` |
+| `TestEveryCallIsRecorded`, `TestDeniedCallsAreRecordedOncePerMinute` | held by `carry.TestForwardedRequestsAreRecorded` and `carry.TestAPushIsHeldToItsRefs` |
+| `TestCallThatNeedsARefresh` | with the sign-in |
+| `TestNoCredentialLeavesButTowardItsConnector` | the forwarding and git addresses exercised with a canary key |
 
 ## Not in this spec
 

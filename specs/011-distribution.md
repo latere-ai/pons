@@ -7,7 +7,7 @@ depends_on:
 affects: [cmd/ponsd/, internal/config/, internal/version/, test/stubs/, deploy/, docs/, Makefile, Dockerfile, .lateregate.yaml, .githooks/, .github/, CHANGELOG.md, SECURITY.md]
 effort: large
 created: 2026-10-12
-updated: 2026-10-12
+updated: 2026-10-13
 author: changkun
 ---
 
@@ -330,8 +330,7 @@ answers ([[010-records-and-observability]]). The text of `SECURITY.md`
 
 ## Implementation status
 
-Built: the layout of the table above but `internal/signin`,
-`internal/carry`, `deploy/` and `docs/`; `ponsd` with `serve`, `check` and
+Built: the layout of the table above but `deploy/` and `docs/`; `ponsd` with `serve`, `check` and
 `version`; `internal/config`, which reads every variable of the table
 once, `PONS_MAX_FORWARD_BYTES` included, and is the one package that
 reads the environment; the gate's configuration, with `identity`
@@ -346,7 +345,15 @@ authorizer over TLS on one authority, which panics, as
 `net/http/httptest` does, when the system cannot make a key; the test
 tiers, with the e2e tier beside `serve`.
 
-Remains: the stub connector, authorization server, API and git host;
+The stub API, git host and authorization server are built beside the
+issuer and the authorizer, with `stubs.Resolver`, which answers loopback
+for every name under `example.com`, and `stubs.Permit` for the stubs'
+listeners; the e2e tier hands both to the server's outside client
+through its hooks. The git host skips the test that starts it, with the
+reason, where `git` is not installed. The authorization server fetches no
+client metadata document: a client id that is a URL is recorded.
+
+Remains: the stub connector;
 `deploy/` and `docs/` with the generated configuration reference, so the
 `deploy` job of `verify` is not there yet; the release workflow and
 `TestReleaseWorkflowShape`.
@@ -360,7 +367,7 @@ Remains: the stub connector, authorization server, API and git host;
 | `TestCheckReports`, `TestCheckReportsWhatRemains` | written |
 | `TestVersionIsStamped` | written |
 | `stubs.TestConnectorSpeaksStreamableHTTP`, `stubs.TestEachSwitchChangesOneAnswer` | not written: the stub connector comes with the carrier |
-| `stubs.TestAuthorizationServerRunsASignIn`, `stubs.TestAuthorizerRecordsEveryQuestion` | the second written; the first comes with the sign-in |
+| `stubs.TestAuthorizationServerRunsASignIn`, `stubs.TestAuthorizerRecordsEveryQuestion` | written, with `stubs.TestEachAuthSwitchChangesOneAnswer`, `stubs.TestAPIServesACodeHostsRoutes` and `stubs.TestGitHostServesGit` |
 | `TestMemoryStore`, `TestPostgresStore`, `TestPostgresStoreThroughAPooler` | written |
 | `TestEveryRouteIsExercised` | written, over the routes served |
 | `TestNoCredentialLeavesButTowardItsConnector` | written for a key and a client secret; issued tokens wait for the stub authorization server |
