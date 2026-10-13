@@ -6,6 +6,8 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+## v0.1.1 - 2026-10-13
+
 - Fixed: the release pipeline attests the image's bill of materials and
   provenance only while the repository is public, since GitHub keeps
   attestations for a private repository only on a higher plan. v0.1.0
