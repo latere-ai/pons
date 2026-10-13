@@ -30,7 +30,7 @@ credential to a request.
 
 ## Current state
 
-The first half of the build order is built: the scaffold, identity and the store, the dialer, the catalog and a connection made with a key. See Implementation status.
+Built but the counts of refusals; see Implementation status.
 
 Two designs in sibling projects are the precedent. A document service
 fetches a file from an address a caller names and checks the address at

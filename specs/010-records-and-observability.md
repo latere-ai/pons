@@ -27,7 +27,7 @@ credential.
 
 ## Current state
 
-The first half of the build order is built: the scaffold, identity and the store, the dialer, the catalog and a connection made with a key. See Implementation status.
+The call record, its sweep and the probes are built; the metrics, the spans and the test of the log keys are not. See Implementation status.
 
 The shared package `latere.ai/x/pkg/otel` wires logs, traces and
 metrics in one call and exports them over OTLP when an endpoint is set,

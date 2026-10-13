@@ -32,7 +32,7 @@ invariants every other spec assumes.
 
 ## Current state
 
-The first half of the build order is built: the scaffold, identity and the store, the dialer, the catalog and a connection made with a key. See Implementation status.
+Built but the MCP carrier; see Implementation status.
 
 Three designs in sibling projects are the precedent, and each spec says
 under this heading what it takes from them. A model gateway seals each

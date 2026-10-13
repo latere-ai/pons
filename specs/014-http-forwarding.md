@@ -1,6 +1,6 @@
 ---
 title: "Plain HTTP and git through a connection: a forwarding address and a git address, the credential added, a path held to its connector, and a push held to the refs an allow names"
-status: in-progress
+status: testing
 track: core
 depends_on:
   - specs/002-objects.md

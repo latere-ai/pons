@@ -1,6 +1,6 @@
 ---
 title: "Objects: connector, connection, credential, flow, registration and call record, their fields, states and identifiers"
-status: in-progress
+status: testing
 track: core
 depends_on:
   - specs/001-architecture.md
@@ -26,7 +26,7 @@ the API, the store and the catalog share one description.
 
 ## Current state
 
-The first half of the build order is built: the scaffold, identity and the store, the dialer, the catalog and a connection made with a key. See Implementation status.
+Built, and every criterion below has its test; see Implementation status.
 
 ## Design
 

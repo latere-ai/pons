@@ -25,7 +25,7 @@ three primitives that make a refresh the work of one writer.
 
 ## Current state
 
-The first half of the build order is built: the scaffold, identity and the store, the dialer, the catalog and a connection made with a key. See Implementation status.
+Built, with two of its tests not written; see Implementation status.
 
 A sandbox control plane in a sibling project has one store contract
 with a memory and a Postgres adapter under one suite, and seals each

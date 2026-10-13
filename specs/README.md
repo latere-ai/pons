@@ -27,28 +27,36 @@ flowchart LR
   complete --> superseded
 ```
 
-Specs 001 to 012 are `drafted`. The set was read as a whole on
-2026-10-12 by two readers working apart, one for security and one for
-consistency and the protocol, and the specs were revised from what they
-found. Specs 013 and 014 were written after that reading: GitHub, the
-first connector, carried as git and its REST API through the forwarding
-and git addresses of 014. Both are `drafted`.
+Specs 001 to 012 were read as a whole on 2026-10-12 by two readers
+working apart, one for security and one for consistency and the
+protocol, and were revised from what they found. Specs 013 and 014 were
+written after that reading: GitHub, the first connector, carried as git
+and its REST API through the forwarding and git addresses of 014.
 
-Steps 1 to 4 of the build order are built; of step 5 the forwarding and
-git addresses of 014 with the carrier's steps of 008; step 6, the
-sign-in of 007 with GitHub's habits of 013, for catalog connectors; and
-of step 7 the whole path for GitHub against the stubs. What remains is
-the MCP address of 008 and what waits on it, the metrics and spans of
-010, `deploy/` and `docs/` of 011, and the threat model's own tests of
-012. Specs 001 to 014 are `in-progress`: each says under
-Implementation status what is built and which of its criteria wait.
+v0.1.1, of 2026-10-13, is the first release with an image; v0.1.0
+published nothing. Steps 1 to 4 of the build order are built; of step 5
+the forwarding and git addresses of 014 with the carrier's steps of 008;
+step 6, the sign-in of 007 with GitHub's habits of 013, for catalog
+connectors; and of step 7 the whole path for GitHub against the stubs.
+The release workflow of 011 is built. What remains is the MCP address of
+008 and what waits on it, such as a connector a person adds that signs
+people in; the metrics and spans of 010; `deploy/`, `docs/`, the stub
+connector and the release workflow's test of 011; and the threat model's
+own tests of 012.
+
+Specs 002 and 014 are `testing`: each is built, and every one of its
+criteria has its test. Spec 013 is `testing` too: built and tested
+against the stubs, with its manual check against the real GitHub open
+until it runs and is recorded in its Outcome. The other specs are
+`in-progress`: each says under Implementation status what is built and
+which of its criteria wait.
 
 ## Index
 
 | # | Spec | Effort | Status | Builds on |
 |---|---|---|---|---|
 | [001](001-architecture.md) | Architecture: one binary, Postgres for connections and sealed credentials, a sign-in with the other service, and every call carried through | large | in-progress | |
-| [002](002-objects.md) | Objects: connector, connection, credential, flow, registration and call record, their fields, states and identifiers | medium | in-progress | 001 |
+| [002](002-objects.md) | Objects: connector, connection, credential, flow, registration and call record, their fields, states and identifiers | medium | testing | 001 |
 | [003](003-api.md) | API: the catalog, connections and their sign-in, the address a caller uses, records, and the errors a caller branches on | large | in-progress | 001, 002 |
 | [004](004-identity-and-authorization.md) | Identity and authorization: verifying a caller, the action vocabulary, the question to the authorizer, limits on an allow, the owner policy | medium | in-progress | 001, 003 |
 | [005](005-store-and-sealing.md) | Store and sealing: the tables, the two adapters and their one suite, envelope encryption, key rotation | large | in-progress | 001, 002 |
@@ -59,8 +67,8 @@ Implementation status what is built and which of its criteria wait.
 | [010](010-records-and-observability.md) | Records and observability: the call record and its retention, metrics, traces, logs that hold no content, the probes | medium | in-progress | 002, 008 |
 | [011](011-distribution.md) | Distribution: the repository scaffold, the binary and its images, configuration, the stubs, test tiers, and release | large | in-progress | 001 |
 | [012](012-security-and-threat-model.md) | Security and threat model: what is protected, who attacks, each defense and the test that holds it, and what is not defended | medium | in-progress | 001, 005, 007, 008, 009 |
-| [013](013-github-connector.md) | A code host's connector: GitHub through a GitHub App, signed in like any connector, with git and the REST API carried through Pons | medium | in-progress | 006, 007, 014 |
-| [014](014-http-forwarding.md) | Plain HTTP and git through a connection: a forwarding address and a git address, the credential added, a path held to its connector, and a push held to the refs an allow names | large | in-progress | 002, 003, 004, 006, 008, 009 |
+| [013](013-github-connector.md) | A code host's connector: GitHub through a GitHub App, signed in like any connector, with git and the REST API carried through Pons | medium | testing | 006, 007, 014 |
+| [014](014-http-forwarding.md) | Plain HTTP and git through a connection: a forwarding address and a git address, the credential added, a path held to its connector, and a push held to the refs an allow names | large | testing | 002, 003, 004, 006, 008, 009 |
 
 ## Build order
 

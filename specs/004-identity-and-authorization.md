@@ -29,7 +29,7 @@ a caller's reach over a connection can be narrowed to single tools.
 
 ## Current state
 
-The first half of the build order is built: the scaffold, identity and the store, the dialer, the catalog and a connection made with a key. See Implementation status.
+Built but the question and the limits at the address of kind `mcp`; see Implementation status.
 
 The verifier and the authorizer contract are shared packages. A
 document parsing service in a sibling project is the precedent for the

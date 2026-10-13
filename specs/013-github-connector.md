@@ -1,6 +1,6 @@
 ---
 title: "A code host's connector: GitHub through a GitHub App, signed in like any connector, with git and the REST API carried through Pons"
-status: in-progress
+status: testing
 track: core
 depends_on:
   - specs/006-catalog.md
@@ -42,8 +42,9 @@ status. The precedent is a connector an identity provider
 carried for the same GitHub App: it sent the person to GitHub's
 authorize endpoint with the App's client id, exchanged the code, kept
 the person's token with a sealed refresh token, and read the person's
-installations with it. Its flow works in production with the App an
-installation can reuse. Its code is not carried over, since the token
+installations with it. Its flow worked in production with the App an
+installation can reuse, until that provider removed it. Its code is not
+carried over, since the token
 custody it built by hand is what the store does for every connector
 ([[005-store-and-sealing]]). Three of GitHub's habits it handled are
 written down below.
