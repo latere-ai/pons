@@ -100,9 +100,10 @@ curl -s http://localhost:8080/v1/connections \
 
 A key for a connector of kind `http` is tried first with one `GET` of
 the service's `url`, and a client is tried by minting a token once. A
-key or a client the service refuses is `422 credential_refused`, a
-service that does not answer is `422 connector_unreachable`, and in
-both cases nothing is stored.
+key the service refuses with `401` or `403`, or a client its token
+endpoint answers `invalid_client`, is `422 credential_refused`. Any
+other failure to reach or use the service is
+`422 connector_unreachable`. In both cases nothing is stored.
 
 ### By signing in
 
@@ -362,7 +363,7 @@ the errors below are Pons's.
 | `wrong_kind` | 409 | the connection does not take this request: an address its kind lacks, or a credential its `auth` does not take |
 | `flow_expired` | 410 | the sign-in ran out; start it again |
 | `request_too_large` | 413 | the body is over its limit |
-| `connector_unreachable` | 422 | the service could not be reached to try a credential or start a sign-in |
+| `connector_unreachable` | 422 | the service could not be reached or used to try a credential or start a sign-in |
 | `sign_in_unsupported` | 422 | the service cannot be connected by signing in; `details.reason` names the step |
 | `credential_refused` | 422 | the service refused the key or the client |
 | `rate_limited` | 429 | too many requests; retryable, with `Retry-After` |
