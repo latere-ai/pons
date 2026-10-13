@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -92,9 +93,7 @@ func (h *auth) authorize(client, redirect string, extra url.Values) (url.Values,
 		"code_challenge": {base64.RawURLEncoding.EncodeToString(sum[:])}, "code_challenge_method": {"S256"},
 		"resource": {"https://api.example.com"}, "scope": {"read offline_access"},
 	}
-	for k, v := range extra {
-		q[k] = v
-	}
+	maps.Copy(q, extra)
 	resp, _ := h.send(http.MethodGet, h.a.AuthorizeURL()+"?"+q.Encode(), nil)
 	if resp.StatusCode != http.StatusFound {
 		return nil, verifier, resp.StatusCode
@@ -136,9 +135,7 @@ func (h *auth) token(form url.Values, basic string, header ...string) (*http.Res
 func (h *auth) exchange(code, verifier, basic string, form url.Values) (*http.Response, map[string]any) {
 	h.t.Helper()
 	f := url.Values{"grant_type": {"authorization_code"}, "code": {code}, "code_verifier": {verifier}, "redirect_uri": {callback}}
-	for k, v := range form {
-		f[k] = v
-	}
+	maps.Copy(f, form)
 	return h.token(f, basic)
 }
 

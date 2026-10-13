@@ -154,6 +154,20 @@ func TestEachAPISwitchChangesOneAnswer(t *testing.T) {
 	if status, _, _ := send(t, c, http.MethodGet, api.URL()+"/", "Bearer any", nil); status != http.StatusOK {
 		t.Fatalf("a protected resource with a credential %d", status)
 	}
+	api.Protect(nil)
+	api.Insufficient([]string{"repo", "admin"})
+	if status, h, _ := send(t, c, http.MethodGet, api.URL()+"/user", "Bearer any", nil); status != http.StatusForbidden || !strings.Contains(h.Get("WWW-Authenticate"), `scope="repo admin"`) {
+		t.Fatalf("an insufficient scope %d %v", status, h)
+	}
+	api.Insufficient(nil)
+	if status, h, body := send(t, c, http.MethodGet, api.URL()+"/stream?chunks=3&gap=1ms", "Bearer any", nil); status != http.StatusOK || h.Get("Content-Type") != "text/event-stream" || strings.Count(string(body), "data:") != 3 {
+		t.Fatalf("a stream %d %s", status, body)
+	}
+	for _, q := range []string{"chunks=x&gap=1ms", "chunks=1&gap=x"} {
+		if status, _, _ := send(t, c, http.MethodGet, api.URL()+"/stream?"+q, "Bearer any", nil); status != http.StatusBadRequest {
+			t.Fatalf("a stream of %s: %d", q, status)
+		}
+	}
 	// A slow answer that the caller abandons ends with the caller.
 	api.Slow(time.Minute)
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)

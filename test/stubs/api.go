@@ -37,6 +37,7 @@ type API struct {
 	servers   []string // the authorization servers of Protect; nil when off
 	scopes    []string
 	received  int64
+	needs     []string // the scopes of an insufficient_scope challenge; nil when off
 }
 
 // APIRequest is one request the stub API served.
@@ -126,6 +127,14 @@ func (a *API) Protect(scopes []string, servers ...string) {
 	a.mu.Unlock()
 }
 
+// Insufficient answers every request 403 with a challenge for more scopes
+// (RFC 6750, section 3.1), while scopes is not nil.
+func (a *API) Insufficient(scopes []string) {
+	a.mu.Lock()
+	a.needs = scopes
+	a.mu.Unlock()
+}
+
 // Requests is every request served, in order.
 func (a *API) Requests() []APIRequest {
 	a.mu.Lock()
@@ -169,7 +178,7 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	a.requests = append(a.requests, rec)
 	refused := a.refuseAll || a.refused[rec.Credential]
-	slow, login, servers, scopes := a.slow, a.login, a.servers, a.scopes
+	slow, login, servers, scopes, needs := a.slow, a.login, a.servers, a.scopes, a.needs
 	a.mu.Unlock()
 	if slow > 0 {
 		select {
@@ -193,6 +202,10 @@ func (a *API) serve(w http.ResponseWriter, r *http.Request) {
 	case refused:
 		w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
 		writeStubJSON(w, http.StatusUnauthorized, map[string]any{"message": "Bad credentials"})
+		return
+	case needs != nil:
+		w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer error="insufficient_scope", scope=%q`, strings.Join(needs, " ")))
+		writeStubJSON(w, http.StatusForbidden, map[string]any{"message": "Insufficient scope"})
 		return
 	}
 	a.route(w, r, rec, login)
@@ -227,6 +240,8 @@ func (a *API) route(w http.ResponseWriter, r *http.Request, rec APIRequest, logi
 		writeStubJSON(w, http.StatusOK, map[string]any{"ok": true})
 	case path == "/upload":
 		a.upload(w, r)
+	case path == "/stream":
+		a.stream(w, r)
 	case path == "/large":
 		n, err := strconv.Atoi(r.URL.Query().Get("bytes"))
 		if err != nil || n < 0 {
@@ -262,6 +277,38 @@ func (a *API) issues(w http.ResponseWriter, r *http.Request, rec APIRequest) {
 	}
 	w.Header().Set("Link", fmt.Sprintf(`<%s?page=2>; rel="next", <%s?page=3>; rel="last", <https://elsewhere.example.net/help>; rel="help"`, base, base))
 	writeStubJSON(w, http.StatusOK, []map[string]any{{"number": 1, "page": page, "url": base + "/1"}})
+}
+
+// stream writes chunks of a stream, each flushed, with a gap between two:
+// a stream a test makes go silent.
+func (a *API) stream(w http.ResponseWriter, r *http.Request) {
+	chunks, err := strconv.Atoi(r.URL.Query().Get("chunks"))
+	if err != nil {
+		http.Error(w, "chunks is not a count", http.StatusBadRequest)
+		return
+	}
+	gap, err := time.ParseDuration(r.URL.Query().Get("gap"))
+	if err != nil {
+		http.Error(w, "gap is not a duration", http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	rc := http.NewResponseController(w)
+	for i := range chunks {
+		if i > 0 {
+			select {
+			case <-time.After(gap):
+			case <-r.Context().Done():
+				return
+			}
+		}
+		if _, err := fmt.Fprintf(w, "data: %d\n\n", i); err != nil {
+			return
+		}
+		if err := rc.Flush(); err != nil {
+			return
+		}
+	}
 }
 
 // upload reads the body in pieces, counting each as it arrives, so a test

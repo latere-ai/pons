@@ -194,6 +194,20 @@ func NewAuthServer(t TB, opts ...AuthOption) *AuthServer {
 	return a
 }
 
+// Grant issues a token pair to a client as a code exchange would, for a
+// test that starts from a credential the stub knows: an access token, and
+// a refresh token the token endpoint takes once.
+func (a *AuthServer) Grant(clientID, scope string) (access, refresh string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	prefix := a.sw.TokenPrefix
+	access, refresh = prefix+rand.Text(), prefix+rand.Text()
+	a.access = append(a.access, access)
+	a.refresh[refresh] = grant{client: clientID, scope: scope}
+	a.refreshes = append(a.refreshes, refresh)
+	return access, refresh
+}
+
 // URL is the stub's address under its name, with no path.
 func (a *AuthServer) URL() string {
 	a.mu.Lock()
