@@ -17,8 +17,8 @@ examples use `http://localhost:8080/v1`.
 Every request carries `Authorization: Bearer <token>`: a token from an
 issuer the installation lists in `PONS_OIDC_ISSUERS`, naming an audience
 of `PONS_OIDC_AUDIENCE` (`pons` by default), not expired, and, when it
-carries `iat`, minted less than 24 hours ago. Pons has no login and no API key of its own.
-Four routes take no token: the sign-in's callback, the two client
+carries `iat`, minted less than 24 hours ago. Pons has no login and no
+API key of its own. Four routes take no token: the sign-in's callback, the two client
 metadata documents, and the OpenAPI document. The probes, `/livez`,
 `/readyz` and `/version`, sit at the root, outside the base path.
 
@@ -233,11 +233,13 @@ connector lists in `http.pass`; the git address passes `Accept`,
 `Content-Encoding` on a fetch. Everything else is removed, cookies
 included. A request without `Accept-Encoding` is sent with
 `Accept-Encoding: identity` on both addresses, so the service is asked
-for no compression the caller did not ask for. Back to the caller it passes the status, the
-body, `Content-Type`, `Content-Length`, `Content-Encoding`,
-`Cache-Control`, `ETag`, `Last-Modified`, `Retry-After`, and the headers
-the connector lists in `http.pass_back`. `Set-Cookie` and
-`WWW-Authenticate` never pass. A `Link` header's URLs under the
+for no compression the caller did not ask for.
+
+Back to the caller it passes the status, the body, `Content-Type`,
+`Content-Length`, `Content-Encoding`, `Cache-Control`, `ETag`,
+`Last-Modified`, `Retry-After`, and the headers the connector lists in
+`http.pass_back`. `Set-Cookie` and `WWW-Authenticate` never pass, nor
+does a hop-by-hop header. A `Link` header's URLs under the
 service's `url` come back under the forwarding address, so a caller
 that follows the next page stays on Pons, and its other URLs are
 dropped. A URL inside a body is passed as the service wrote it.
