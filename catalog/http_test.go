@@ -1,0 +1,133 @@
+// SPDX-FileCopyrightText: 2026 Latere AI
+// SPDX-License-Identifier: Apache-2.0
+
+package catalog_test
+
+import (
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	"latere.ai/x/pons/catalog"
+)
+
+// githubEntry is the YAML block under "### The entry" of spec 013, so the
+// entry the spec shows is the entry the test loads.
+func githubEntry(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "specs", "013-github-connector.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, after, ok := strings.Cut(string(raw), "### The entry\n")
+	if !ok {
+		t.Fatal("spec 013 has no section The entry")
+	}
+	_, block, ok := strings.Cut(after, "```yaml\n")
+	if !ok {
+		t.Fatal("the entry of spec 013 has no yaml block")
+	}
+	block, _, _ = strings.Cut(block, "```")
+	return block
+}
+
+// The GitHub entry of spec 013 validates, with its git host, its headers and
+// the two members a code host needs.
+func TestTheGitHubEntry(t *testing.T) {
+	c, err := catalog.Parse([]byte(githubEntry(t)), catalog.Options{LookupEnv: func(name string) (string, bool) {
+		return "a-client-secret-of-the-test", name == "GITHUB_APP_CLIENT_SECRET"
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gh, ok := c.Get("github")
+	if !ok {
+		t.Fatal("no github entry")
+	}
+	if gh.Kind != catalog.KindHTTP || gh.GitURL() != "https://github.com" || gh.ResourceFor() {
+		t.Fatalf("%+v", gh)
+	}
+	if in := gh.GitInjectOrDefault(); in.Scheme != catalog.GitBasic || in.Username != "x-access-token" {
+		t.Fatalf("git inject %+v", in)
+	}
+	if !slices.Equal(gh.HTTP.Pass, []string{"X-GitHub-Api-Version"}) || len(gh.HTTP.PassBack) != 3 {
+		t.Fatalf("http %+v", gh.HTTP)
+	}
+	if gh.Auth.Account == nil || gh.Auth.Account.Field != "login" || gh.Links.Manage == "" || gh.Auth.RevokeURL != "" {
+		t.Fatalf("auth %+v links %+v", gh.Auth, gh.Links)
+	}
+	for _, tc := range []struct{ method, path, want string }{
+		{"GET", "/repos/acme/app", catalog.EffectRead},
+		{"HEAD", "/", catalog.EffectRead},
+		{"OPTIONS", "/user", catalog.EffectRead},
+		{"POST", "/graphql", catalog.EffectWrite},
+		{"PATCH", "/repos/acme/app/issues/1", catalog.EffectWrite},
+	} {
+		if got := gh.RequestEffect(tc.method, tc.path); got != tc.want {
+			t.Errorf("%s %s: %s", tc.method, tc.path, got)
+		}
+	}
+}
+
+// The members of kind http: each is refused where its rule says, the git
+// host must be under hosts, and a read-only pattern makes a request read.
+func TestHTTPMembers(t *testing.T) {
+	entry := func(kind, extra string) string {
+		return "connectors:\n  - name: api\n    title: API\n    kind: " + kind + "\n    url: https://api.example.com\n" +
+			"    hosts: [\"api.example.com\", \"git.example.com\"]\n    auth: {type: token}\n" + extra
+	}
+	good := "    git: {url: \"https://git.example.com:8443\", inject: {scheme: bearer}}\n" +
+		"    http: {read_only: [\"POST /search/*\"], pass: [X-Api-Version], pass_back: [\"X-RateLimit-*\"]}\n"
+	c, err := load(t, entry("http", good))
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := c.Connectors[0]
+	if api.RequestEffect("POST", "/search/issues") != catalog.EffectRead || api.RequestEffect("POST", "/issues") != catalog.EffectWrite {
+		t.Fatal("read_only does not decide the effect")
+	}
+	if got := api.Ports(); !slices.Equal(got, []int{8443}) {
+		t.Fatalf("the git host's port is not named: %v", got)
+	}
+	if in := (catalog.Connector{}).GitInjectOrDefault(); in.Scheme != catalog.GitBearer {
+		t.Fatalf("the default git inject %+v", in)
+	}
+	bad := map[string]string{
+		"    git: {url: \"https://git.example.com\"}\n":                                         "kind mcp|git: is not taken",
+		"    http: {pass: [X-A]}\n":                                                             "kind mcp|http: is not taken",
+		"    git: {url: \"http://git.example.com\"}\n":                                          "http|git.url: is not https",
+		"    git: {url: \"https://elsewhere.example.com\"}\n":                                   "http|git.url: is on a host",
+		"    git: {url: \"https://git.example.com\", inject: {scheme: digest}}\n":               "http|git.inject.scheme",
+		"    git: {url: \"https://git.example.com\", inject: {scheme: basic}}\n":                "http|git.inject.username",
+		"    git: {url: \"https://git.example.com\", inject: {scheme: basic, username: a:b}}\n": "http|git.inject.username",
+		"    git: {url: \"https://git.example.com\", inject: {scheme: bearer, username: a}}\n":  "http|git.inject.username",
+		"    git: {url: \"https://git.example.com\", other: 1}\n":                               "http|git.other",
+		"    git: {url: \"https://git.example.com\", inject: {scheme: bearer, port: 1}}\n":      "http|git.inject.port",
+		"    http: {read_only: [\"post /x\"]}\n":                                                "http|http.read_only[0]",
+		"    http: {read_only: [\"POST x\"]}\n":                                                 "http|http.read_only[0]",
+		"    http: {read_only: [\"POST\"]}\n":                                                   "http|http.read_only[0]",
+		"    http: {pass: [Authorization]}\n":                                                   "http|http.pass[0]",
+		"    http: {pass: [Cookie]}\n":                                                          "http|http.pass[0]",
+		"    http: {pass: [\"X A\"]}\n":                                                         "http|http.pass[0]",
+		"    http: {pass_back: [\"\"]}\n":                                                       "http|http.pass_back[0]",
+		"    http: {other: [x]}\n":                                                              "http|http.other",
+	}
+	for extra, want := range bad {
+		kind, member, _ := strings.Cut(want, "|")
+		if kind == "kind mcp" {
+			kind = "mcp"
+		}
+		_, err := load(t, entry(kind, extra))
+		if err == nil || !strings.Contains(err.Error(), `connectors[0] "api": `+member) {
+			t.Errorf("%s: want a problem with %s, got %v", extra, member, err)
+		}
+	}
+	// A token connector's own header is the credential's.
+	own := "connectors:\n  - name: api\n    title: API\n    kind: http\n    url: https://api.example.com\n" +
+		"    auth: {type: token, inject: {header: X-Key}}\n    http: {pass: [x-key]}\n"
+	if _, err := load(t, own); err == nil || !strings.Contains(err.Error(), "http.pass[0]") {
+		t.Errorf("the credential's header passes: %v", err)
+	}
+}

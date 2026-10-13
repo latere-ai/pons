@@ -7,7 +7,7 @@ depends_on:
 affects: [catalog/, internal/config/, internal/httpapi/, internal/store/]
 effort: medium
 created: 2026-10-12
-updated: 2026-10-12
+updated: 2026-10-13
 author: changkun
 ---
 
@@ -285,16 +285,20 @@ a connector a person adds; `auth.account` and `links.manage` of
 [[013-github-connector]]; `catalog/example.yaml`, embedded as
 `catalog.Example`.
 
-Remains: the members a connector of kind `http` takes, `git` and `http`,
-which [[014-http-forwarding]] defines and the next phase builds; until
-then a catalog entry that writes them does not load. A connector a person
-adds of type `oauth` answers `422 sign_in_unsupported` until discovery is
-built ([[003-api]]).
+The members of kind `http`, `git` and `http`, are built as
+[[014-http-forwarding]] defines them, refused on a connector of another
+kind, with the git host held to `hosts` and its port among the entry's
+ports; the GitHub entry of [[013-github-connector]] loads as that spec
+writes it.
+
+Remains: a connector a person adds of type `oauth`, which answers `422
+sign_in_unsupported` until its discovery, through the MCP probe, is built
+([[003-api]]).
 
 | Criterion | State |
 |---|---|
 | `catalog.TestLoadRefusals` | written |
-| `catalog.TestExampleFileLoads`, `catalog.TestAuthMembers` | written |
+| `catalog.TestExampleFileLoads`, `catalog.TestAuthMembers` | written, with `catalog.TestHTTPMembers` for `git` and `http` |
 | `catalog.TestSecretRefIsReadAtUse` | written |
 | `httpapi.TestConnectorShowsNoSecretReference` | written |
 | `catalog.TestHostRule`, `catalog.TestHostsCoverTheURL` | written |

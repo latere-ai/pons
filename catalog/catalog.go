@@ -89,6 +89,40 @@ type Connector struct {
 	Auth        Auth     `yaml:"auth" json:"auth"`
 	Tools       Marks    `yaml:"tools,omitempty" json:"tools"`
 	Links       Links    `yaml:"links,omitempty" json:"links"`
+	// Git and HTTP are the members of a connector of kind http
+	// (specs/014-http-forwarding.md).
+	Git  *Git  `yaml:"git,omitempty" json:"git,omitempty"`
+	HTTP *HTTP `yaml:"http,omitempty" json:"http,omitempty"`
+}
+
+// The schemes a credential takes on a git request.
+const (
+	GitBearer = "bearer"
+	GitBasic  = "basic"
+)
+
+// Git is where git reaches the git host of a connector of kind http, and
+// how the credential goes on a git request.
+type Git struct {
+	URL    string     `yaml:"url" json:"url"`
+	Inject *GitInject `yaml:"inject,omitempty" json:"inject,omitempty"`
+}
+
+// GitInject is the credential's place on a git request: Authorization:
+// Bearer, or Authorization: Basic of Username and the token.
+type GitInject struct {
+	Scheme   string `yaml:"scheme" json:"scheme"`
+	Username string `yaml:"username,omitempty" json:"username,omitempty"`
+}
+
+// HTTP are the members of a connector of kind http beside git: the requests
+// that only read beyond GET, HEAD and OPTIONS, as "METHOD path-glob"; the
+// request headers passed toward the connector beside the carrier's own; and
+// globs of the response headers passed back.
+type HTTP struct {
+	ReadOnly []string `yaml:"read_only,omitempty" json:"read_only,omitempty"`
+	Pass     []string `yaml:"pass,omitempty" json:"pass,omitempty"`
+	PassBack []string `yaml:"pass_back,omitempty" json:"pass_back,omitempty"`
 }
 
 // Auth is how a person gives access, with the members of its type.
@@ -168,12 +202,51 @@ func (c Connector) HostPatterns() []string {
 // of its url and of an address its auth members name.
 func (c Connector) Ports() []int {
 	var out []int
-	for _, raw := range []string{c.URL, c.Auth.Issuer, c.Auth.AuthorizeURL, c.Auth.TokenURL, c.Auth.RevokeURL, accountURL(c.Auth.Account)} {
+	for _, raw := range []string{c.URL, c.GitURL(), c.Auth.Issuer, c.Auth.AuthorizeURL, c.Auth.TokenURL, c.Auth.RevokeURL, accountURL(c.Auth.Account)} {
 		if p := portOf(raw); p != 0 && p != 443 && !slices.Contains(out, p) {
 			out = append(out, p)
 		}
 	}
 	return out
+}
+
+// GitURL is the base of the connector's git host, and empty when it names
+// none.
+func (c Connector) GitURL() string {
+	if c.Git == nil {
+		return ""
+	}
+	return c.Git.URL
+}
+
+// GitInjectOrDefault is where the credential goes on a git request: the
+// connector's git.inject, or Authorization: Bearer.
+func (c Connector) GitInjectOrDefault() GitInject {
+	if c.Git != nil && c.Git.Inject != nil {
+		return *c.Git.Inject
+	}
+	return GitInject{Scheme: GitBearer}
+}
+
+// RequestEffect is the effect of a request to the forwarding address of a
+// connector of kind http: GET, HEAD and OPTIONS read, a request an
+// http.read_only pattern matches reads, and every other request writes. path
+// is the request's path below the address, without its query, starting with
+// a slash.
+func (c Connector) RequestEffect(method, path string) string {
+	switch method {
+	case "GET", "HEAD", "OPTIONS":
+		return EffectRead
+	}
+	if c.HTTP != nil {
+		for _, p := range c.HTTP.ReadOnly {
+			m, glob, _ := strings.Cut(p, " ")
+			if m == method && Glob(glob, path) {
+				return EffectRead
+			}
+		}
+	}
+	return EffectWrite
 }
 
 func accountURL(a *Account) string {
@@ -329,19 +402,22 @@ func Parse(doc []byte, o Options) (Catalog, error) {
 // The members each level of an entry takes. An auth takes type and the
 // members of that type alone.
 var (
-	connectorKeys = []string{"name", "title", "description", "icon", "kind", "url", "hosts", "auth", "tools", "links"}
+	connectorKeys = []string{"name", "title", "description", "icon", "kind", "url", "hosts", "auth", "tools", "links", "git", "http"}
 	authKeys      = map[string][]string{
 		AuthOAuth:             {"type", "discovery", "issuer", "authorize_url", "token_url", "revoke_url", "client", "scopes", "resource", "account"},
 		AuthToken:             {"type", "inject", "hint"},
 		AuthClientCredentials: {"type", "token_url", "scopes", "audience"},
 		AuthNone:              {"type"},
 	}
-	clientKeys  = []string{"id", "secret"}
-	secretKeys  = []string{"env", "file"}
-	injectKeys  = []string{"header", "format"}
-	accountKeys = []string{"url", "field"}
-	toolsKeys   = []string{"read_only", "hidden"}
-	linksKeys   = []string{"manage"}
+	clientKeys    = []string{"id", "secret"}
+	secretKeys    = []string{"env", "file"}
+	injectKeys    = []string{"header", "format"}
+	accountKeys   = []string{"url", "field"}
+	toolsKeys     = []string{"read_only", "hidden"}
+	linksKeys     = []string{"manage"}
+	gitKeys       = []string{"url", "inject"}
+	gitInjectKeys = []string{"scheme", "username"}
+	httpKeys      = []string{"read_only", "pass", "pass_back"}
 )
 
 // structure checks the keys of an entry at every level before it is
@@ -387,6 +463,15 @@ func structure(node *yaml.Node) []Problem {
 	}
 	if links := member(node, "links"); links != nil {
 		ps = append(ps, keys(links, "links.", linksKeys...)...)
+	}
+	if git := member(node, "git"); git != nil {
+		ps = append(ps, keys(git, "git.", gitKeys...)...)
+		if inject := member(git, "inject"); inject != nil {
+			ps = append(ps, keys(inject, "git.inject.", gitInjectKeys...)...)
+		}
+	}
+	if h := member(node, "http"); h != nil {
+		ps = append(ps, keys(h, "http.", httpKeys...)...)
 	}
 	return ps
 }
@@ -477,6 +562,7 @@ func Validate(c Connector, added bool) []Problem {
 		}
 	}
 	ps = append(ps, validateAuth(c, added)...)
+	ps = append(ps, validateHTTP(c)...)
 	for field, globs := range map[string][]string{"tools.read_only": c.Tools.ReadOnly, "tools.hidden": c.Tools.Hidden} {
 		if slices.Contains(globs, "") {
 			bad(field, "has an empty glob")
@@ -494,6 +580,77 @@ func Validate(c Connector, added bool) []Problem {
 	}
 	slices.SortStableFunc(ps, func(a, b Problem) int { return strings.Compare(a.Field, b.Field) })
 	return ps
+}
+
+// validateHTTP checks the members of a connector of kind http, git and
+// http, which a connector of another kind does not take
+// (specs/014-http-forwarding.md).
+func validateHTTP(c Connector) []Problem {
+	var ps []Problem
+	bad := func(field, why string) { ps = append(ps, Problem{field, why}) }
+	if c.Kind != KindHTTP {
+		if c.Git != nil {
+			bad("git", "is not taken for kind "+c.Kind)
+		}
+		if c.HTTP != nil {
+			bad("http", "is not taken for kind "+c.Kind)
+		}
+		return ps
+	}
+	if g := c.Git; g != nil {
+		if why := checkHTTPS(g.URL, false); why != "" {
+			bad("git.url", why)
+		} else if u, err := url.Parse(g.URL); err == nil && !Matcher(c.HostPatterns()).Matches(Normalize(u.Hostname())) {
+			bad("git.url", "is on a host hosts does not cover, so the credential would go where a call would not take it")
+		}
+		if in := g.Inject; in != nil {
+			switch in.Scheme {
+			case GitBearer:
+				if in.Username != "" {
+					bad("git.inject.username", "is not taken with scheme bearer")
+				}
+			case GitBasic:
+				if in.Username == "" || strings.Contains(in.Username, ":") || !visible(in.Username) {
+					bad("git.inject.username", "is required with scheme basic: visible ASCII and no colon")
+				}
+			default:
+				bad("git.inject.scheme", "is not bearer or basic")
+			}
+		}
+	}
+	if h := c.HTTP; h != nil {
+		for i, p := range h.ReadOnly {
+			method, glob, ok := strings.Cut(p, " ")
+			if !ok || !isMethod(method) || !strings.HasPrefix(glob, "/") || !visible(glob) || strings.Contains(glob, " ") {
+				bad(fmt.Sprintf("http.read_only[%d]", i), "is not a method in capitals, one space and a path glob that starts with a slash")
+			}
+		}
+		for i, name := range h.Pass {
+			if !injectable(name) || strings.EqualFold(name, "authorization") ||
+				(c.Auth.Type == AuthToken && strings.EqualFold(name, c.InjectOrDefault().Header)) {
+				bad(fmt.Sprintf("http.pass[%d]", i), "is not a header name the carrier leaves to the caller: not the credential's, not one it sets or removes itself")
+			}
+		}
+		for i, glob := range h.PassBack {
+			if glob == "" || !visible(glob) || strings.Contains(glob, " ") {
+				bad(fmt.Sprintf("http.pass_back[%d]", i), "has an empty glob or one that is not a header name")
+			}
+		}
+	}
+	return ps
+}
+
+// isMethod reports whether s is an HTTP method in capitals.
+func isMethod(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := range len(s) {
+		if s[i] < 'A' || s[i] > 'Z' {
+			return false
+		}
+	}
+	return true
 }
 
 // validateAuth checks auth and the members of its type.
