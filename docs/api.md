@@ -16,8 +16,8 @@ examples use `http://localhost:8080/v1`.
 
 Every request carries `Authorization: Bearer <token>`: a token from an
 issuer the installation lists in `PONS_OIDC_ISSUERS`, naming an audience
-of `PONS_OIDC_AUDIENCE` (`pons` by default), not expired, and minted
-less than 24 hours ago. Pons has no login and no API key of its own.
+of `PONS_OIDC_AUDIENCE` (`pons` by default), not expired, and, when it
+carries `iat`, minted less than 24 hours ago. Pons has no login and no API key of its own.
 Four routes take no token: the sign-in's callback, the two client
 metadata documents, and the OpenAPI document. The probes, `/livez`,
 `/readyz` and `/version`, sit at the root, outside the base path.
@@ -293,9 +293,9 @@ curl -s "$FORGE_API/repos/acme/app/issues" -H "Authorization: Bearer $TOKEN"
 ```
 
 `git clone` then goes through Pons, and the sandbox's token opens
-nothing at the service itself. A token for Pons is accepted for at most
-24 hours after it was minted, so a long-lived sandbox is given a fresh
-one before then.
+nothing at the service itself. A token for Pons that carries `iat` is
+accepted for at most 24 hours after it was minted, so a long-lived
+sandbox is given a fresh one before then.
 
 ## Call records
 

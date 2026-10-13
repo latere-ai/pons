@@ -70,8 +70,9 @@ TOKEN=$(curl -s http://127.0.0.1:5556/dex/token -u pons:local-client-secret \
   -d scope=openid | jq -r .id_token)
 ```
 
-`ponsd` accepts a token until it expires and for at most 24 hours after
-it was minted; run the last command again for a fresh one. The caller
+`ponsd` accepts a token until it expires and, when it carries `iat` as
+Dex's do, for at most 24 hours after it was minted; run the last command
+again for a fresh one. The caller
 it names is the issuer and the token's `sub` joined by a pipe,
 `http://127.0.0.1:5556/dex|<sub>`, and that string is the owner of
 every connection the token makes.
