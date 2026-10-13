@@ -12,9 +12,10 @@ here is refused before it is pushed.
   keeps for the resource itself and drops from the fields, so no
   authorizer ever received them. In the public package `authorizer`,
   `FieldKind` is replaced by `FieldConnectionKind` and
-  `FieldConnectorKind`, and `FieldID` leaves `Fields`, since the id is
-  the envelope's `resource.id`: `SendsID` reports whether an action
-  sends one. An authorizer that read the kind of the resource's fields
+  `FieldConnectorKind`, and `FieldID` is removed and `id` leaves
+  `Fields`, since the id is the envelope's `resource.id`: `SendsID`
+  reports whether an action sends one. Code that named either constant
+  needs the new names. An authorizer that read the kind of the resource's fields
   read nothing before, and reads the new names now.
 
 - Changed: a push that names a ref outside the refs its caller may update
