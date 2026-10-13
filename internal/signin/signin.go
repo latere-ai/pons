@@ -50,8 +50,12 @@ const (
 	// mintedFor is how long a minted token whose answer gave no lifetime is
 	// kept.
 	mintedFor = 5 * time.Minute
+	// revokeTimeout bounds a revocation.
+	revokeTimeout = 10 * time.Second
 	// SweepEvery is how often a replica sweeps the flows that ran out.
 	SweepEvery = time.Minute
+	// sweepBatch is how many flows one sweep takes at once.
+	sweepBatch = 100
 )
 
 // Connector is a connector as the sign-in reads it: the entry, and the url

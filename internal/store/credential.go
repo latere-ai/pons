@@ -36,6 +36,9 @@ type Meta struct {
 	// token: the header the key is placed in, and its format
 	Header string `json:"header,omitempty"`
 	Format string `json:"format,omitempty"`
+	// Account is the account a sign-in read, kept beside a flow's pending
+	// credential until the confirm writes it to the connection.
+	Account string `json:"account,omitempty"`
 }
 
 // Secrets is a credential's plaintext: one JSON document of the members
