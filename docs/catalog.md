@@ -31,7 +31,9 @@ A key the format does not describe is refused at every level, and so is
 a member of another way to give access, so a mistake is never silently
 ignored. `ponsd check` runs the same validation and serves nothing.
 Nothing reloads the file: changing the catalog is a restart, so every
-replica of one rollout serves the same connectors. Without
+replica of one rollout serves the same connectors, and an existing
+connection keeps some of what its entry said when it was made
+([below](#a-connector-that-changes-or-is-removed)). Without
 `PONS_CATALOG_FILE` the catalog is empty, and the server says so at
 start.
 
@@ -119,7 +121,7 @@ access token and the refresh token it is given and refreshes them.
 | `discovery` | `resource` for kind `mcp`; required for `http` | how Pons finds the service's authorization server. `resource`: the service publishes protected resource metadata (RFC 9728). `issuer`: `issuer` names an authorization server that publishes its metadata (RFC 8414 or OpenID Connect discovery). `none`: the entry gives the endpoints |
 | `issuer` | | the authorization server's issuer, an `https` URL. Required with `discovery: issuer`, and with `resource` when the entry gives a `client`. With `none`, what an `iss` in the service's answer is compared with |
 | `authorize_url`, `token_url` | | the endpoints. Required with `discovery: none`, refused otherwise |
-| `revoke_url` | | the revocation endpoint (RFC 7009), with `discovery: none`. A disconnect revokes there; without one it deletes the credential and revokes nothing |
+| `revoke_url` | | the revocation endpoint (RFC 7009), with `discovery: none` alone; with `resource` or `issuer`, Pons uses the one the server's metadata names. A sign-in records the endpoint, and a disconnect revokes there; without one it deletes the credential and revokes nothing |
 | `client.id`, `client.secret` | | the OAuth application you registered at the service. `secret` is a [reference](#secrets), absent for a public client. Required with `discovery: none` |
 | `scopes` | | the scopes to ask for. Without it, a `resource` sign-in asks for the scopes the service's challenge or its resource metadata names, and an `issuer` or `none` sign-in names none. With `resource` or `issuer`, Pons adds `offline_access` whenever the authorization server's metadata lists it |
 | `resource` | `true` for `mcp`, `false` for `http` | whether the sign-in names the service a token is for (RFC 8707). Turn it off for a server that refuses the member |
@@ -194,7 +196,17 @@ request to a host of this list. A refresh token or a client secret goes
 only to the token endpoint, and the revocation endpoint, recorded with
 it.
 
-## A connector that is removed
+## A connector that changes or is removed
+
+A changed entry applies to its existing connections from the restart
+on, except what a credential records when it is made. A pasted key
+keeps the `inject` it was given under; a client keeps the `token_url`,
+`scopes` and `audience`; a sign-in keeps the endpoints, the client and
+the scopes it was made with, the revocation endpoint included. Each
+keeps them until the person gives a new key or client, or reconnects.
+Changing `client.id` breaks the refresh of the connections made with
+the old one, while a new `client.secret` under the same id is read at
+its next use.
 
 Removing an entry takes nothing with it. Its connections are kept with
 their credentials, and a request to one answers
