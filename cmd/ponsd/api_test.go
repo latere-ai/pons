@@ -370,7 +370,8 @@ func TestEachMemberOfAnAllowChangesTheOutcome(t *testing.T) {
 		s, web := use(t, map[string]any{"refs": []string{"refs/heads/agents/*"}})
 		push := strings.TrimSuffix(web, "/http") + "/git/acme/app.git/git-receive-pack"
 		body := pktLine(strings.Repeat("0", 40)+" "+strings.Repeat("1", 40)+" refs/heads/main\x00report-status\n") + "0000"
-		if a := s.do(http.MethodPost, push, "alice", body, "Content-Type", "application/x-git-receive-pack-request"); a.status != http.StatusForbidden || a.detail("field") != "refs" {
+		want := pktLine("unpack ok\n") + pktLine("ng refs/heads/main only branches under refs/heads/agents/ may be pushed by this caller\n") + "0000"
+		if a := s.do(http.MethodPost, push, "alice", body, "Content-Type", "application/x-git-receive-pack-request"); a.status != http.StatusOK || string(a.body) != want {
 			t.Fatalf("a push to main: %d %s", a.status, a.body)
 		}
 	}

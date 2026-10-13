@@ -148,7 +148,8 @@ a push with `Refs`, the refs this caller may update
 ([[014-http-forwarding]]), and a hosted agent's session gets the
 branches named for the session, such as `refs/heads/agents/*`. A push
 to the default branch, or to any other, is refused by Pons before the
-pack leaves, whatever the token itself could do at GitHub.
+pack leaves, whatever the token itself could do at GitHub, and git
+prints the rule as the reason.
 
 ### What a person sees
 
@@ -227,9 +228,11 @@ installation:
 - **Push.** A push to a branch under `refs/heads/agents/` landed on
   GitHub with the agent as its author; a push to another branch and one
   to `main` were refused before any of the pack left, as the allow's
-  `Refs` says. git showed only `HTTP 403`: the reason
-  [[014-http-forwarding]] promises a person sees is not yet written in
-  git's protocol.
+  `Refs` says. git showed only `HTTP 403`, since it prints no body of an
+  HTTP error to a push. A refused push is now answered in git's own
+  protocol ([[014-http-forwarding]]), and git prints ` ! [remote
+  rejected] HEAD -> main (only branches under refs/heads/agents/ may be
+  pushed by this caller)`.
 - **The REST API.** `GET /repos/{owner}/{repo}/issues` through the
   forwarding address was answered by GitHub.
 

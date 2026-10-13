@@ -6,6 +6,16 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+- Changed: a push that names a ref outside the refs its caller may update
+  is refused the way a git host refuses one, so git prints the reason.
+  It was answered `403` with a JSON body, of which git printed only
+  `RPC failed; HTTP 403`. Now git prints, for example, ` ! [remote
+  rejected] HEAD -> main (only branches under refs/heads/agents/ may be
+  pushed by this caller)` and exits non-zero. The answer is `200` with a
+  report in which every ref of the push is refused, the pack is read to
+  its end first so git reads the answer of a large push too, and nothing
+  of the push reaches the connector. The call record stays `denied`.
+
 - Fixed: a push larger than git's post buffer, 1 MiB by default, lands
   through a git address. git sends such a push after a probe, a request
   that names no ref, and Pons answered the probe `400 invalid_request`,

@@ -458,8 +458,8 @@ func TestGitHubEndToEnd(t *testing.T) {
 	if out, err := git(t, work, session, "push", "--quiet", "origin", "HEAD:refs/heads/agents/ses-agent"); err != nil {
 		t.Fatalf("a push of its own branch: %v %s", err, out)
 	}
-	if out, err := git(t, work, session, "push", "origin", "HEAD:refs/heads/main"); err == nil || !strings.Contains(out, "403") {
-		t.Fatalf("a push to main: %v %s", err, out)
+	if stderr, err := gitStderr(t, work, session, "push", "origin", "HEAD:refs/heads/main"); err == nil || !strings.Contains(stderr, refusedMain) {
+		t.Fatalf("a push to main: %v %s", err, stderr)
 	}
 	access, _ := up.auth.Issued()
 	basic := "Basic " + base64.StdEncoding.EncodeToString([]byte("x-access-token:"+access[len(access)-1]))

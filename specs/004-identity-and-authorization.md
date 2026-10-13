@@ -227,7 +227,7 @@ catalog's tool marks ([[006-catalog]]).
 | `read_only` | `connection.use` | a `tools/call` whose effect is `write`: `403 forbidden` on `tool` |
 | `tools` | `connection.use` | a `tools/call` of a tool no glob matches: `403 forbidden` on `tool` |
 | `calls_per_minute` | `connection.use` | `429 rate_limited`, retryable |
-| `refs` | `connection.use` | a push naming a ref no glob matches: `403 forbidden` on `refs` ([[014-http-forwarding]]) |
+| `refs` | `connection.use` | a push naming a ref no glob matches: answered in git's protocol, every ref refused with the rule, so git prints it ([[014-http-forwarding]]) |
 
 The limits of any other allow are not read. With no `owner` on the
 allow, a create is recorded under the owner the request named, and
@@ -239,7 +239,9 @@ counts toward `max_connections` until its flow expires. Each refusal's
 other answers.
 
 A limit refuses a call after its allow, so the answer is a `403`, not a
-`404`. A refused call opens no credential, reaches no connector, and is
+`404`; a push that `refs` refuses is the one exception, answered as a git
+host refuses a push so git shows the rule ([[014-http-forwarding]]). A
+refused call opens no credential, reaches no connector, and is
 recorded `denied`, at most once per subject and connection per minute
 ([[008-carrying-a-call]]). `read_only` and `tools` bind `tools/call`
 alone; a list of tools is carried as it is ([[008-carrying-a-call]]).

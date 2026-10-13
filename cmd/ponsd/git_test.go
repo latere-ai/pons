@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"os"
 	"os/exec"
@@ -22,18 +23,38 @@ import (
 // every request and nothing of the machine's configuration.
 func git(t *testing.T, dir, token string, args ...string) (string, error) {
 	t.Helper()
+	out, err := gitCommand(t, dir, token, args...).CombinedOutput()
+	return string(out), err
+}
+
+// gitStderr runs a git client as git does and answers what it printed on
+// its standard error alone.
+func gitStderr(t *testing.T, dir, token string, args ...string) (string, error) {
+	t.Helper()
+	var stderr bytes.Buffer
+	cmd := gitCommand(t, dir, token, args...)
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stderr.String(), err
+}
+
+func gitCommand(t *testing.T, dir, token string, args ...string) *exec.Cmd {
+	t.Helper()
 	cmd := exec.CommandContext(t.Context(), gitBinary(t), append([]string{"-c", "http.extraHeader=Authorization: Bearer " + token}, args...)...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+filepath.Join(dir, "none"), "GIT_TERMINAL_PROMPT=0",
 		"GIT_AUTHOR_NAME=Agent", "GIT_AUTHOR_EMAIL=agent@example.com", "GIT_COMMITTER_NAME=Agent", "GIT_COMMITTER_EMAIL=agent@example.com")
-	out, err := cmd.CombinedOutput()
-	return string(out), err
+	return cmd
 }
+
+// refusedMain is what git prints for a push to main that Refs of
+// refs/heads/agents/* refuse.
+const refusedMain = " ! [remote rejected] HEAD -> main (only branches under refs/heads/agents/ may be pushed by this caller)"
 
 // A clone and a fetch through the git address of a connection to the stub
 // git host succeed with the credential placed as git.inject says, a push
-// lands on a branch its allow names and not on another, and the caller's
-// token never reaches the stub.
+// lands on a branch its allow names and not on another, git printing the
+// reason, and the caller's token never reaches the stub.
 func TestCloneThroughTheGitAddress(t *testing.T) {
 	if _, err := stubs.GitPath(); err != nil {
 		t.Skip(err.Error())
@@ -71,8 +92,8 @@ func TestCloneThroughTheGitAddress(t *testing.T) {
 	if out, err := git(t, work, token, "push", "--quiet", "origin", "HEAD:refs/heads/agents/ses-clone"); err != nil {
 		t.Fatalf("a push to the session's branch: %v %s", err, out)
 	}
-	if out, err := git(t, work, token, "push", "origin", "HEAD:refs/heads/main"); err == nil || !strings.Contains(out, "403") {
-		t.Fatalf("a push to main: %v %s", err, out)
+	if stderr, err := gitStderr(t, work, token, "push", "origin", "HEAD:refs/heads/main"); err == nil || !strings.Contains(stderr, refusedMain) {
+		t.Fatalf("a push to main: %v %s", err, stderr)
 	}
 	refs, err := up.git.Refs("acme/app.git")
 	if err != nil || refs["refs/heads/agents/ses-clone"] == "" {

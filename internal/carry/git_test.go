@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -97,9 +99,9 @@ func TestAPushIsHeldToItsRefs(t *testing.T) {
 		}
 	}
 	before := r.git.Requests()
-	out, err := gitRun(t, work, "alice", "push", "origin", "HEAD:refs/heads/main")
-	if err == nil || !strings.Contains(out, "403") {
-		t.Fatalf("a push to main: %v %s", err, out)
+	stderr, err := gitStderr(t, work, "alice", "push", "origin", "HEAD:refs/heads/main")
+	if err == nil || !strings.Contains(stderr, " ! [remote rejected] HEAD -> main (only branches under refs/heads/agents/ may be pushed by this caller)") {
+		t.Fatalf("a push to main: %v %s", err, stderr)
 	}
 	for _, rq := range r.git.Requests()[len(before):] {
 		if strings.HasSuffix(rq.Path, "/git-receive-pack") {
@@ -160,9 +162,10 @@ func TestAPushIsHeldToItsRefs(t *testing.T) {
 		}
 	}
 	// A shallow line before the commands names no ref.
-	cmds, read, err := readCommands(strings.NewReader(pkt("shallow "+strings.Repeat("2", 40)+"\n") + pkt(zero+" "+strings.Repeat("1", 40)+" refs/heads/agents/x\x00caps\n") + "0000PACK"))
-	if err != nil || len(cmds) != 1 || cmds[0].Ref != "refs/heads/agents/x" || !bytes.HasSuffix(read, []byte("0000")) {
-		t.Fatalf("a shallow push: %+v %v", cmds, err)
+	head, err := readCommands(strings.NewReader(pkt("shallow "+strings.Repeat("2", 40)+"\n") + pkt(zero+" "+strings.Repeat("1", 40)+" refs/heads/agents/x\x00report-status side-band-64k\n") + "0000PACK"))
+	if err != nil || len(head.commands) != 1 || head.commands[0].Ref != "refs/heads/agents/x" || !bytes.HasSuffix(head.read, []byte("0000")) ||
+		!slices.Equal(head.caps, []string{"report-status", "side-band-64k"}) {
+		t.Fatalf("a shallow push: %+v %v", head, err)
 	}
 }
 
@@ -209,4 +212,147 @@ func cloneWithChange(t *testing.T, r *rig, c store.Connection, size int) string 
 		}
 	}
 	return work
+}
+
+// A push Refs refuse is answered in git's own protocol, so git prints the
+// reason and exits non-zero: 200 with a report-status in which every
+// command is refused, in band 1 when the client asked for a side band, and
+// an ERR packet to a client that asked for no report-status. The pack is
+// read to its end first, so git reads the answer of a large push too, and
+// nothing reaches the git host.
+func TestARefusedPushSaysWhy(t *testing.T) {
+	r := newRig(t, true)
+	c := r.keyed()
+	r.az.set(authorizer.Limits{Refs: []string{"refs/heads/agents/*"}})
+	const rule = "only branches under refs/heads/agents/ may be pushed by this caller"
+	push := address(c, "git") + "/acme/app.git/git-receive-pack"
+	main := zero + " " + strings.Repeat("1", 40) + " refs/heads/main"
+	mine := zero + " " + strings.Repeat("1", 40) + " refs/heads/agents/x"
+	report := pkt("unpack ok\n") + pkt("ng refs/heads/main "+rule+"\n") + pkt("ng refs/heads/agents/x "+reasonWithTheRest+"\n") + "0000"
+	for _, tc := range []struct{ name, caps, want string }{
+		{"report-status", "report-status", report},
+		{"report-status-v2 in band one", "report-status-v2 side-band-64k quiet", band(1, report) + "0000"},
+		{"side-band in small packets", "report-status side-band", smallBands(report) + "0000"},
+		{"no report-status", "quiet", pkt("ERR " + rule + "\n")},
+		{"no report-status, a band", "side-band-64k", band(3, rule+"\n") + "0000"},
+	} {
+		name := tc.name
+		before := len(r.git.Requests())
+		body := pkt(main+"\x00"+tc.caps+"\n") + pkt(mine+"\n") + "0000PACK the pack"
+		a := r.send(http.MethodPost, push, "alice", strings.NewReader(body), "Content-Type", "application/x-git-receive-pack-request")
+		if a.status != http.StatusOK || a.header.Get("Content-Type") != "application/x-git-receive-pack-result" || string(a.body) != tc.want {
+			t.Errorf("%s: %d %v %q", name, a.status, a.header, a.body)
+		}
+		if len(r.git.Requests()) != before {
+			t.Errorf("%s: a refused push reached the git host", name)
+		}
+	}
+
+	// A push larger than the server reads past on its own: without the pack
+	// read to its end, git reads no answer and prints no reason.
+	work := cloneWithChange(t, r, c, 600<<10)
+	before := len(r.git.Requests())
+	for _, args := range [][]string{
+		{"push", "origin", "HEAD:refs/heads/main"},
+		{"-c", "http.postBuffer=65520", "push", "origin", "HEAD:refs/heads/main"},
+	} {
+		stderr, err := gitStderr(t, work, "alice", args...)
+		if err == nil || !strings.Contains(stderr, " ! [remote rejected] HEAD -> main ("+rule+")") {
+			t.Errorf("a large push to main, %v: %v %s", args, err, stderr)
+		}
+	}
+	// The one push that reached the git host is the second push's probe,
+	// which names no ref.
+	posts := 0
+	for _, rq := range r.git.Requests()[before:] {
+		if strings.HasSuffix(rq.Path, "/git-receive-pack") && rq.Method == http.MethodPost {
+			posts++
+		}
+	}
+	if posts != 1 {
+		t.Fatalf("%d pushes reached the git host", posts)
+	}
+	var denied []store.Call
+	for _, rec := range r.calls(c) {
+		if rec.Method == http.MethodPost && rec.Tool == ReceivePack {
+			denied = append(denied, rec)
+		}
+	}
+	// A denied push is recorded once a minute, and the probe as a push
+	// that names no ref.
+	if len(denied) != 2 || denied[0].Outcome != OutcomeDenied || denied[0].Status != 0 || denied[0].Refs != 2 ||
+		denied[0].BytesIn != int64(len(pkt(main+"\x00report-status\n")+pkt(mine+"\n")+"0000PACK the pack")) ||
+		denied[1].Outcome != OutcomeOK || denied[1].Refs != 0 {
+		t.Fatalf("the records %+v", denied)
+	}
+
+	// A pack past the bound is 413, as a forwarded body is.
+	over := pkt(main+"\x00report-status\n") + "0000" + strings.Repeat("P", 1<<20)
+	if a := r.send(http.MethodPost, push, "alice", strings.NewReader(over)); a.status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("a refused push past the bound: %d %s", a.status, a.body)
+	}
+}
+
+// band is data in one band of side-band-64k.
+func band(n byte, data string) string { return fmt.Sprintf("%04x", len(data)+5) + string(n) + data }
+
+// smallBands is data in band 1 of side-band, in pkt-lines of at most 1000
+// bytes.
+func smallBands(data string) string {
+	var out strings.Builder
+	for len(data) > 0 {
+		n := min(len(data), 995)
+		out.WriteString(band(1, data[:n]))
+		data = data[n:]
+	}
+	return out.String()
+}
+
+// The rule is one sentence built from Refs.
+func TestTheRuleOfARefusedPush(t *testing.T) {
+	for globs, want := range map[string]string{
+		"refs/heads/agents/*":                           "only branches under refs/heads/agents/ may be pushed by this caller",
+		"refs/heads/agents/*|refs/heads/users/*":        "only branches under refs/heads/agents/ or refs/heads/users/ may be pushed by this caller",
+		"refs/heads/a/*|refs/heads/b/*|refs/heads/c/*":  "only branches under refs/heads/a/, refs/heads/b/, or refs/heads/c/ may be pushed by this caller",
+		"refs/heads/agents/*|refs/tags/v*":              "only refs matching refs/heads/agents/* or refs/tags/v* may be pushed by this caller",
+		"refs/heads/agent-*":                            "only refs matching refs/heads/agent-* may be pushed by this caller",
+		"refs/heads/*/x/*":                              "only refs matching refs/heads/*/x/* may be pushed by this caller",
+		"refs/heads/main":                               "only refs matching refs/heads/main may be pushed by this caller",
+		"refs/heads/\nevil/*":                           reasonGeneral,
+		"refs/heads/" + strings.Repeat("x", 300) + "/*": reasonGeneral,
+		"": reasonGeneral,
+	} {
+		var refs []string
+		if globs != "" {
+			refs = strings.Split(globs, "|")
+		}
+		if got := refsRule(refs); got != want {
+			t.Errorf("%q: %q, want %q", globs, got, want)
+		}
+	}
+	// A report longer than one pkt-line of side-band-64k is split across
+	// several.
+	long := pushHead{caps: []string{"report-status", "side-band-64k"}}
+	for i := range 1000 {
+		long.commands = append(long.commands, command{Ref: fmt.Sprintf("refs/heads/main-%04d", i)})
+	}
+	got := long.refusal(authorizer.Limits{Refs: []string{"refs/heads/agents/*"}})
+	var report bytes.Buffer
+	for rest := got; ; {
+		n, err := strconv.ParseUint(string(rest[:4]), 16, 32)
+		if err != nil || n > maxPkt {
+			t.Fatalf("a pkt-line of %d bytes: %v", n, err)
+		}
+		if n == 0 {
+			break
+		}
+		if rest[4] != bandData {
+			t.Fatalf("band %d", rest[4])
+		}
+		report.Write(rest[5:n])
+		rest = rest[n:]
+	}
+	if c := strings.Count(report.String(), "ng refs/heads/main-"); c != 1000 || report.Len() <= maxPkt {
+		t.Fatalf("%d refusals in %d bytes", c, report.Len())
+	}
 }

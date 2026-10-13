@@ -527,7 +527,7 @@ paths:
       operationId: gitService
       summary: Fetch from or push to a repository
       description: >-
-        The git address of a connection of kind `http` whose connector names a git host: git's smart HTTP alone, a ref advertisement of `.../info/refs` and a POST to `git-upload-pack` or `git-receive-pack`. A push is held to the refs the allow names before any of its pack is sent. Any other path is `404`.
+        The git address of a connection of kind `http` whose connector names a git host: git's smart HTTP alone, a ref advertisement of `.../info/refs` and a POST to `git-upload-pack` or `git-receive-pack`. A push is held to the refs the allow names before any of its pack is sent. A push that names a ref outside them is answered `200` with git's own report of a refused push, every ref refused with the reason, so git prints it and exits non-zero. Any other path is `404`.
       parameters:
         - $ref: "#/components/parameters/ConnectionID"
         - $ref: "#/components/parameters/Path"

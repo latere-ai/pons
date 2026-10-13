@@ -19,9 +19,9 @@ what was said.
 > image.** The server keeps connectors and connections, signs people in
 > to another service or takes a key, seals the credential and refreshes
 > it, and carries plain HTTP and git through a connection's addresses, a
-> push held to the branches its caller may update. GitHub is the first
-> connector. The address that carries the Model Context Protocol comes
-> next. Start with
+> push held to the branches its caller may update and git showing the
+> rule when one is refused. GitHub is the first connector. The address
+> that carries the Model Context Protocol comes next. Start with
 > [`specs/001-architecture.md`](specs/001-architecture.md); the index in
 > [`specs/README.md`](specs/README.md) lists every spec in build order.
 

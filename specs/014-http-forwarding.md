@@ -132,8 +132,9 @@ streams the rest of the request, the pack, untouched.
   named the same way.
 - Under an allow whose limits give `Refs`, globs over full ref names
   such as `refs/heads/agents/*`, a push that names any ref outside them
-  is refused before a byte of the pack is sent: `403 forbidden` with
-  `details.field` `refs`. Git shows the person the reason Pons gives.
+  is refused, and none of its pack is sent to the connector. It is
+  answered the way a git host refuses a push, so git shows the person
+  the reason (below).
 - A request with a `Content-Encoding` is `400 invalid_request`. Git
   does not compress a push, so a compressed one is not git's.
 - Commands that do not parse, or that run past either bound, are `400
@@ -146,6 +147,54 @@ streams the rest of the request, the pack, untouched.
 
 A fetch and a clone are not read: what a caller may read is decided by
 the question alone.
+
+### A refused push says why
+
+git prints a reason only from its own protocol: the body of an HTTP
+error to a push is never shown, and git says no more than `RPC failed;
+HTTP 403`. A push `Refs` refuse is therefore answered as a git host
+answers a push it refuses:
+
+- The rest of the body, the pack, is read and dropped, bounded by
+  `PONS_MAX_FORWARD_BYTES` and each read by the idle timeout, since git
+  reads no answer before it has sent its whole request. A pack past the
+  bound is `413 request_too_large`.
+- The answer is `200` with `Content-Type:
+  application/x-git-receive-pack-result`. To a client that asked for
+  `report-status` or `report-status-v2`, which stock git does whenever
+  the host offers it, the body is a report: `unpack ok`, then `ng <ref>
+  <reason>` for every command. A ref outside `Refs` is refused with the
+  rule, and any other ref of the same push with `not pushed: another ref
+  in this push is refused`, since Pons sends none of a push or all of
+  it. To a client that asked for neither, the body is one `ERR <rule>`
+  packet. Either is carried in band 1 of the side band when the client
+  asked for `side-band-64k` or `side-band`, and an `ERR` packet's text
+  in band 3.
+- The rule is one sentence built from `Refs`: `only branches under
+  refs/heads/agents/ may be pushed by this caller` when every glob is a
+  branch prefix such as `refs/heads/agents/*`, else `only refs matching
+  <globs> may be pushed by this caller`, the globs joined as a list.
+  Globs that hold a control character, or a sentence over 256 bytes, give
+  `this ref may not be pushed by this caller`.
+
+For a push to `main` under `refs/heads/agents/*`, git prints:
+
+```text
+To https://pons.example.com/v1/connections/con_.../git/acme/app.git
+ ! [remote rejected] HEAD -> main (only branches under refs/heads/agents/ may be pushed by this caller)
+error: failed to push some refs to 'https://pons.example.com/v1/connections/con_.../git/acme/app.git'
+```
+
+and exits `1`. A client that asked for no report-status is answered the
+`ERR` packet and exits non-zero, but git prints the reason only from a
+report, which is why stock git is answered one. The record is `denied`
+with no `status`, since the connector was not asked.
+
+Every other refusal of a request to the git address is the HTTP answer
+of the rest of this spec. A deny in particular stays the `404` of an id
+that names nothing ([[004-identity-and-authorization]]), which git prints
+as `repository '...' not found`: answering it in git's protocol would
+tell a caller that the connection exists.
 
 ### Headers
 
@@ -231,7 +280,9 @@ Built in `internal/carry`, served before the router of `internal/httpapi`
 so the path is judged as the caller escaped it: both addresses, the path
 rules, the four requests of the git address, the effect, the question
 with `method`, `tool`, `effect` and `refs`, a push's commands read
-before its pack and held to `Refs`, the body streamed and bounded by
+before its pack and held to `Refs`, a refused push answered in git's
+protocol with the rule, git's probe before a large push forwarded, the
+body streamed and bounded by
 `PONS_MAX_FORWARD_BYTES`, the headers each way, `Link` and `Location`
 moved under the address, a `3xx` elsewhere as `redirect_elsewhere`, a
 refused credential, the scope challenge, records with the count of
@@ -244,6 +295,7 @@ connection was found is recorded `denied`, as a bound Pons holds.
 | `carry.TestTheGitAddressServesGitAlone` | written; skipped with its reason where `git` is not installed |
 | `TestCloneThroughTheGitAddress` | written, in the e2e tier, with a real `git` |
 | `carry.TestAPushIsHeldToItsRefs` | written, with a real `git` |
+| `carry.TestARefusedPushSaysWhy`, `carry.TestTheRuleOfARefusedPush` | written, the first with a real `git` |
 | `carry.TestALargePushPassesGitsProbe` | written, with a real `git` |
 | `carry.TestTheEffectOfAForwardedRequest` | written |
 | `carry.TestAForwardedBodyStreams` | written |
@@ -266,8 +318,9 @@ host, such as an archive download; the git protocol over SSH.
 |---|---|
 | A path with a dot segment, an empty segment, an encoded slash, backslash or dot, a control character, or over 2048 bytes is refused before the connection is loaded, and no request leaves for another host | `carry.TestAForwardedPathStaysOnItsConnector` |
 | The git address serves the four smart HTTP requests and answers every other path `404` | `carry.TestTheGitAddressServesGitAlone` |
-| A clone and a fetch through the git address of a connection to the stub git host succeed with the credential placed as `git.inject` says, and the caller's token never reaches the stub | `TestCloneThroughTheGitAddress` |
-| A push naming a ref outside `Refs` is refused before any of the pack is sent, a push inside it lands, a deletion is held to the same rule, and a compressed push is refused | `carry.TestAPushIsHeldToItsRefs` |
+| A clone and a fetch through the git address of a connection to the stub git host succeed with the credential placed as `git.inject` says, a push to a ref outside `Refs` fails with the rule in git's standard error, and the caller's token never reaches the stub | `TestCloneThroughTheGitAddress` |
+| A push naming a ref outside `Refs` is refused before any of the pack is sent, and git prints the rule; a push inside it lands, a deletion is held to the same rule, and a compressed push is refused | `carry.TestAPushIsHeldToItsRefs` |
+| A refused push is answered `200` with a report-status that refuses every command, in band 1 when the client asked for a side band, and an `ERR` packet to a client that asked for no report-status; the pack is read to its end so git prints the reason for a large push too; the record is `denied`; the rule is one sentence built from `Refs` | `carry.TestARefusedPushSaysWhy`, `carry.TestTheRuleOfARefusedPush` |
 | git's probe before a push larger than its post buffer is forwarded, and the push after it lands | `carry.TestALargePushPassesGitsProbe` |
 | `GET`, `HEAD`, `OPTIONS` and an `http.read_only` match read, every other method writes, and `ReadOnly` refuses a write | `carry.TestTheEffectOfAForwardedRequest` |
 | A body streams without being buffered, and one past `PONS_MAX_FORWARD_BYTES` ends with `413` | `carry.TestAForwardedBodyStreams` |

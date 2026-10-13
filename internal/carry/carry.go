@@ -208,13 +208,12 @@ func (c *Carrier) serve(w http.ResponseWriter, r *http.Request, call *call) erro
 	if r.ContentLength > c.MaxForwardBytes {
 		return apierr.Fail(apierr.CodeRequestTooLarge, "max_forward_bytes="+strconv.FormatInt(c.MaxForwardBytes, 10))
 	}
-	var commands []command
-	var prefix []byte
+	var push pushHead
 	if service == ReceivePack && r.Method == http.MethodPost {
 		if r.Header.Get("Content-Encoding") != "" {
 			return apierr.OnField(apierr.CodeInvalidRequest, "Content-Encoding", "compressed_push")
 		}
-		if commands, prefix, err = readCommands(r.Body); err != nil {
+		if push, err = readCommands(r.Body); err != nil {
 			return apierr.Fail(apierr.CodeInvalidRequest, "push_commands")
 		}
 	}
@@ -242,11 +241,8 @@ func (c *Carrier) serve(w http.ResponseWriter, r *http.Request, call *call) erro
 	case service == ReceivePack:
 		effect = catalog.EffectWrite
 	}
-	refs := make([]string, len(commands))
-	for i, cmd := range commands {
-		refs[i] = cmd.Ref
-	}
-	call.found(row, caller, r.Method, tool, effect, len(commands), int64(len(prefix)))
+	refs := push.refs()
+	call.found(row, caller, r.Method, tool, effect, len(refs), int64(len(push.read)))
 
 	// One question, with what the request names.
 	res := access.Connection{
@@ -271,6 +267,9 @@ func (c *Carrier) serve(w http.ResponseWriter, r *http.Request, call *call) erro
 	releaseConn, err := c.hold(d.Limits, caller.Subject, row.ID, effect, tool, refs)
 	if err != nil {
 		call.outcome = OutcomeDenied
+		if e := apierr.Classify(err); e.Field == fieldRefs {
+			return c.refusePush(w, r, call, push, d.Limits, err)
+		}
 		return err
 	}
 	defer releaseConn()
@@ -283,8 +282,12 @@ func (c *Carrier) serve(w http.ResponseWriter, r *http.Request, call *call) erro
 		call.upstream(err)
 		return err
 	}
-	return c.forward(w, r, call, o, address, service, t, prefix)
+	return c.forward(w, r, call, o, address, service, t, push.read)
 }
+
+// fieldRefs is the member a refusal by Refs is about: a push answered in
+// git's protocol, so git prints the reason.
+const fieldRefs = "refs"
 
 // hold applies the limits of an allow (specs/004-identity-and-authorization.md)
 // and takes the connection's place in flight. A refusal is a 403 on the
@@ -298,7 +301,7 @@ func (c *Carrier) hold(l authorizer.Limits, subject, connection, effect, tool st
 	}
 	for _, ref := range refs {
 		if !l.AdmitsRef(ref) {
-			return nil, apierr.OnField(apierr.CodeForbidden, "refs", "refs")
+			return nil, apierr.OnField(apierr.CodeForbidden, fieldRefs, "refs")
 		}
 	}
 	if l.CallsPerMinute > 0 {
