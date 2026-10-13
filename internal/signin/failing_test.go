@@ -96,7 +96,7 @@ func (c brokenConnections) Describe(ctx context.Context, id string, a store.Acco
 // A store that fails is a refresh that fails with nothing moved, and a
 // refresh that lost to a newer credential uses the stored one.
 func TestARefreshOverAFailingStore(t *testing.T) {
-	r := newRig(t, "")
+	r := newRig(t)
 	ctx := context.Background()
 	for _, at := range []string{"ClaimRefresh", "ReleaseRefresh", "CompleteRefresh", "Moved"} {
 		o := r.signedIn("a"+at[:4], store.StateConnected, r.clock.now().Add(time.Hour))

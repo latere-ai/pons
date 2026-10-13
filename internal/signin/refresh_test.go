@@ -20,7 +20,7 @@ import (
 // replaces the spent one, the version moves by one and the lease is gone;
 // an answer with no refresh token keeps the old one.
 func TestRotationIsOneWrite(t *testing.T) {
-	r := newRig(t, "")
+	r := newRig(t)
 	o := r.signedIn("alice", store.StateConnected, r.clock.now().Add(30*time.Second))
 	if !r.s.Due(o) {
 		t.Fatal("a token ending within a minute is not due")
@@ -65,7 +65,7 @@ func TestRotationIsOneWrite(t *testing.T) {
 // takes the reason; any other failure releases the claim, changes no state
 // and answers 502.
 func TestRefreshFailures(t *testing.T) {
-	r := newRig(t, "")
+	r := newRig(t)
 	ctx := context.Background()
 	o := r.signedIn("alice", store.StateConnected, r.clock.now().Add(time.Hour))
 	r.auth.Set(func(sw *stubs.AuthSwitches) { sw.RefuseRefresh = true })
@@ -112,7 +112,7 @@ func TestRefreshFailures(t *testing.T) {
 // and every one uses the token it got; one that does not claim waits for
 // the version to move, and gives up with a retryable 502.
 func TestOneWriterRefreshes(t *testing.T) {
-	r := newRig(t, "")
+	r := newRig(t)
 	r.auth.Set(func(sw *stubs.AuthSwitches) { sw.SlowToken = 200 * time.Millisecond })
 	r.s.poll = 10 * time.Millisecond
 	o := r.signedIn("alice", store.StateConnected, r.clock.now().Add(10*time.Second))
@@ -160,7 +160,7 @@ func TestOneWriterRefreshes(t *testing.T) {
 // before its expiry, again after, anew when renewed, and appears in no
 // table; a refused client moves the connection.
 func TestMintedTokenIsNotStored(t *testing.T) {
-	r := newRig(t, "")
+	r := newRig(t)
 	r.auth.AddClient("wh-client", "the-client-secret-01")
 	r.auth.Set(func(sw *stubs.AuthSwitches) { sw.ExpiresIn = 120; sw.TokenPrefix = "minted-canary-" })
 	c := r.connection("alice", "minted", store.StateConnected, &store.Secrets{ClientSecret: "the-client-secret-01"},
@@ -244,7 +244,7 @@ func TestTheTokenEndpointsHabits(t *testing.T) {
 	if _, err := hostOf("::"); err == nil {
 		t.Error("a host of no URL")
 	}
-	r := newRig(t, "")
+	r := newRig(t)
 	r.auth.Set(func(sw *stubs.AuthSwitches) { sw.TokenType = "mac" })
 	o := r.signedIn("alice", store.StateConnected, time.Time{})
 	if _, err := r.s.refreshGrant(context.Background(), o); !isCode(err, "token_type") {
@@ -259,7 +259,7 @@ func TestTheTokenEndpointsHabits(t *testing.T) {
 // catalog's, with its secret read at use; a registration kept for the
 // issuer, its secret opened; or a public client.
 func TestARefreshIsTheClientsOwn(t *testing.T) {
-	r := newRig(t, "")
+	r := newRig(t)
 	ctx := context.Background()
 	secret, err := r.sealer.Seal([]byte("the-registered-secret"), store.RegistrationBinding("https://auth.example.com", r.s.RedirectURI()))
 	if err != nil {

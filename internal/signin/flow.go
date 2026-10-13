@@ -280,22 +280,35 @@ func (s *Signin) Confirm(ctx context.Context, c store.Connection, code string) e
 	return nil
 }
 
-// Held is what a connection's stored credential was issued under, read from
-// its meta with nothing opened: the issuer it keeps for good and the scopes
-// granted. ok is false for a connection with no credential.
-func (s *Signin) Held(ctx context.Context, c store.Connection) (issuer string, scopes []string, ok bool, err error) {
+// Reconnect plans a new sign-in for a stored connection
+// (specs/007-sign-in.md): discovery again, asking for the union of the
+// scopes its credential was granted and the ones named, so nothing granted
+// before is lost. Its issuer is the one recorded with its credential at its
+// first confirm and does not change: a discovery that finds another is 422
+// sign_in_unsupported with issuer_changed, and nothing changes.
+func (s *Signin) Reconnect(ctx context.Context, c store.Connection, conn Connector, named []string) (Plan, error) {
+	var issuer string
+	var granted []string
+	held := false
 	sealed, _, err := s.Store.Credentials().Get(ctx, c.ID)
 	switch {
-	case errors.Is(err, store.ErrNotFound):
-		return "", nil, false, nil
-	case err != nil:
-		return "", nil, false, apierr.Internal(err)
+	case err == nil:
+		meta, err := store.DecodeMeta(sealed.Meta)
+		if err != nil {
+			return Plan{}, apierr.Internal(err)
+		}
+		issuer, granted, held = meta.Issuer, meta.Scopes, true
+	case !errors.Is(err, store.ErrNotFound):
+		return Plan{}, apierr.Internal(err)
 	}
-	meta, err := store.DecodeMeta(sealed.Meta)
+	p, err := s.Discover(ctx, conn, union(granted, named))
 	if err != nil {
-		return "", nil, false, apierr.Internal(err)
+		return Plan{}, err
 	}
-	return meta.Issuer, meta.Scopes, true, nil
+	if held && p.Issuer != issuer {
+		return Plan{}, unsupported("issuer_changed")
+	}
+	return p, nil
 }
 
 // ReturnAllowed reports whether a return_to is one of the addresses a

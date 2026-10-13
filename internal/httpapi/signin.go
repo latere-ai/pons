@@ -170,16 +170,9 @@ func (s *Server) reconnect(w http.ResponseWriter, r *http.Request, c access.Call
 	if conn.added != nil {
 		return apierr.Fail(apierr.CodeSignInUnsupported, "sign_in_not_available")
 	}
-	issuer, scopes, held, err := s.Signin.Held(ctx, row)
+	plan, err := s.Signin.Reconnect(ctx, row, conn.signin(), req.Scopes)
 	if err != nil {
 		return err
-	}
-	plan, err := s.Signin.Discover(ctx, conn.signin(), append(scopes, req.Scopes...))
-	if err != nil {
-		return err
-	}
-	if held && plan.Issuer != issuer {
-		return apierr.Fail(apierr.CodeSignInUnsupported, "issuer_changed")
 	}
 	address, flow, err := s.Signin.Begin(row, plan, req.ReturnTo)
 	if err != nil {

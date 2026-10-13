@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"latere.ai/x/pons/catalog"
 	"latere.ai/x/pons/internal/apierr"
@@ -66,7 +67,7 @@ func (s *Signin) revoke(ctx context.Context, conn Connector, meta store.Meta, se
 		var status int
 		status, _, err = s.post(ctx, meta.RevocationEndpoint, conn.Ports(), url.Values{"token_type_hint": {hint}}, map[string]string{"token": token}, c)
 		if err == nil && (status < 200 || status > 299) {
-			err = &tokenError{Code: "status_" + http.StatusText(status)}
+			err = &tokenError{Code: "status_" + strconv.Itoa(status)}
 		}
 	}
 	if err != nil {

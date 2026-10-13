@@ -63,6 +63,9 @@ type Hooks struct {
 	// Grace, when it is not zero, replaces how long open requests are given
 	// after a signal.
 	Grace time.Duration
+	// FlowsEvery, when it is not zero, replaces how often the flows that ran
+	// out are swept.
+	FlowsEvery time.Duration
 	// Outside are the options of the outside client no variable sets: the
 	// stubs' resolver, their authority and a permit for their listeners
 	// (specs/009-outbound-requests.md).
@@ -248,7 +251,8 @@ func serve(ctx context.Context, getenv func(string) string, logs io.Writer, hook
 	if err != nil {
 		return fmt.Errorf("PONS_ADDR: %w", err)
 	}
-	httpSrv := &http.Server{Handler: srv.api(hooks).Handler(), ReadHeaderTimeout: 10 * time.Second}
+	api := srv.api(hooks)
+	httpSrv := &http.Server{Handler: api.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	failed := make(chan error, 1)
 	go func() { failed <- httpSrv.Serve(ln) }()
 	log.InfoContext(ctx, "listening", "host", ln.Addr().String())
@@ -261,6 +265,11 @@ func serve(ctx context.Context, getenv func(string) string, logs io.Writer, hook
 	}
 	go srv.rewrap(work)
 	go srv.sweep(work, every)
+	flowsEvery := signin.SweepEvery
+	if hooks.FlowsEvery > 0 {
+		flowsEvery = hooks.FlowsEvery
+	}
+	go srv.sweepFlows(work, api.Signin, flowsEvery)
 	if hooks.Ready != nil {
 		hooks.Ready <- ln.Addr().String()
 	}
@@ -317,6 +326,23 @@ func (srv *server) sweep(ctx context.Context, every time.Duration) {
 				continue
 			}
 			srv.log.InfoContext(ctx, "swept", "count", calls+keys)
+		}
+	}
+}
+
+// sweepFlows ends the sign-ins that ran out every interval, on every
+// replica: the store hands each flow to one sweeper.
+func (srv *server) sweepFlows(ctx context.Context, s *signin.Signin, every time.Duration) {
+	tick := time.NewTicker(every)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			if _, err := s.Sweep(ctx); err != nil && ctx.Err() == nil {
+				srv.log.WarnContext(ctx, "a sweep of the flows failed; the next tick tries again", "table", "flows", "error", err.Error())
+			}
 		}
 	}
 }

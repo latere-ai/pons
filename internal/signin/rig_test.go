@@ -6,7 +6,11 @@ package signin
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"log/slog"
+	"net"
+	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -78,9 +82,12 @@ type rig struct {
 	logs   *logs
 }
 
-// newRig starts the stubs and a sign-in, with the catalog entries the doc
-// adds to a GitHub-shaped one, "code", whose endpoints are the stub's.
-func newRig(t *testing.T, extra string, opts ...stubs.AuthOption) *rig {
+// newRig starts the stubs and a sign-in, with a catalog of one entry per
+// way to find the stub authorization server: "code", in GitHub's shape,
+// gives its endpoints; "issued" names its issuer; "named" names it beside
+// a protected resource; "found" finds it through the resource's metadata
+// and has no client of its own; "minted" takes a client of its owner's.
+func newRig(t *testing.T, opts ...stubs.AuthOption) *rig {
 	t.Helper()
 	r := &rig{t: t, st: memory.New(memory.Options{}), auth: stubs.NewAuthServer(t, opts...), api: stubs.NewAPI(t),
 		clock: &clock{t: time.Now()}, logs: &logs{}}
@@ -110,7 +117,32 @@ func newRig(t *testing.T, extra string, opts ...stubs.AuthOption) *rig {
     kind: http
     url: ` + r.api.URL() + `
     auth: {type: client_credentials, token_url: "` + r.auth.TokenURL() + `", scopes: [read], audience: "https://api.example.com"}
-` + extra
+  - name: issued
+    title: Issued
+    kind: http
+    url: ` + r.api.URL() + `
+    auth:
+      type: oauth
+      discovery: issuer
+      issuer: ` + r.auth.Issuer() + `
+      client: {id: pons-client, secret: {env: CLIENT_SECRET}}
+      scopes: [read]
+  - name: named
+    title: Named
+    kind: http
+    url: ` + r.api.URL() + `
+    auth:
+      type: oauth
+      discovery: resource
+      issuer: ` + r.auth.Issuer() + `
+      client: {id: pons-client, secret: {env: CLIENT_SECRET}}
+      resource: true
+  - name: found
+    title: Found
+    kind: http
+    url: ` + r.api.URL() + `
+    auth: {type: oauth, discovery: resource, resource: true}
+`
 	lookup := func(name string) (string, bool) { return clientSecret, name == "CLIENT_SECRET" }
 	cat, err := catalog.Parse([]byte(doc), catalog.Options{LookupEnv: lookup})
 	if err != nil {
@@ -199,4 +231,84 @@ func (r *rig) state(c store.Connection) store.Connection {
 		r.t.Fatal(err)
 	}
 	return got
+}
+
+// browser follows an authorization request at the stub to the redirect it
+// answers, and answers the redirect's query: what the callback is sent.
+// It reaches the stub by its name on loopback.
+func browser(t *testing.T, address string) url.Values {
+	t.Helper()
+	dialer := &net.Dialer{}
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: stubs.Roots(), MinVersion: tls.VersionTLS12},
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				_, port, err := net.SplitHostPort(addr)
+				if err != nil {
+					return nil, err
+				}
+				return dialer.DialContext(ctx, network, net.JoinHostPort("127.0.0.1", port))
+			},
+		},
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, address, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+	loc, err := url.Parse(resp.Header.Get("Location"))
+	if err != nil || resp.StatusCode != http.StatusFound {
+		t.Fatalf("the authorization request answered %d %v", resp.StatusCode, err)
+	}
+	return loc.Query()
+}
+
+// pending makes a pending connection of a connector and starts its
+// sign-in: the plan, the flow stored, and the address.
+func (r *rig) pending(owner, connector string, requested []string) (store.Connection, string, store.Flow) {
+	r.t.Helper()
+	c := r.connection(owner, connector, store.StatePending, nil, store.Meta{})
+	plan, err := r.s.Discover(context.Background(), r.conns[connector], requested)
+	if err != nil {
+		r.t.Fatalf("discover %s: %v", connector, err)
+	}
+	address, f, err := r.s.Begin(c, plan, "https://app.example.com/back")
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	if err := r.st.Flows().Put(context.Background(), f); err != nil {
+		r.t.Fatal(err)
+	}
+	return c, address, f
+}
+
+// signIn runs a sign-in to its confirm and answers the connection.
+func (r *rig) signIn(owner, connector string) store.Connection {
+	r.t.Helper()
+	c, address, _ := r.pending(owner, connector, nil)
+	dest, err := r.s.Callback(context.Background(), browser(r.t, address))
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	u, err := url.Parse(dest)
+	if err != nil || u.Query().Get("code") == "" {
+		r.t.Fatalf("the callback sent the browser to %s", dest)
+	}
+	if err := r.s.Confirm(context.Background(), r.state(c), u.Query().Get("code")); err != nil {
+		r.t.Fatal(err)
+	}
+	return r.state(c)
+}
+
+// dialTo is the rig's dialer, permitted the stubs' listeners and the ports
+// given.
+func (r *rig) dialTo(ports ...int) *dial.Client {
+	return dial.New(dial.Options{Resolver: stubs.Resolver(), Roots: stubs.Roots(), Permit: stubs.Permit(append(ports, r.auth.Port(), r.api.Port())...)})
 }
