@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -157,6 +158,15 @@ func (c *Carrier) Address(connection, address string) string {
 	return c.PublicURL + c.BasePath + "/connections/" + connection + "/" + address
 }
 
+// ForwardedMethods are the methods the forwarding address carries, the
+// ones an API is called with (specs/014-http-forwarding.md). Any other is
+// refused before the connection is loaded: TRACE, which a service may
+// answer with the request it received, CONNECT, and every method of
+// another protocol.
+var ForwardedMethods = []string{
+	http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete,
+}
+
 // ServeHTTP serves one request to a forwarding or a git address.
 func (c *Carrier) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c.init()
@@ -197,6 +207,9 @@ func (c *Carrier) serve(w http.ResponseWriter, r *http.Request, call *call) erro
 	t, why := checkPath(tail)
 	if why != "" {
 		return apierr.Fail(apierr.CodeInvalidRequest, why)
+	}
+	if address == AddressHTTP && !slices.Contains(ForwardedMethods, r.Method) {
+		return apierr.Fail(apierr.CodeInvalidRequest, "method")
 	}
 	service := ""
 	if address == AddressGit {

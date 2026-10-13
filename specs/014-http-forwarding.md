@@ -87,6 +87,13 @@ router cleans or decodes it. An empty `{path}` is the connector's `url`
 itself. The joined URL keeps the connector's scheme, host and port:
 nothing in a request names another.
 
+**The forwarding address takes an API's methods alone**: `GET`, `HEAD`,
+`OPTIONS`, `POST`, `PUT`, `PATCH` and `DELETE`. Any other method is
+refused with `400 invalid_request` before the connection is loaded, and
+nothing reaches the connector: `TRACE`, which a service may answer with
+the request it received, credential included, `CONNECT`, and every
+method of another protocol.
+
 **The git address takes git's smart HTTP alone.** A request is served
 only when it is a `GET` whose path ends in `/info/refs` with the query
 `service` set to `git-upload-pack` or `git-receive-pack`, or a `POST`
@@ -292,6 +299,7 @@ connection was found is recorded `denied`, as a bound Pons holds.
 | Criterion | State |
 |---|---|
 | `carry.TestAForwardedPathStaysOnItsConnector` | written |
+| `carry.TestOnlyAnAPIsMethodsAreForwarded` | written |
 | `carry.TestTheGitAddressServesGitAlone` | written; skipped with its reason where `git` is not installed |
 | `TestCloneThroughTheGitAddress` | written, in the e2e tier, with a real `git` |
 | `carry.TestAPushIsHeldToItsRefs` | written, with a real `git` |
@@ -317,6 +325,7 @@ host, such as an archive download; the git protocol over SSH.
 | Criterion | Test that proves it |
 |---|---|
 | A path with a dot segment, an empty segment, an encoded slash, backslash or dot, a control character, or over 2048 bytes is refused before the connection is loaded, and no request leaves for another host | `carry.TestAForwardedPathStaysOnItsConnector` |
+| The forwarding address forwards `GET`, `HEAD`, `OPTIONS`, `POST`, `PUT`, `PATCH` and `DELETE`, and refuses `TRACE`, `CONNECT` and any other method with `400 invalid_request` before the connection is loaded, with no request to the connector and no question | `carry.TestOnlyAnAPIsMethodsAreForwarded` |
 | The git address serves the four smart HTTP requests and answers every other path `404` | `carry.TestTheGitAddressServesGitAlone` |
 | A clone and a fetch through the git address of a connection to the stub git host succeed with the credential placed as `git.inject` says, a push to a ref outside `Refs` fails with the rule in git's standard error, and the caller's token never reaches the stub | `TestCloneThroughTheGitAddress` |
 | A push naming a ref outside `Refs` is refused before any of the pack is sent, and git prints the rule; a push inside it lands, a deletion is held to the same rule, and a compressed push is refused | `carry.TestAPushIsHeldToItsRefs` |

@@ -6,6 +6,12 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+- Fixed: the forwarding address carries only the methods an API is
+  called with, `GET`, `HEAD`, `OPTIONS`, `POST`, `PUT`, `PATCH` and
+  `DELETE`. Any other method, `TRACE` and `CONNECT` among them, is
+  refused with `400 invalid_request` before the connection is loaded,
+  as the API documentation already stated.
+
 - Added: a catalog entry's `authorize_url` may carry a query, for
   members a service needs on the authorization request, such as Google's
   `access_type=offline`, which the sign-in sends beside its own. A query

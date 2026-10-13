@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"slices"
 	"strings"
@@ -65,6 +66,44 @@ func TestAForwardedPathStaysOnItsConnector(t *testing.T) {
 	}
 	if r.c.Handles(httpRequest(t, "/v1/connections/"+c.ID+"/mcp")) || r.c.Handles(httpRequest(t, "/v1/connections/")) {
 		t.Fatal("the carrier takes an address it does not serve")
+	}
+}
+
+// The forwarding address carries the methods of an API alone: TRACE,
+// CONNECT and a method of another protocol are refused before the
+// connection is loaded, reach no connector and ask no question, and each of
+// ForwardedMethods is forwarded.
+func TestOnlyAnAPIsMethodsAreForwarded(t *testing.T) {
+	r := newRig(t, false)
+	c := r.keyed()
+	for _, m := range []string{http.MethodTrace, "PROPFIND", "get", "QUERY"} {
+		if a := r.send(m, address(c, "http")+"/user", "alice", nil); a.status != http.StatusBadRequest || a.code() != "invalid_request" {
+			t.Errorf("%s: %d %s", m, a.status, a.body)
+		}
+	}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodConnect, "http://pons.example.com"+address(c, "http")+"/user", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer alice")
+	w := httptest.NewRecorder()
+	r.c.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "invalid_request") {
+		t.Errorf("CONNECT: %d %s", w.Code, w.Body)
+	}
+	if got := r.api.Requests(); len(got) != 0 {
+		t.Fatalf("a refused method reached the connector: %+v", got)
+	}
+	if got := r.az.questions(); len(got) != 0 {
+		t.Fatalf("a refused method asked a question: %+v", got)
+	}
+	for _, m := range ForwardedMethods {
+		if a := r.send(m, address(c, "http")+"/user", "alice", nil); a.status == http.StatusBadRequest {
+			t.Errorf("%s was refused: %s", m, a.body)
+		}
+	}
+	if got := r.api.Requests(); len(got) != len(ForwardedMethods) {
+		t.Fatalf("forwarded %d of %d methods: %+v", len(got), len(ForwardedMethods), got)
 	}
 }
 
