@@ -10,6 +10,11 @@
 // container and no network behind. Every case gets a database of its own.
 // Where no container runtime answers, the start fails and the test fails
 // with the reason: a suite that skipped is never a green gate.
+//
+// A binary that never reaches Stop, because it panicked on -timeout or was
+// killed, leaves its containers to the next start: each container carries
+// the labels of latere.ai/x/ci-gate/reap, and every start first removes the
+// labeled ones whose owner process has exited.
 package pgtest
 
 import (
@@ -32,7 +37,9 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"latere.ai/x/ci-gate/reap"
 
+	"latere.ai/x/pons/internal/config"
 	"latere.ai/x/pons/internal/store/postgres"
 )
 
@@ -72,6 +79,15 @@ var (
 	serverErr error
 )
 
+// sweep, newNetwork and the runs reach the container engine; variables so a
+// test can stand in for it.
+var (
+	sweep        = reap.Sweep
+	newNetwork   = network.New
+	runPostgres  = tcpostgres.Run
+	runContainer = testcontainers.Run
+)
+
 // keep records a container for Stop. A container that failed to start is
 // still kept when the library returned one: it may hold a name or a port.
 func keep(c testcontainers.Container) {
@@ -95,19 +111,24 @@ func Start() (Server, error) {
 }
 
 func start(ctx context.Context) (Server, error) {
-	reaper("/var/run/docker.sock")
-	nw, err := network.New(ctx)
+	// Through config, the one package of the module that reads the
+	// environment.
+	host, _ := config.LookupEnv("DOCKER_HOST")
+	reaper(host, "/var/run/docker.sock")
+	_, _ = sweep(ctx)
+	nw, err := newNetwork(ctx)
 	if err != nil {
 		return Server{}, fmt.Errorf("pgtest: creating the network: %w", err)
 	}
 	mu.Lock()
 	shared = nw
 	mu.Unlock()
-	pg, err := tcpostgres.Run(ctx, postgresImage,
+	pg, err := runPostgres(ctx, postgresImage,
 		tcpostgres.WithDatabase(adminDB),
 		tcpostgres.WithUsername(dbUser),
 		tcpostgres.WithPassword(dbPassword),
 		network.WithNetwork([]string{dbAlias}, nw),
+		testcontainers.WithLabels(reap.Labels()),
 		// The suites are not a durability test of Postgres: they trade the
 		// server's own crash safety for speed. The connection bound holds
 		// the pools of every case that runs at once.
@@ -134,8 +155,9 @@ func start(ctx context.Context) (Server, error) {
 
 func startPooler(ctx context.Context, nw *testcontainers.DockerNetwork) (string, error) {
 	// Any database name is passed through to the server.
-	pooler, err := testcontainers.Run(ctx, poolerImage,
+	pooler, err := runContainer(ctx, poolerImage,
 		network.WithNetwork(nil, nw),
+		testcontainers.WithLabels(reap.Labels()),
 		testcontainers.WithExposedPorts("5432/tcp"),
 		testcontainers.WithEnv(map[string]string{
 			"DB_HOST": dbAlias, "DB_USER": dbUser, "DB_PASSWORD": dbPassword,
@@ -270,11 +292,22 @@ func OnDatabase(t testing.TB, server, name string) string {
 	return u.String()
 }
 
-// reaper turns Testcontainers' reaper off where the socket that answers is
-// a Podman machine's under Docker's name: the reaper there asks for a
-// bridge network the machine does not have, and Stop removes what this
-// binary started anyway.
-func reaper(socket string) {
+// reaper turns Testcontainers' reaper off where the engine it reaches is a
+// Podman machine: the reaper there asks for a bridge network the machine
+// does not have, and Stop and the sweep remove what it would have. The
+// engine is the one dockerHost, the value of DOCKER_HOST, names when it is
+// a unix socket, and otherwise the socket at fallback, which on macOS is
+// often a link to the machine's own; a link is followed.
+func reaper(dockerHost, fallback string) {
+	socket := fallback
+	if dockerHost != "" {
+		path, ok := strings.CutPrefix(dockerHost, "unix://")
+		if !ok {
+			// An engine over TCP leaves nothing on disk to tell which it is.
+			return
+		}
+		socket = path
+	}
 	resolved, err := filepath.EvalSymlinks(socket)
 	if err != nil || !strings.Contains(resolved, "podman") {
 		return
