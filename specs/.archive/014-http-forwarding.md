@@ -1,6 +1,6 @@
 ---
 title: "Plain HTTP and git through a connection: a forwarding address and a git address, the credential added, a path held to its connector, and a push held to the refs an allow names"
-status: testing
+status: complete
 track: core
 depends_on:
   - specs/002-objects.md
@@ -38,7 +38,9 @@ git and for the API beside it.
 
 ## Current state
 
-Built; see Implementation status. The carrier of [[008-carrying-a-call]]
+Complete: built, in production, and used against the real GitHub on
+2026-10-13; see Implementation status and the Outcome. The carrier of
+[[008-carrying-a-call]]
 forwards a Model Context Protocol message, and this spec reuses its
 steps, its header rules, its handling of a refused credential and its
 record. What is new is what is read from a request: a path instead of a
@@ -312,6 +314,51 @@ connection was found is recorded `denied`, as a bound Pons holds.
 | `carry.TestForwardedHeaders` | written |
 | `carry.TestARefusedForwardedRequest` | written |
 | `carry.TestForwardedRequestsAreRecorded` | written |
+
+## Outcome
+
+Built on 2026-10-13 and shipped in v0.1.0: both addresses, the path
+rules, git's smart HTTP alone on the git address, the effect, the
+question with `method`, `tool`, `effect` and `refs`, a push's commands
+read before its pack and held to `Refs`, the body streamed and bounded,
+the headers each way, `Link` and `Location` moved under the address, a
+`3xx` elsewhere refused, a refused credential, the records with their
+count of refs, and the probe of a key. v0.1.1, the first release with an
+image, runs in production since 2026-10-13.
+
+Against the real GitHub on 2026-10-13, through an installation's GitHub
+connector ([[013-github-connector]]): the git address carried a clone,
+three `git-upload-pack` requests each answered 200; a push to a branch
+under `refs/heads/agents/` landed; a push to another branch and one to
+`main` were refused before any of the pack left; and the forwarding
+address carried `GET /repos/{owner}/{repo}/issues`.
+
+What the check and the review after it changed, each on main after
+v0.1.1 for the next release, and each written into the Design above:
+
+- **A refused push says why.** It was answered `403` with a JSON body,
+  of which git printed only `RPC failed; HTTP 403`. It is now answered
+  in git's own protocol, a report that refuses every ref with the rule,
+  or an `ERR` packet, after the pack is read to its end, so git prints
+  the rule as the reason ([A refused push says why](#a-refused-push-says-why)).
+  A refused push of no stated length that runs past
+  `PONS_MAX_FORWARD_BYTES` while its pack is dropped is `413
+  request_too_large`.
+- **A push larger than git's post buffer lands.** git sends such a push
+  after a probe, a body that is a flush-pkt and names no ref, which was
+  answered `400 invalid_request`, so git stopped with `RPC failed; HTTP
+  400`. The probe is now forwarded.
+- **The forwarding address takes an API's methods alone.** It forwarded
+  any method. `GET`, `HEAD`, `OPTIONS`, `POST`, `PUT`, `PATCH` and
+  `DELETE` pass, and any other, `TRACE` and `CONNECT` among them, is
+  `400 invalid_request` before the connection is loaded, with no
+  request to the connector, no question and no record.
+- **The question names the kind as `connection_kind`.** The first clone
+  was refused by the installation's authorizer because a field named
+  `kind` is the shared envelope's own and was dropped
+  ([[004-identity-and-authorization]]).
+
+Every criterion has its test, and the spec is complete.
 
 ## Not in this spec
 

@@ -1,11 +1,11 @@
 ---
 title: "A code host's connector: GitHub through a GitHub App, signed in like any connector, with git and the REST API carried through Pons"
-status: testing
+status: complete
 track: core
 depends_on:
   - specs/006-catalog.md
   - specs/007-sign-in.md
-  - specs/014-http-forwarding.md
+  - specs/.archive/014-http-forwarding.md
 affects: [catalog/, internal/signin/, internal/httpapi/]
 effort: medium
 created: 2026-10-12
@@ -37,8 +37,9 @@ repositories the App reaches.
 
 ## Current state
 
-The entry loads and connects against the stubs; see Implementation
-status. The precedent is a connector an identity provider
+Complete: the entry loads, connects against the stubs, and passed its
+check against the real GitHub on 2026-10-13; see Implementation status
+and the Outcome. The precedent is a connector an identity provider
 carried for the same GitHub App: it sent the person to GitHub's
 authorize endpoint with the App's client id, exchanged the code, kept
 the person's token with a sealed refresh token, and read the person's
@@ -236,6 +237,13 @@ installation:
   pushed by this caller)`.
 - **The REST API.** `GET /repos/{owner}/{repo}/issues` through the
   forwarding address was answered by GitHub.
+
+The entry, its two catalog members and GitHub's habits shipped in
+v0.1.0, and v0.1.1 is the release that ran the check. The entry's
+`issuer` is catalog data, so the sign-in passed without a release. The
+two changes the check led to, the field `connection_kind` and a refused
+push answered in git's protocol, are on main after v0.1.1, for the next
+release. Every criterion is met, and the spec is complete.
 
 ## Not in this spec
 

@@ -5,8 +5,8 @@ track: core
 depends_on:
   - specs/006-catalog.md
   - specs/007-sign-in.md
-  - specs/013-github-connector.md
-  - specs/014-http-forwarding.md
+  - specs/.archive/013-github-connector.md
+  - specs/.archive/014-http-forwarding.md
 affects: [catalog/, internal/signin/]
 effort: small
 created: 2026-10-13

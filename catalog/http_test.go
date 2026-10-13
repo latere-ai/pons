@@ -18,7 +18,7 @@ import (
 // entry the spec shows is the entry the test loads.
 func githubEntry(t *testing.T) string {
 	t.Helper()
-	return specYAML(t, "013-github-connector.md", "### The entry")
+	return specYAML(t, ".archive/013-github-connector.md", "### The entry")
 }
 
 // specYAML is the first YAML block under heading in the spec file.

@@ -39,19 +39,29 @@ v0.1.1, of 2026-10-13, is the first release with an image; v0.1.0
 published nothing. Steps 1 to 4 of the build order are built; of step 5
 the forwarding and git addresses of 014 with the carrier's steps of 008;
 step 6, the sign-in of 007 with GitHub's habits of 013, for catalog
-connectors; and of step 7 the whole path for GitHub against the stubs.
-The release workflow of 011 is built. What remains is the MCP address of
-008 and what waits on it, such as a connector a person adds that signs
-people in; the metrics and spans of 010; `deploy/`, `docs/`, the stub
-connector and the release workflow's test of 011; and the threat model's
-own tests of 012.
+connectors; and step 7 for GitHub, the whole path against the stubs and,
+on 2026-10-13, against the real GitHub, as 013's Outcome records. The
+release workflow of 011 is built, and the repository is public since
+that check.
 
-Specs 002 and 014 are `testing`: each is built, and every one of its
-criteria has its test. Spec 013 is `testing` too: built and tested
-against the stubs, with its manual check against the real GitHub open
-until it runs and is recorded in its Outcome. The other specs are
-`in-progress`: each says under Implementation status what is built and
-which of its criteria wait.
+Main carries, after v0.1.1 and for the next release: a connection's
+kind and a connector's sent to the authorizer as `connection_kind` and
+`connector_kind`; a refused push answered in git's protocol, so git
+prints the rule; git's probe before a push larger than its post buffer
+forwarded; the forwarding address held to an API's methods; an
+`authorize_url` that may carry a query; the Google entries of 015; and
+the documentation in `docs/`. What remains is the MCP address of 008
+and what waits on it, such as a connector a person adds that signs
+people in; the metrics and spans of 010; `deploy/`, the generated
+configuration reference, the stub connector and the release workflow's
+test of 011; the threat model's own tests of 012; and 015's check
+against the real Google.
+
+Specs 013 and 014 are `complete` and archived: every criterion has its
+test, and the check against the real GitHub passed. Spec 002 is
+`testing`: built, and every one of its criteria has its test. The other
+specs are `in-progress`: each says under Implementation status what is
+built and which of its criteria wait.
 
 ## Index
 
@@ -69,8 +79,8 @@ which of its criteria wait.
 | [010](010-records-and-observability.md) | Records and observability: the call record and its retention, metrics, traces, logs that hold no content, the probes | medium | in-progress | 002, 008 |
 | [011](011-distribution.md) | Distribution: the repository scaffold, the binary and its images, configuration, the stubs, test tiers, and release | large | in-progress | 001 |
 | [012](012-security-and-threat-model.md) | Security and threat model: what is protected, who attacks, each defense and the test that holds it, and what is not defended | medium | in-progress | 001, 005, 007, 008, 009 |
-| [013](013-github-connector.md) | A code host's connector: GitHub through a GitHub App, signed in like any connector, with git and the REST API carried through Pons | medium | testing | 006, 007, 014 |
-| [014](014-http-forwarding.md) | Plain HTTP and git through a connection: a forwarding address and a git address, the credential added, a path held to its connector, and a push held to the refs an allow names | large | testing | 002, 003, 004, 006, 008, 009 |
+| [013](.archive/013-github-connector.md) | A code host's connector: GitHub through a GitHub App, signed in like any connector, with git and the REST API carried through Pons | medium | complete | 006, 007, 014 |
+| [014](.archive/014-http-forwarding.md) | Plain HTTP and git through a connection: a forwarding address and a git address, the credential added, a path held to its connector, and a push held to the refs an allow names | large | complete | 002, 003, 004, 006, 008, 009 |
 | [015](015-google-connectors.md) | Google's connectors: Gmail, Google Calendar and Google Drive, each signed in with Google on its own and carried as Google's REST APIs | small | in-progress | 006, 007, 013, 014 |
 
 ## Build order
