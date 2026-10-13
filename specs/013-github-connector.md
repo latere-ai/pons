@@ -63,7 +63,7 @@ connectors:
   - name: github
     title: GitHub
     description: Clone, change and push the repositories you choose, and work with their issues and pull requests.
-    icon: https://github.githubassets.com/favicons/favicon.svg
+    icon: https://github.githubassets.com/favicons/favicon.png
     kind: http
     url: https://api.github.com
     git:
