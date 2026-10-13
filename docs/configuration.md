@@ -82,8 +82,8 @@ replica, and the API's own routes take a body of at most 64 KiB.
 ## Telemetry
 
 `ponsd` writes its log as JSON lines on standard error. With
-`OTEL_EXPORTER_OTLP_ENDPOINT` set it also exports logs and traces over
-OTLP, configured by the standard OpenTelemetry variables, such as
+`OTEL_EXPORTER_OTLP_ENDPOINT` set it also exports logs, traces and
+metrics over OTLP, configured by the standard OpenTelemetry variables, such as
 `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_RESOURCE_ATTRIBUTES` and
 `OTEL_SDK_DISABLED`. These are the one exception to the `PONS_` prefix.
 
