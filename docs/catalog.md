@@ -326,8 +326,8 @@ connectors:
   the person may do, on the repositories the App is installed on.
 - **git with `x-access-token`.** GitHub's git host takes the token as the
   password of Basic credentials with that username.
-- **The API.** `GET` reads, and every other method writes, GraphQL's
-  `POST /graphql` included.
+- **The API.** `GET`, `HEAD` and `OPTIONS` read, and every other method
+  writes, GraphQL's `POST /graphql` included.
 - **`account`** reads the person's login once after the sign-in, and
   **`links.manage`** is where they install the App on more repositories.
 
