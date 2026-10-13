@@ -6,6 +6,8 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+## v0.1.0 - 2026-10-13
+
 - Added: the release pipeline. A `v*` tag on a commit whose verify run
   passed builds `ponsd` for linux/amd64 and linux/arm64, signs it,
   attests its bill of materials and provenance, tags the image at
