@@ -6,6 +6,11 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+- Fixed: a push larger than git's post buffer, 1 MiB by default, lands
+  through a git address. git sends such a push after a probe, a request
+  that names no ref, and Pons answered the probe `400 invalid_request`,
+  so git stopped with `RPC failed; HTTP 400`.
+
 ## v0.1.1 - 2026-10-13
 
 - Fixed: the release pipeline attests the image's bill of materials and

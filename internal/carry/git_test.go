@@ -5,6 +5,7 @@ package carry
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
 	"net/http"
 	"os"
@@ -143,7 +144,8 @@ func TestAPushIsHeldToItsRefs(t *testing.T) {
 	many.WriteString("0000")
 	for name, body := range map[string]string{
 		"no flush":         pkt(zero + " " + strings.Repeat("1", 40) + " refs/heads/agents/x\n"),
-		"no command":       "0000",
+		"no command":       pkt("shallow "+strings.Repeat("2", 40)+"\n") + "0000",
+		"a flush and more": "0000PACK",
 		"a bad length":     "zzzz",
 		"a short line":     "0004",
 		"a bad id":         pkt("xyz "+strings.Repeat("1", 40)+" refs/heads/agents/x\n") + "0000",
@@ -162,4 +164,49 @@ func TestAPushIsHeldToItsRefs(t *testing.T) {
 	if err != nil || len(cmds) != 1 || cmds[0].Ref != "refs/heads/agents/x" || !bytes.HasSuffix(read, []byte("0000")) {
 		t.Fatalf("a shallow push: %+v %v", cmds, err)
 	}
+}
+
+// A push larger than git's post buffer begins with git's probe, a flush-pkt
+// alone, which names no ref and is forwarded; the push after it lands.
+func TestALargePushPassesGitsProbe(t *testing.T) {
+	r := newRig(t, true)
+	c := r.keyed()
+	r.az.set(authorizer.Limits{Refs: []string{"refs/heads/agents/*"}})
+	push := address(c, "git") + "/acme/app.git/git-receive-pack"
+	if a := r.send(http.MethodPost, push, "alice", strings.NewReader("0000"), "Content-Type", "application/x-git-receive-pack-request"); a.status != http.StatusOK {
+		t.Fatalf("git's probe: %d %s", a.status, a.body)
+	}
+	work := cloneWithChange(t, r, c, 200<<10)
+	// The smallest post buffer git takes, so the push is a large one.
+	if out, err := gitRun(t, work, "alice", "-c", "http.postBuffer=65520", "push", "--quiet", "origin", "HEAD:refs/heads/agents/large"); err != nil {
+		t.Fatalf("a large push: %v %s", err, out)
+	}
+	if refs, err := r.git.Refs("acme/app.git"); err != nil || refs["refs/heads/agents/large"] == "" {
+		t.Fatalf("the branch did not land: %v %v", refs, err)
+	}
+}
+
+// cloneWithChange clones the stub's repository through the git address and
+// commits a file of size random bytes, which no pack compresses, answering
+// the working tree.
+func cloneWithChange(t *testing.T, r *rig, c store.Connection, size int) string {
+	t.Helper()
+	dir := t.TempDir()
+	if out, err := gitRun(t, dir, "alice", "clone", "--quiet", r.srv.URL+address(c, "git")+"/acme/app.git", "app"); err != nil {
+		t.Fatalf("clone: %v %s", err, out)
+	}
+	work := filepath.Join(dir, "app")
+	change := make([]byte, size)
+	if _, err := rand.Read(change); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, "CHANGE"), change, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", "CHANGE"}, {"commit", "--quiet", "-m", "change"}} {
+		if out, err := gitRun(t, work, "alice", args...); err != nil {
+			t.Fatalf("%v: %v %s", args, err, out)
+		}
+	}
+	return work
 }

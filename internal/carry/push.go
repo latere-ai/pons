@@ -33,6 +33,11 @@ type command struct {
 // the client's capabilities, then a flush-pkt. It answers the commands and
 // every byte it read, which the forwarded body begins with again; the pack
 // after them is not read.
+//
+// A body that is a flush-pkt and nothing else is git's probe: before a push
+// larger than its post buffer, git sends one to learn that the address
+// answers, and then the push itself. It names no ref, and is read as no
+// commands. A flush-pkt followed by anything is not a probe.
 func readCommands(body io.Reader) ([]command, []byte, error) {
 	var read bytes.Buffer
 	var out []command
@@ -50,7 +55,7 @@ func readCommands(body io.Reader) ([]command, []byte, error) {
 			return nil, nil, errCommands
 		}
 		if n == 0 {
-			if len(out) == 0 {
+			if len(out) == 0 && (read.Len() != len(size) || !atEnd(body)) {
 				return nil, nil, errCommands
 			}
 			return out, read.Bytes(), nil
@@ -79,6 +84,14 @@ func readCommands(body io.Reader) ([]command, []byte, error) {
 		}
 		out = append(out, c)
 	}
+}
+
+// atEnd reports whether a body has nothing more to read. A byte read, or an
+// error other than the end, is not the end.
+func atEnd(body io.Reader) bool {
+	var one [1]byte
+	n, err := io.ReadFull(body, one[:])
+	return n == 0 && errors.Is(err, io.EOF)
 }
 
 // parseCommand reads "<old id> <new id> <ref name>".

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/cgi"
 	"os"
@@ -104,6 +105,17 @@ func NewGitHost(t testing.TB, opts ...GitOption) *GitHost {
 			w.Header().Set("WWW-Authenticate", `Basic realm="stub"`)
 			http.Error(w, "authentication required", http.StatusUnauthorized)
 			return
+		}
+		if r.ContentLength < 0 {
+			// git sends a push larger than its post buffer chunked, which a
+			// git host takes and CGI does not: the body is read whole here
+			// and handed to the backend with its length.
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "the request body did not read", http.StatusBadRequest)
+				return
+			}
+			r.Body, r.ContentLength, r.TransferEncoding = io.NopCloser(bytes.NewReader(body)), int64(len(body)), nil
 		}
 		backend.ServeHTTP(w, r)
 	}), cfg.name)

@@ -139,6 +139,10 @@ streams the rest of the request, the pack, untouched.
 - Commands that do not parse, or that run past either bound, are `400
   invalid_request`. A push from a shallow clone begins with `shallow`
   lines, which name no ref and are read past; a signed push is not taken.
+- A body that is a flush-pkt and nothing else is git's probe: before a
+  push larger than its post buffer, 1 MiB by default, git sends one to
+  learn that the address answers. It names no ref and is forwarded. A
+  flush-pkt followed by anything else is `400 invalid_request`.
 
 A fetch and a clone are not read: what a caller may read is decided by
 the question alone.
@@ -240,6 +244,7 @@ connection was found is recorded `denied`, as a bound Pons holds.
 | `carry.TestTheGitAddressServesGitAlone` | written; skipped with its reason where `git` is not installed |
 | `TestCloneThroughTheGitAddress` | written, in the e2e tier, with a real `git` |
 | `carry.TestAPushIsHeldToItsRefs` | written, with a real `git` |
+| `carry.TestALargePushPassesGitsProbe` | written, with a real `git` |
 | `carry.TestTheEffectOfAForwardedRequest` | written |
 | `carry.TestAForwardedBodyStreams` | written |
 | `carry.TestLinksComeBackToTheAddress` | written |
@@ -263,6 +268,7 @@ host, such as an archive download; the git protocol over SSH.
 | The git address serves the four smart HTTP requests and answers every other path `404` | `carry.TestTheGitAddressServesGitAlone` |
 | A clone and a fetch through the git address of a connection to the stub git host succeed with the credential placed as `git.inject` says, and the caller's token never reaches the stub | `TestCloneThroughTheGitAddress` |
 | A push naming a ref outside `Refs` is refused before any of the pack is sent, a push inside it lands, a deletion is held to the same rule, and a compressed push is refused | `carry.TestAPushIsHeldToItsRefs` |
+| git's probe before a push larger than its post buffer is forwarded, and the push after it lands | `carry.TestALargePushPassesGitsProbe` |
 | `GET`, `HEAD`, `OPTIONS` and an `http.read_only` match read, every other method writes, and `ReadOnly` refuses a write | `carry.TestTheEffectOfAForwardedRequest` |
 | A body streams without being buffered, and one past `PONS_MAX_FORWARD_BYTES` ends with `413` | `carry.TestAForwardedBodyStreams` |
 | A `Link` header's URLs under the connector's `url` come back under the forwarding address and others are dropped; a body's URLs are unchanged | `carry.TestLinksComeBackToTheAddress` |
