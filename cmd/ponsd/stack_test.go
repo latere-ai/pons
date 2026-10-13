@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"latere.ai/x/pons/catalog"
+	"latere.ai/x/pons/internal/dial"
 	"latere.ai/x/pons/internal/store"
 	"latere.ai/x/pons/internal/store/memory"
 	"latere.ai/x/pons/internal/store/postgres/pgtest"
@@ -54,11 +55,77 @@ func (s *syncBuffer) String() string {
 // key is a sealing key in base64, every byte b.
 func key(b byte) string { return base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{b}, 32)) }
 
-// catalogFile writes the example catalog and the entries given beside it.
+// upstream are the stubs a test's servers reach: the API, the
+// authorization server, and the git host where git is installed. A test
+// has one set, made on first use.
+type upstream struct {
+	api  *stubs.API
+	auth *stubs.AuthServer
+	git  *stubs.GitHost
+}
+
+var upstreams sync.Map // testing.TB to *upstream
+
+// upstreamOf is the test's stubs. A client of the example's warehouse is
+// any client named wh or wh-client, whatever its secret.
+func upstreamOf(t testing.TB) *upstream {
+	t.Helper()
+	if u, ok := upstreams.Load(t); ok {
+		return u.(*upstream)
+	}
+	u := &upstream{api: stubs.NewAPI(t), auth: stubs.NewAuthServer(t)}
+	u.auth.AddClient("wh", "")
+	u.auth.AddClient("wh-client", "")
+	if tt, ok := t.(*testing.T); ok {
+		if _, err := stubs.GitPath(); err == nil {
+			u.git = stubs.NewGitHost(tt)
+			if err := u.git.Seed("acme/app.git"); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	upstreams.Store(t, u)
+	t.Cleanup(func() { upstreams.Delete(t) })
+	return u
+}
+
+// ports are the stubs' listeners.
+func (u *upstream) ports() []int {
+	ports := []int{u.api.Port(), u.auth.Port()}
+	if u.git != nil {
+		ports = append(ports, u.git.Port())
+	}
+	return ports
+}
+
+// gitURL is the git host's address, or the API's where git is not
+// installed.
+func (u *upstream) gitURL() string {
+	if u.git != nil {
+		return u.git.URL()
+	}
+	return u.api.URL()
+}
+
+// catalogFile writes the example catalog, its warehouse minting at the
+// stub, with an entry of kind http at the stub API and git host, "forge",
+// which takes a key, and the entries given beside them.
 func catalogFile(t testing.TB, extra string) string {
 	t.Helper()
+	u := upstreamOf(t)
+	example := strings.Replace(string(catalog.Example), "https://login.warehouse.example.org/oauth/token", u.auth.TokenURL(), 1)
+	forge := `
+  - name: forge
+    title: Example Forge
+    kind: http
+    url: ` + u.api.URL() + `
+    hosts: ["api.example.com", "git.example.com"]
+    git: {url: "` + u.gitURL() + `", inject: {scheme: basic, username: x-access-token}}
+    http: {pass_back: ["X-RateLimit-*"]}
+    auth: {type: token}
+`
 	path := filepath.Join(t.TempDir(), "catalog.yaml")
-	if err := os.WriteFile(path, append(append([]byte{}, catalog.Example...), extra...), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(example+forge+extra), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -164,12 +231,14 @@ func startStack(t testing.TB, iss *stubs.Issuer, over map[string]string, times .
 		s.grace = times[1]
 	}
 	roots := stubs.Roots()
+	up := upstreamOf(t)
 	ready := make(chan string, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
 		done <- serve(ctx, func(k string) string { return s.env[k] }, s.logs, Hooks{
 			Ready: ready, Roots: roots, Store: func(st store.Store) { s.store = st }, SweepEvery: s.sweepEvery, Grace: s.grace,
+			Outside: dial.Options{Resolver: stubs.Resolver(), Roots: roots, Permit: stubs.Permit(up.ports()...)},
 		})
 	}()
 	select {

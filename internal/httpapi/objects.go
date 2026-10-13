@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"latere.ai/x/pons/catalog"
+	"latere.ai/x/pons/internal/signin"
 	"latere.ai/x/pons/internal/store"
 )
 
@@ -186,8 +187,29 @@ func (s *Server) connectionOf(ctx context.Context, c store.Connection) (connecti
 	if conn.Kind == c.Kind && conn.Auth.Type == c.Auth {
 		v.Tools = marks(conn.Tools)
 		v.Links = linksView{Manage: conn.Links.Manage}
+		if c.Kind == catalog.KindHTTP && conn.GitURL() != "" {
+			v.GitAddress = s.PublicURL + s.BasePath + "/connections/" + c.ID + "/git"
+		}
 	}
 	return v, nil
+}
+
+// Resolve finds the connector a reference names, as the sign-in and the
+// carrier read it: signin.ErrNoConnector for a reference that names none.
+func (s *Server) Resolve(ctx context.Context, ref string) (signin.Connector, error) {
+	c, err := s.resolve(ctx, ref)
+	switch {
+	case errors.Is(err, errNoConnector):
+		return signin.Connector{}, signin.ErrNoConnector
+	case err != nil:
+		return signin.Connector{}, err
+	}
+	return c.signin(), nil
+}
+
+// signin is the connector as the sign-in and the carrier read it.
+func (c connector) signin() signin.Connector {
+	return signin.Connector{Connector: c.Connector, Ref: c.ref(), AddedURL: c.addedURL()}
 }
 
 // address is where a caller reaches a connection: the MCP address for kind

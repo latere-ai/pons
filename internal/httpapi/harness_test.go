@@ -14,25 +14,77 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"latere.ai/x/pkg/authz"
 	"latere.ai/x/pkg/health"
 
 	"latere.ai/x/pons/catalog"
 	"latere.ai/x/pons/internal/access"
+	"latere.ai/x/pons/internal/carry"
+	"latere.ai/x/pons/internal/dial"
+	"latere.ai/x/pons/internal/signin"
 	"latere.ai/x/pons/internal/store"
 	"latere.ai/x/pons/internal/store/memory"
+	"latere.ai/x/pons/test/stubs"
 )
 
-// testCatalog is the example file with one more entry of kind http and one
-// that links to where a person changes what the service grants.
-func testCatalog(t testing.TB) catalog.Catalog {
+// upstream are the stubs a harness's server reaches: the API, the
+// authorization server, and the git host where git is installed.
+type upstream struct {
+	api  *stubs.API
+	auth *stubs.AuthServer
+	git  *stubs.GitHost
+}
+
+// newUpstream starts the stubs. A client of the example's warehouse is any
+// client named "wh", whatever its secret.
+func newUpstream(t testing.TB) *upstream {
 	t.Helper()
+	u := &upstream{api: stubs.NewAPI(t), auth: stubs.NewAuthServer(t)}
+	u.auth.AddClient("wh", "")
+	if tt, ok := t.(*testing.T); ok {
+		if _, err := stubs.GitPath(); err == nil {
+			u.git = stubs.NewGitHost(tt)
+			if err := u.git.Seed("acme/app.git"); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	return u
+}
+
+// ports are the stubs' listeners, which the harness's dialer may reach.
+func (u *upstream) ports() []int {
+	ports := []int{u.api.Port(), u.auth.Port()}
+	if u.git != nil {
+		ports = append(ports, u.git.Port())
+	}
+	return ports
+}
+
+// gitURL is the git host's address, or the API's where git is not
+// installed.
+func (u *upstream) gitURL() string {
+	if u.git != nil {
+		return u.git.URL()
+	}
+	return u.api.URL()
+}
+
+// testCatalog is the example file, its warehouse minting at the stub, with
+// one more entry of kind http at the stub API and one that links to where
+// a person changes what the service grants.
+func testCatalog(t testing.TB, u *upstream) catalog.Catalog {
+	t.Helper()
+	example := strings.Replace(string(catalog.Example), "https://login.warehouse.example.org/oauth/token", u.auth.TokenURL(), 1)
 	extra := `
   - name: api
     title: Example API
     kind: http
-    url: https://api.example.com
+    url: ` + u.api.URL() + `
+    hosts: ["api.example.com", "git.example.com"]
+    git: {url: "` + u.gitURL() + `"}
     auth: {type: token}
   - name: code
     title: Example Code
@@ -48,7 +100,7 @@ func testCatalog(t testing.TB) catalog.Catalog {
       account: {url: "https://api.code.example.com/user", field: login}
     links: {manage: "https://code.example.com/apps/pons/installations/new"}
 `
-	c, err := catalog.Parse(append(append([]byte{}, catalog.Example...), extra...), catalog.Options{LookupEnv: func(string) (string, bool) {
+	c, err := catalog.Parse([]byte(example+extra), catalog.Options{LookupEnv: func(string) (string, bool) {
 		return "client-secret-of-the-catalog", true
 	}})
 	if err != nil {
@@ -114,10 +166,13 @@ func (r *recorder) set(decide func(access.Caller, access.Question) (access.Decis
 
 // harness is one API over a store.
 type harness struct {
-	t      testing.TB
-	srv    *Server
-	http   *httptest.Server
-	store  store.Store
+	t     testing.TB
+	srv   *Server
+	http  *httptest.Server
+	store store.Store
+	up    *upstream
+	// web is the fixture's connection of kind http.
+	web    string
 	authz  *recorder
 	logs   *bytes.Buffer
 	logsMu *sync.Mutex
@@ -136,13 +191,21 @@ func newHarnessOn(t testing.TB, st store.Store, opts ...option) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &harness{t: t, store: st, authz: &recorder{}, logs: &bytes.Buffer{}, logsMu: &sync.Mutex{}}
+	h := &harness{t: t, store: st, up: newUpstream(t), authz: &recorder{}, logs: &bytes.Buffer{}, logsMu: &sync.Mutex{}}
 	h.srv = &Server{
-		Store: st, Sealer: sealer, Catalog: testCatalog(t), Auth: tokens{}, Authz: h.authz,
+		Store: st, Sealer: sealer, Catalog: testCatalog(t, h.up), Auth: tokens{}, Authz: h.authz,
 		PublicURL: "https://pons.example.com", BasePath: "/v1",
 		MaxConnectionsPerOwner: 100, CreatesPerMinute: 1000,
 		Ready: []health.Check{{Name: "sealing", Run: func(context.Context) error { return nil }}},
 		Log:   slog.New(slog.NewJSONHandler(lockedWriter{h.logs, h.logsMu}, nil)),
+	}
+	outside := dial.New(dial.Options{Resolver: stubs.Resolver(), Roots: stubs.Roots(), Permit: stubs.Permit(h.up.ports()...)})
+	h.srv.Signin = &signin.Signin{Store: st, Sealer: sealer, Dial: outside, Resolve: h.srv.Resolve,
+		PublicURL: h.srv.PublicURL, BasePath: h.srv.BasePath, Log: h.srv.Log}
+	h.srv.Carrier = &carry.Carrier{
+		Store: st, Sealer: sealer, Auth: tokens{}, Authz: h.authz, Dial: outside, Signin: h.srv.Signin, Resolve: h.srv.Resolve,
+		PublicURL: h.srv.PublicURL, BasePath: h.srv.BasePath, MaxForwardBytes: 1 << 20,
+		HeaderTimeout: 5 * time.Second, IdleTimeout: 5 * time.Second, MaxInflight: 64, MaxInflightPerSubject: 32, Log: h.srv.Log,
 	}
 	for _, o := range opts {
 		o(h.srv)

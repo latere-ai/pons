@@ -4,6 +4,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -105,6 +106,9 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request, c acce
 	}
 	var sealed *store.SealedCredential
 	if secrets != nil {
+		if err := s.try(r.Context(), conn, *secrets, meta); err != nil {
+			return err
+		}
 		sc, err := s.seal(row, conn, *secrets, meta)
 		if err != nil {
 			return err
@@ -189,6 +193,16 @@ func credentialOf(conn connector, cr *credentialRequest) (*store.Secrets, store.
 	return nil, store.Meta{}, refuse(map[string]bool{
 		"value": cr.Value != nil, "client_id": cr.ClientID != nil, "client_secret": cr.ClientSecret != nil,
 	})
+}
+
+// try tries a credential once before it is kept (specs/007-sign-in.md): a
+// key by the probe, a client by a first mint. Either refused stores
+// nothing.
+func (s *Server) try(ctx context.Context, conn connector, secrets store.Secrets, meta store.Meta) error {
+	if conn.Auth.Type == catalog.AuthClientCredentials {
+		return s.Signin.FirstMint(ctx, conn.signin(), meta, secrets.ClientSecret)
+	}
+	return s.Carrier.Probe(ctx, conn.signin(), secrets, meta)
 }
 
 // seal seals a credential under the binding of its connection.
@@ -396,6 +410,9 @@ func (s *Server) replaceCredential(w http.ResponseWriter, r *http.Request, c acc
 	}
 	secrets, meta, err := credentialOf(conn, req.Credential)
 	if err != nil {
+		return err
+	}
+	if err := s.try(r.Context(), conn, *secrets, meta); err != nil {
 		return err
 	}
 	sealed, err := s.seal(row, conn, *secrets, meta)

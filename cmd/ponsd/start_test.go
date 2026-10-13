@@ -246,7 +246,7 @@ func TestCheckReports(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
 	}
-	for _, want := range []string{"configuration: ok", "catalog: 4 connectors", "decides: owner policy", "dial: private addresses allowed", "dial: requests leave through a proxy"} {
+	for _, want := range []string{"configuration: ok", "catalog: 5 connectors", "decides: owner policy", "dial: private addresses allowed", "dial: requests leave through a proxy"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("check does not report %q:\n%s", want, out)
 		}

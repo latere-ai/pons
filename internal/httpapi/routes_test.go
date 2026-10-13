@@ -24,7 +24,7 @@ import (
 func TestMain(m *testing.M) { pgtest.Main(m) }
 
 // fixture makes, as alice, an added connector and a connection to it, and
-// answers their ids.
+// a connection of kind http to the stub API, and answers their ids.
 func fixture(t testing.TB, h *harness) (ctr, con string) {
 	t.Helper()
 	a := h.do(http.MethodPost, "/v1/connectors", "alice", map[string]any{
@@ -38,13 +38,26 @@ func fixture(t testing.TB, h *harness) (ctr, con string) {
 	if c.status != http.StatusCreated {
 		t.Fatalf("connect: %d %s", c.status, c.body)
 	}
+	web := h.connect("alice", "api", "", "the-api-key-of-alice")
+	if web.status != http.StatusCreated {
+		t.Fatalf("connect to the api: %d %s", web.status, web.body)
+	}
+	h.web = idOf(t, web)
 	return ctr, idOf(t, c)
 }
 
-// request is one valid request of a route, as alice, about the fixture.
-func request(rt Route, ctr, con string) (path string, body any) {
+// request is one valid request of a route, as alice, about the fixture. A
+// request to an address is to the connection of kind http.
+func request(h *harness, rt Route, ctr, con string) (path string, body any, headers []string) {
 	path = "/v1" + strings.NewReplacer("{ref}", "search", "{id}", con).Replace(rt.Path)
 	switch {
+	case strings.HasSuffix(rt.Path, "/http/{path}"):
+		path = "/v1/connections/" + h.web + "/http/user"
+	case strings.HasSuffix(rt.Path, "/git/{path}") && rt.Method == http.MethodGet:
+		path = "/v1/connections/" + h.web + "/git/acme/app.git/info/refs?service=git-upload-pack"
+	case strings.HasSuffix(rt.Path, "/git/{path}"):
+		path, body = "/v1/connections/"+h.web+"/git/acme/app.git/git-upload-pack", "0000"
+		headers = []string{"Content-Type", "application/x-git-upload-pack-request"}
 	case rt.Method == http.MethodDelete && strings.HasPrefix(rt.Path, "/connectors"):
 		path = "/v1/connectors/" + ctr
 	case rt.Method == http.MethodPost && rt.Path == "/connectors":
@@ -56,7 +69,7 @@ func request(rt Route, ctr, con string) (path string, body any) {
 	case rt.Method == http.MethodPut:
 		body = map[string]any{"credential": map[string]any{"value": "a-new-key-of-alice"}}
 	}
-	return path, body
+	return path, body, headers
 }
 
 // Every route asks its action, once, before it acts.
@@ -69,8 +82,11 @@ func TestEveryRouteAsksItsAction(t *testing.T) {
 			h := newHarness(t)
 			ctr, con := fixture(t, h)
 			before := len(h.authz.questions())
-			path, body := request(rt, ctr, con)
-			a := h.do(rt.Method, path, "alice", body)
+			if strings.Contains(rt.Path, "/git/") && h.up.git == nil {
+				t.Skip("git is not installed, and the git address is served by git http-backend")
+			}
+			path, body, headers := request(h, rt, ctr, con)
+			a := h.do(rt.Method, path, "alice", body, headers...)
 			if a.status >= 300 {
 				t.Fatalf("%d %s", a.status, a.body)
 			}
@@ -121,7 +137,7 @@ func TestADenyAndAnOutageAnswerBeforeAnythingIsDone(t *testing.T) {
 				if rt.Path == "/openapi.yaml" || rt.Method == http.MethodGet {
 					continue
 				}
-				path, body := request(rt, ctr, con)
+				path, body, headers := request(h, rt, ctr, con)
 				for _, outcome := range []string{"deny", "outage"} {
 					before := state(t, h.store, con)
 					h.authz.set(func(access.Caller, access.Question) (access.Decision, error) {
@@ -130,7 +146,7 @@ func TestADenyAndAnOutageAnswerBeforeAnythingIsDone(t *testing.T) {
 						}
 						return access.Decision{Reason: "no"}, nil
 					})
-					a := h.do(rt.Method, path, "alice", body)
+					a := h.do(rt.Method, path, "alice", body, headers...)
 					h.authz.set(nil)
 					want := map[string]int{"deny": http.StatusForbidden, "outage": http.StatusServiceUnavailable}[outcome]
 					if outcome == "deny" && !strings.HasSuffix(rt.Path, "s") {

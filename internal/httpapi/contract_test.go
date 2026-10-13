@@ -281,6 +281,13 @@ func TestRoutesNeedABearer(t *testing.T) {
 			}
 			continue
 		}
+		if rt.Method == http.MethodHead {
+			// An answer to HEAD has no body to carry the code.
+			if a.status != http.StatusUnauthorized {
+				t.Errorf("HEAD %s without a bearer: %d", path, a.status)
+			}
+			continue
+		}
 		if a.status != http.StatusUnauthorized || a.code() != apierr.CodeMissingToken {
 			t.Errorf("%s %s without a bearer: %d %s", rt.Method, path, a.status, a.body)
 		}

@@ -38,7 +38,7 @@ func withAuthorizer(t *testing.T, over map[string]string, opts ...stub.Option) (
 }
 
 // A connection made with a key answers connected, and the key is kept
-// sealed. The probe of a key waits for the carrier.
+// sealed; a key of kind http is probed and a client minted for first.
 func TestCreateByKey(t *testing.T) {
 	iss := stubs.NewIssuer(t)
 	s := startStack(t, iss, nil)
@@ -71,6 +71,27 @@ func TestCreateByKey(t *testing.T) {
 	cc := s.connect("alice", "warehouse", "", map[string]any{"client_id": "wh-client", "client_secret": "a-secret-of-alice"})
 	if cc.status != http.StatusCreated {
 		t.Fatalf("client_credentials: %d %s", cc.status, cc.body)
+	}
+	// A key of kind http is probed once before it is kept, and a client is
+	// minted for once; either refused stores nothing.
+	up := upstreamOf(t)
+	if a := s.connect("alice", "forge", "", map[string]any{"value": "a-forge-key-of-alice"}); a.status != http.StatusCreated {
+		t.Fatalf("a probed key: %d %s", a.status, a.body)
+	}
+	if creds := up.api.Credentials(); len(creds) != 1 || creds[0] != "Bearer a-forge-key-of-alice" {
+		t.Fatalf("the probe: %v", creds)
+	}
+	up.api.Refuse("Bearer a-refused-key-of-alice")
+	if a := s.connect("alice", "forge", "forge-two", map[string]any{"value": "a-refused-key-of-alice"}); a.status != http.StatusUnprocessableEntity || a.code() != "credential_refused" {
+		t.Fatalf("a refused key: %d %s", a.status, a.body)
+	}
+	up.auth.Set(func(sw *stubs.AuthSwitches) { sw.RefuseClient = true })
+	if a := s.connect("alice", "warehouse", "warehouse-two", map[string]any{"client_id": "wh-client", "client_secret": "a-refused-secret"}); a.status != http.StatusUnprocessableEntity || a.code() != "credential_refused" {
+		t.Fatalf("a refused client: %d %s", a.status, a.body)
+	}
+	up.auth.Set(func(sw *stubs.AuthSwitches) { sw.RefuseClient = false })
+	if items := s.do(http.MethodGet, "/v1/connections", "alice", nil).json(t)["items"].([]any); len(items) != 4 {
+		t.Fatalf("a refused credential stored a connection: %d", len(items))
 	}
 	// A connector whose people sign in waits for the sign-in.
 	if a := s.connect("alice", "tracker", "", nil); a.status != http.StatusUnprocessableEntity || a.code() != "sign_in_unsupported" {
@@ -254,9 +275,9 @@ func TestAStoredConnectionKeepsItsOwner(t *testing.T) {
 	}
 }
 
-// waiting are the members of an allow whose case needs the carrier: a use
-// of a connection's address. The list only shrinks.
-var waiting = []string{"ReadOnly", "Tools", "Refs", "CallsPerMinute"}
+// waiting are the members of an allow whose case is not written yet. The
+// list only shrinks.
+var waiting = []string{}
 
 // Each member of Limits has a case in which an allow carrying it changes
 // the outcome of a request, or is on the list of members waiting for the
@@ -299,6 +320,53 @@ func TestEachMemberOfAnAllowChangesTheOutcome(t *testing.T) {
 				t.Fatalf("a refused connect stored a connection: %v", items)
 			}
 		},
+	}
+	// use connects alice to the forge with a key, under an allow of a use
+	// that carries the limits, and answers the stack and the forwarding
+	// address.
+	use := func(t *testing.T, limits map[string]any) (*stack, string) {
+		az, over := withAuthorizer(t, nil, stub.WithAllow("*"))
+		az.Allow(stub.Rule{Action: authorizer.ActionConnectionUse, Limits: limits})
+		s := startStack(t, iss, over)
+		return s, "/v1/connections/" + s.connect("alice", "forge", "", map[string]any{"value": "a-forge-key-of-alice"}).id(t) + "/http"
+	}
+	cases["ReadOnly"] = func(t *testing.T) {
+		s, web := use(t, map[string]any{"read_only": true})
+		if a := s.do(http.MethodGet, web+"/user", "alice", nil); a.status != http.StatusOK {
+			t.Fatalf("a read: %d %s", a.status, a.body)
+		}
+		if a := s.do(http.MethodPost, web+"/repos/acme/app/issues", "alice", map[string]any{"title": "x"}); a.status != http.StatusForbidden || a.detail("field") != "tool" {
+			t.Fatalf("a write: %d %s", a.status, a.body)
+		}
+	}
+	cases["Tools"] = func(t *testing.T) {
+		s, web := use(t, map[string]any{"tools": []string{"/repos/acme/*"}})
+		if a := s.do(http.MethodGet, web+"/repos/acme/app/issues", "alice", nil); a.status != http.StatusOK {
+			t.Fatalf("inside: %d %s", a.status, a.body)
+		}
+		if a := s.do(http.MethodGet, web+"/user", "alice", nil); a.status != http.StatusForbidden || a.detail("reason") != "tools" {
+			t.Fatalf("outside: %d %s", a.status, a.body)
+		}
+	}
+	cases["Refs"] = func(t *testing.T) {
+		if _, err := stubs.GitPath(); err != nil {
+			t.Skip(err.Error())
+		}
+		s, web := use(t, map[string]any{"refs": []string{"refs/heads/agents/*"}})
+		push := strings.TrimSuffix(web, "/http") + "/git/acme/app.git/git-receive-pack"
+		body := pktLine(strings.Repeat("0", 40)+" "+strings.Repeat("1", 40)+" refs/heads/main\x00report-status\n") + "0000"
+		if a := s.do(http.MethodPost, push, "alice", body, "Content-Type", "application/x-git-receive-pack-request"); a.status != http.StatusForbidden || a.detail("field") != "refs" {
+			t.Fatalf("a push to main: %d %s", a.status, a.body)
+		}
+	}
+	cases["CallsPerMinute"] = func(t *testing.T) {
+		s, web := use(t, map[string]any{"calls_per_minute": 1})
+		if a := s.do(http.MethodGet, web+"/user", "alice", nil); a.status != http.StatusOK {
+			t.Fatalf("the first: %d %s", a.status, a.body)
+		}
+		if a := s.do(http.MethodGet, web+"/user", "alice", nil); a.status != http.StatusTooManyRequests {
+			t.Fatalf("the second: %d %s", a.status, a.body)
+		}
 	}
 	members := reflect.TypeFor[authorizer.Limits]()
 	for field := range members.Fields() {
@@ -376,7 +444,7 @@ func TestAListIsNarrowedByItsAllowsFilter(t *testing.T) {
 		t.Fatalf("widened by owner: %v", got)
 	}
 	catalogItems := s.do(http.MethodGet, "/v1/connectors", "carol", nil).json(t)["items"].([]any)
-	if len(catalogItems) != 4 {
+	if len(catalogItems) != 5 {
 		t.Fatalf("the catalog under an empty filter: %d items", len(catalogItems))
 	}
 }
@@ -541,3 +609,6 @@ func TestWithoutASealingKey(t *testing.T) {
 		t.Fatalf("a database with no key: %v", err)
 	}
 }
+
+// pktLine is one pkt-line of git's protocol.
+func pktLine(s string) string { return fmt.Sprintf("%04x%s", len(s)+4, s) }

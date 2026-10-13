@@ -410,6 +410,7 @@ func TestReplacingACredential(t *testing.T) {
 		t.Fatalf("the credential: %d %v", version, err)
 	}
 	cc := idOf(t, h.do(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": "warehouse", "credential": map[string]any{"client_id": "wh", "client_secret": "a-secret-00002"}}))
+	h.up.auth.AddClient("wh2", "")
 	if a := h.do(http.MethodPut, "/v1/connections/"+cc+"/credential", "alice", map[string]any{"credential": map[string]any{"client_id": "wh2", "client_secret": "a-secret-00003"}}); a.status != http.StatusNoContent {
 		t.Fatalf("a new client: %d %s", a.status, a.body)
 	}

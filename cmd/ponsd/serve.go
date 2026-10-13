@@ -21,8 +21,11 @@ import (
 
 	"latere.ai/x/pons/catalog"
 	"latere.ai/x/pons/internal/access"
+	"latere.ai/x/pons/internal/carry"
 	"latere.ai/x/pons/internal/config"
+	"latere.ai/x/pons/internal/dial"
 	"latere.ai/x/pons/internal/httpapi"
+	"latere.ai/x/pons/internal/signin"
 	"latere.ai/x/pons/internal/store"
 	"latere.ai/x/pons/internal/store/memory"
 	"latere.ai/x/pons/internal/store/postgres"
@@ -60,6 +63,10 @@ type Hooks struct {
 	// Grace, when it is not zero, replaces how long open requests are given
 	// after a signal.
 	Grace time.Duration
+	// Outside are the options of the outside client no variable sets: the
+	// stubs' resolver, their authority and a permit for their listeners
+	// (specs/009-outbound-requests.md).
+	Outside dial.Options
 }
 
 // server is everything one process serves with.
@@ -162,8 +169,9 @@ func (srv *server) identity(ctx context.Context) error {
 	return nil
 }
 
-// api is the HTTP surface of the server.
-func (srv *server) api() *httpapi.Server {
+// api is the HTTP surface of the server, with the sign-in and the carrier
+// over one outside client.
+func (srv *server) api(hooks Hooks) *httpapi.Server {
 	s := srv.settings
 	sealing := func(context.Context) error {
 		if len(s.SealingKeys) == 0 {
@@ -171,7 +179,7 @@ func (srv *server) api() *httpapi.Server {
 		}
 		return nil
 	}
-	return &httpapi.Server{
+	api := &httpapi.Server{
 		Store: srv.store, Sealer: srv.sealer, Catalog: srv.catalog,
 		Auth: srv.access.Authenticator, Authz: srv.access.Authorizer,
 		PublicURL: s.PublicURL, BasePath: s.BasePath,
@@ -185,6 +193,22 @@ func (srv *server) api() *httpapi.Server {
 		AllowPrivate: s.DialAllowPrivate,
 		Log:          srv.log,
 	}
+	o := hooks.Outside
+	o.AllowPrivate, o.Proxy = s.DialAllowPrivate, s.OutboundProxy
+	outside := dial.New(o)
+	api.Signin = &signin.Signin{
+		Store: srv.store, Sealer: srv.sealer, Dial: outside, Resolve: api.Resolve, LookupEnv: config.LookupEnv,
+		PublicURL: s.PublicURL, BasePath: s.BasePath, ClientName: s.ClientName, ClientURI: s.ClientURI,
+		ReturnURLs: s.ReturnURLs, Log: srv.log,
+	}
+	api.Carrier = &carry.Carrier{
+		Store: srv.store, Sealer: srv.sealer, Auth: srv.access.Authenticator, Authz: srv.access.Authorizer,
+		Dial: outside, Signin: api.Signin, Resolve: api.Resolve,
+		PublicURL: s.PublicURL, BasePath: s.BasePath, ReturnURLs: s.ReturnURLs,
+		MaxForwardBytes: s.MaxForwardBytes, HeaderTimeout: s.CallHeaderTimeout, IdleTimeout: s.StreamIdleTimeout,
+		MaxInflight: s.MaxInflight, MaxInflightPerSubject: s.MaxInflightPerSubject, Log: srv.log,
+	}
+	return api
 }
 
 // serve reads the configuration and serves until ctx ends.
@@ -224,7 +248,7 @@ func serve(ctx context.Context, getenv func(string) string, logs io.Writer, hook
 	if err != nil {
 		return fmt.Errorf("PONS_ADDR: %w", err)
 	}
-	httpSrv := &http.Server{Handler: srv.api().Handler(), ReadHeaderTimeout: 10 * time.Second}
+	httpSrv := &http.Server{Handler: srv.api(hooks).Handler(), ReadHeaderTimeout: 10 * time.Second}
 	failed := make(chan error, 1)
 	go func() { failed <- httpSrv.Serve(ln) }()
 	log.InfoContext(ctx, "listening", "host", ln.Addr().String())

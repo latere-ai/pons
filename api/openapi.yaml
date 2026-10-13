@@ -26,6 +26,8 @@ tags:
     description: The catalog of an installation and the connectors a person added.
   - name: connections
     description: One owner's link to one connector.
+  - name: addresses
+    description: Where a caller reaches a connection, with a token of its own.
   - name: contract
     description: This document.
 paths:
@@ -281,6 +283,197 @@ paths:
         "401": {$ref: "#/components/responses/Error"}
         "404": {$ref: "#/components/responses/Error"}
         "503": {$ref: "#/components/responses/Error"}
+  /connections/{id}/http/{path}:
+    get:
+      tags: [addresses]
+      operationId: forwardGet
+      summary: Forward a GET to the connector
+      description: >-
+        The forwarding address of a connection of kind `http`: the request goes to the connector's url joined with the path, its query kept, with the connection's credential added and the caller's token removed. A path with a dot segment, an empty segment, an encoded slash or backslash or a control character is refused. The answer is the connector's, its `Link` and `Location` moved under this address.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+        - $ref: "#/components/parameters/Path"
+      responses:
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+        "502": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+        "504": {$ref: "#/components/responses/Error"}
+        default: {$ref: "#/components/responses/Forwarded"}
+    put:
+      tags: [addresses]
+      operationId: forwardPut
+      summary: Forward a PUT to the connector
+      description: >-
+        The forwarding address of a connection of kind `http`: the request goes to the connector's url joined with the path, its query kept, with the connection's credential added and the caller's token removed. A path with a dot segment, an empty segment, an encoded slash or backslash or a control character is refused. The answer is the connector's, its `Link` and `Location` moved under this address.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+        - $ref: "#/components/parameters/Path"
+      responses:
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+        "502": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+        "504": {$ref: "#/components/responses/Error"}
+        default: {$ref: "#/components/responses/Forwarded"}
+    post:
+      tags: [addresses]
+      operationId: forwardPost
+      summary: Forward a POST to the connector
+      description: >-
+        The forwarding address of a connection of kind `http`: the request goes to the connector's url joined with the path, its query kept, with the connection's credential added and the caller's token removed. A path with a dot segment, an empty segment, an encoded slash or backslash or a control character is refused. The answer is the connector's, its `Link` and `Location` moved under this address.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+        - $ref: "#/components/parameters/Path"
+      responses:
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+        "502": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+        "504": {$ref: "#/components/responses/Error"}
+        default: {$ref: "#/components/responses/Forwarded"}
+    delete:
+      tags: [addresses]
+      operationId: forwardDelete
+      summary: Forward a DELETE to the connector
+      description: >-
+        The forwarding address of a connection of kind `http`: the request goes to the connector's url joined with the path, its query kept, with the connection's credential added and the caller's token removed. A path with a dot segment, an empty segment, an encoded slash or backslash or a control character is refused. The answer is the connector's, its `Link` and `Location` moved under this address.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+        - $ref: "#/components/parameters/Path"
+      responses:
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+        "502": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+        "504": {$ref: "#/components/responses/Error"}
+        default: {$ref: "#/components/responses/Forwarded"}
+    options:
+      tags: [addresses]
+      operationId: forwardOptions
+      summary: Forward a OPTIONS to the connector
+      description: >-
+        The forwarding address of a connection of kind `http`: the request goes to the connector's url joined with the path, its query kept, with the connection's credential added and the caller's token removed. A path with a dot segment, an empty segment, an encoded slash or backslash or a control character is refused. The answer is the connector's, its `Link` and `Location` moved under this address.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+        - $ref: "#/components/parameters/Path"
+      responses:
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+        "502": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+        "504": {$ref: "#/components/responses/Error"}
+        default: {$ref: "#/components/responses/Forwarded"}
+    head:
+      tags: [addresses]
+      operationId: forwardHead
+      summary: Forward a HEAD to the connector
+      description: >-
+        The forwarding address of a connection of kind `http`: the request goes to the connector's url joined with the path, its query kept, with the connection's credential added and the caller's token removed. A path with a dot segment, an empty segment, an encoded slash or backslash or a control character is refused. The answer is the connector's, its `Link` and `Location` moved under this address.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+        - $ref: "#/components/parameters/Path"
+      responses:
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+        "502": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+        "504": {$ref: "#/components/responses/Error"}
+        default: {$ref: "#/components/responses/Forwarded"}
+    patch:
+      tags: [addresses]
+      operationId: forwardPatch
+      summary: Forward a PATCH to the connector
+      description: >-
+        The forwarding address of a connection of kind `http`: the request goes to the connector's url joined with the path, its query kept, with the connection's credential added and the caller's token removed. A path with a dot segment, an empty segment, an encoded slash or backslash or a control character is refused. The answer is the connector's, its `Link` and `Location` moved under this address.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+        - $ref: "#/components/parameters/Path"
+      responses:
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+        "502": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+        "504": {$ref: "#/components/responses/Error"}
+        default: {$ref: "#/components/responses/Forwarded"}
+  /connections/{id}/git/{path}:
+    get:
+      tags: [addresses]
+      operationId: gitAdvertise
+      summary: Advertise the refs of a repository
+      description: >-
+        The git address of a connection of kind `http` whose connector names a git host: git's smart HTTP alone, a ref advertisement of `.../info/refs` and a POST to `git-upload-pack` or `git-receive-pack`. A push is held to the refs the allow names before any of its pack is sent. Any other path is `404`.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+        - $ref: "#/components/parameters/Path"
+      responses:
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+        "502": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+        "504": {$ref: "#/components/responses/Error"}
+        default: {$ref: "#/components/responses/Forwarded"}
+    post:
+      tags: [addresses]
+      operationId: gitService
+      summary: Fetch from or push to a repository
+      description: >-
+        The git address of a connection of kind `http` whose connector names a git host: git's smart HTTP alone, a ref advertisement of `.../info/refs` and a POST to `git-upload-pack` or `git-receive-pack`. A push is held to the refs the allow names before any of its pack is sent. Any other path is `404`.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+        - $ref: "#/components/parameters/Path"
+      responses:
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+        "502": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+        "504": {$ref: "#/components/responses/Error"}
+        default: {$ref: "#/components/responses/Forwarded"}
   /openapi.yaml:
     get:
       tags: [contract]
@@ -315,12 +508,20 @@ components:
       in: header
       description: The same key from the same caller within 24 hours answers the first response again and creates nothing.
       schema: {type: string}
+    Path:
+      name: path
+      in: path
+      required: true
+      description: The path below the connector's url or git host, which may hold slashes.
+      schema: {type: string}
     ConnectionID:
       name: id
       in: path
       required: true
       schema: {type: string, pattern: "^con_[0-9a-z]{26}$"}
   responses:
+    Forwarded:
+      description: The connector's answer, its status and body as they came, with the headers the connector's address passes back.
     Error:
       description: An error.
       content:
