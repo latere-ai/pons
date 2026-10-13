@@ -135,7 +135,8 @@ included, and a glob matches a whole value, by case. An empty list is no
 limit. The limits of any other action's allow are not read.
 
 A limit refuses after an allow, so the caller gets a `403` that names
-the member, not a `404`, and nothing reaches the service. A push outside
+the member (`429` for `calls_per_minute`), not a `404`, and nothing
+reaches the service. A push outside
 `refs` is the one exception, answered as a git host refuses a push so
 that git shows the person why. A limits
 object Pons cannot read, with a key it does not know, a figure below
