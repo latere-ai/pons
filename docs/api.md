@@ -62,8 +62,11 @@ named by its `name`.
 | `POST /connectors` | add a connector by its address | `connector.create` |
 | `DELETE /connectors/{id}` | remove a connector the caller added; `409 connector_in_use` while a connection uses it | `connector.delete` |
 
-A connector reads as its catalog entry without its secrets: of `auth`,
-only `type`, `scopes`, `inject` and `hint`.
+A connector reads as its `name`, `title`, `description`, `icon`, `kind`,
+`url`, `hosts`, its tool marks, and of `auth` only `type`, `scopes`,
+`inject` and `hint`, with `inject` for a pasted key alone. One a person
+added also carries its `id` and `owner`. Its `git`, `http` and `links`
+are not shown.
 
 A person may add a connector of their own by its address, which is
 theirs alone and `404` to everyone else. It is of kind `mcp`, its `url`
