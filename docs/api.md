@@ -41,9 +41,11 @@ the end. `limit` is 50 by default and at most 200.
 
 **Creating twice.** `POST /connectors` and `POST /connections` take an
 `Idempotency-Key` header. The same key from the same caller within 24
-hours answers the first response again and creates nothing. For a
-connection made by signing in, the repeat answers the same connection
-with a new `authorization_url`, which replaces the first.
+hours creates nothing and answers what the first request made, as it is
+now. The repeat is still rate limited and authorized, and a key or a
+client is tried against the service again. For a connection made by
+signing in that still waits for its sign-in, the repeat answers it with
+a new `authorization_url`, which replaces the first.
 
 **Identifiers.** A connection's id starts with `con_`, and a connector a
 person added has an id that starts with `ctr_`. A catalog connector is
