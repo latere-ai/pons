@@ -93,7 +93,8 @@ connectors:
         - openid
         - email
         - https://www.googleapis.com/auth/calendar.calendarlist.readonly
-        - https://www.googleapis.com/auth/calendar.events
+        - https://www.googleapis.com/auth/calendar.events.readonly
+        - https://www.googleapis.com/auth/calendar.events.owned
         - https://www.googleapis.com/auth/calendar.events.freebusy
       resource: false
       account: {url: https://openidconnect.googleapis.com/v1/userinfo, field: email}
@@ -151,7 +152,10 @@ connectors:
   drafts and also send mail: Google has no scope for drafts alone, so
   keeping an agent from sending is the authorizer's (below).
   `drive.file` reaches only files the connection created or the person
-  opened with it.
+  opened with it. Calendar asks for `calendar.events.readonly` and
+  `calendar.events.owned` and not `calendar.events`: every calendar the
+  person sees is read, and events change only on calendars the person
+  owns, so a calendar another shares with them is never written.
 - **The account** is the `email` of Google's userinfo, read once after
   the sign-in as for GitHub ([[013-github-connector]]); its host is in
   `hosts`, so the token goes nowhere a call would not take it.
@@ -210,8 +214,9 @@ An External client in Google's testing status takes only the test users
 it lists, and their refresh tokens end after seven days. In production
 status, before Google has verified it, it takes any Google account,
 which sees Google's warning that the app is unverified, and at most 100
-users with these scopes. Verification lifts both: Calendar's scopes are
-sensitive and need Google's review alone; Gmail's and `drive.readonly`
+users with these scopes. Verification lifts both: Calendar's
+`calendar.events.readonly` and `calendar.events.owned` are sensitive and
+need Google's review alone; Gmail's and `drive.readonly`
 are restricted and need a security assessment beside it, renewed every
 year.
 
