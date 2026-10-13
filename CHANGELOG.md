@@ -6,6 +6,11 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+- Fixed: the release pipeline attests the image's bill of materials and
+  provenance only while the repository is public, since GitHub keeps
+  attestations for a private repository only on a higher plan. v0.1.0
+  published nothing for that reason.
+
 ## v0.1.0 - 2026-10-13
 
 - Added: the release pipeline. A `v*` tag on a commit whose verify run
