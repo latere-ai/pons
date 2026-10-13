@@ -359,6 +359,12 @@ v0.1.1 for the next release, and each written into the Design above:
   was refused by the installation's authorizer because a field named
   `kind` is the shared envelope's own and was dropped
   ([[004-identity-and-authorization]]).
+- **An allow may hold a forwarding request to method and path
+  patterns.** The limit `requests` names them, such as `GET /**`, and a
+  request to the forwarding address outside them is answered `403
+  forbidden` with the reason `requests`, so the caller learns the
+  request is not allowed rather than reading a deny as a connection
+  that is not there ([[004-identity-and-authorization]]).
 
 Every criterion has its test, and the spec is complete.
 

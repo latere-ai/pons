@@ -48,9 +48,11 @@ Main carries, after v0.1.1 and for the next release: a connection's
 kind and a connector's sent to the authorizer as `connection_kind` and
 `connector_kind`; a refused push answered in git's protocol, so git
 prints the rule; git's probe before a push larger than its post buffer
-forwarded; the forwarding address held to an API's methods; an
-`authorize_url` that may carry a query; the Google entries of 015; and
-the documentation in `docs/`. What remains is the MCP address of 008
+forwarded; the forwarding address held to an API's methods; the limit
+`requests`, with which an authorizer holds a forwarding request to
+method and path patterns and a request outside them is answered `403`
+naming the limit (004); an `authorize_url` that may carry a query; the
+Google entries of 015; and the documentation in `docs/`. What remains is the MCP address of 008
 and what waits on it, such as a connector a person adds that signs
 people in; the metrics and spans of 010; `deploy/`, the generated
 configuration reference, the stub connector and the release workflow's
