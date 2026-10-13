@@ -224,8 +224,11 @@ the connection's credential in the place the catalog names. Toward the
 service it passes `Accept`, `Accept-Encoding`, `Content-Type`,
 `If-None-Match`, `If-Modified-Since` and `Range`, and the headers the
 connector lists in `http.pass`; the git address passes `Accept`,
-`Accept-Encoding`, `Content-Type` and `Git-Protocol`. Everything else is
-removed, cookies included. Back to the caller it passes the status, the
+`Accept-Encoding`, `Content-Type` and `Git-Protocol`, and
+`Content-Encoding` on a fetch. Everything else is removed, cookies
+included. A request without `Accept-Encoding` is sent with
+`Accept-Encoding: identity` on both addresses, so the service is asked
+for no compression the caller did not ask for. Back to the caller it passes the status, the
 body, `Content-Type`, `Content-Length`, `Content-Encoding`,
 `Cache-Control`, `ETag`, `Last-Modified`, `Retry-After`, and the headers
 the connector lists in `http.pass_back`. `Set-Cookie` and

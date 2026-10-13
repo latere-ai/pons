@@ -72,8 +72,8 @@ protocol to that git host ([API](api.md#the-addresses)).
 | `git.url` | the git host's base, such as `https://forge.example.com` |
 | `git.inject` | where the credential goes on a git request: `{scheme: bearer}` sends `Authorization: Bearer`, the default for `oauth` and `client_credentials`; for `token` without `git.inject` the key goes where `inject` says. `{scheme: basic, username: <name>}` sends `Authorization: Basic` of the username and the credential |
 | `http.read_only` | requests that only read beyond `GET`, `HEAD` and `OPTIONS`, as a method in capitals, one space and a glob over the path below the address: `POST /search/*` |
-| `http.pass` | request headers passed to the service beside the ones Pons always passes, such as an API version header. Not the credential's header, and not one Pons sets or removes itself |
-| `http.pass_back` | globs of response headers passed back to the caller, matched without regard to case, such as `X-RateLimit-*` |
+| `http.pass` | request headers passed to the service on the forwarding address beside the ones Pons always passes, such as an API version header. Not the credential's header, and not one Pons sets or removes itself. The git address passes its own fixed set and ignores this list |
+| `http.pass_back` | globs of response headers passed back to the caller, matched without regard to case, such as `X-RateLimit-*`. No glob passes `Set-Cookie`, `WWW-Authenticate` or a hop-by-hop header such as `Connection`, and `Link` and `Location` come back only as Pons rewrites them ([API](api.md#the-addresses)) |
 
 The effect of a request, `read` or `write`, is what an authorizer is
 asked about and what a call record keeps. `GET`, `HEAD`, `OPTIONS` and
