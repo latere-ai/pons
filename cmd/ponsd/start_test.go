@@ -458,6 +458,25 @@ func TestTheServerSweeps(t *testing.T) {
 	if !strings.Contains(s.logs.String(), `"msg":"swept"`) {
 		t.Fatalf("no sweep ran:\n%s", s.logs)
 	}
+	// A sign-in that ran out: its connection, which never had a
+	// credential, is deleted with its flow.
+	st := s.startSignIn(t, "alice", "github", nil)
+	f, err := s.store.Flows().Get(t.Context(), st.id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.ExpiresAt = f.CreatedAt
+	if err := s.store.Flows().Put(t.Context(), f); err != nil {
+		t.Fatal(err)
+	}
+	deadline = time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if a := s.do(http.MethodGet, "/v1/connections/"+st.id, "alice", nil); a.status == http.StatusNotFound {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("a sign-in that ran out kept its connection")
 }
 
 // An address the server cannot listen on stops the start, naming the

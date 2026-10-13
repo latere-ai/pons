@@ -277,7 +277,7 @@ func startStack(t testing.TB, iss *stubs.Issuer, over map[string]string, times .
 	done := make(chan error, 1)
 	go func() {
 		done <- serve(ctx, func(k string) string { return s.env[k] }, s.logs, Hooks{
-			Ready: ready, Roots: roots, Store: func(st store.Store) { s.store = st }, SweepEvery: s.sweepEvery, Grace: s.grace,
+			Ready: ready, Roots: roots, Store: func(st store.Store) { s.store = st }, SweepEvery: s.sweepEvery, FlowsEvery: s.sweepEvery, Grace: s.grace,
 			Outside: dial.Options{Resolver: stubs.Resolver(), Roots: roots, Permit: stubs.Permit(up.ports()...)},
 		})
 	}()

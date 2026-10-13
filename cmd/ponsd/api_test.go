@@ -182,6 +182,10 @@ func TestADenyDoesNotConfirmAnId(t *testing.T) {
 		{http.MethodPut, "/credential", map[string]any{"credential": map[string]any{"value": "another-key-0003"}}},
 		{http.MethodDelete, "", nil},
 		{http.MethodGet, "/calls", nil},
+		{http.MethodPost, "/confirm", map[string]any{"code": "a-code"}},
+		{http.MethodPost, "/reconnect", map[string]any{"return_to": returnURL}},
+		{http.MethodGet, "/http/user", nil},
+		{http.MethodGet, "/git/acme/app.git/info/refs?service=git-upload-pack", nil},
 	}
 	for _, r := range requests {
 		denied := s.do(r.method, "/v1/connections/"+con+r.suffix, "bob", r.body)
@@ -268,6 +272,20 @@ func TestAStoredConnectionKeepsItsOwner(t *testing.T) {
 	}
 	if !asked {
 		t.Fatal("the replaced key asked no question about the stored connection")
+	}
+	// A confirm and a reconnect do not move a connection either.
+	az.SetRules()
+	up := upstreamOf(t)
+	up.auth.Set(func(sw *stubs.AuthSwitches) { sw.IssSupported = false })
+	signed := s.signIn(t, "alice", "github")["id"].(string)
+	az.Allow(stub.Rule{Action: authorizer.ActionConnectionCreate, Limits: map[string]any{"owner": iss.Subject("thief")}})
+	back := s.do(http.MethodPost, "/v1/connections/"+signed+"/reconnect", "alice", map[string]any{"return_to": returnURL})
+	if back.status != http.StatusOK {
+		t.Fatalf("a reconnect: %d %s", back.status, back.body)
+	}
+	dest, _ := s.browser(t, back.json(t)["authorization_url"].(string))
+	if r := s.do(http.MethodPost, "/v1/connections/"+signed+"/confirm", "alice", map[string]any{"code": dest.Query().Get("code")}); r.status != http.StatusOK || r.json(t)["owner"] != iss.Subject("alice") {
+		t.Fatalf("the confirm of a reconnect: %d %s", r.status, r.body)
 	}
 }
 
