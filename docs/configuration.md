@@ -13,7 +13,8 @@ nothing ([Install](install.md#checking-an-installation)).
 
 Durations are written the way Go writes them: `30s`, `5m`, `720h`. A
 size is a whole number of bytes. A list is comma separated, and an empty
-entry is dropped.
+entry is dropped, except in `PONS_SEALING_KEYS`, where it refuses the
+start.
 
 ## Addresses
 
