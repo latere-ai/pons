@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"reflect"
 	"slices"
 	"strings"
@@ -460,6 +461,38 @@ func TestAListIsNarrowedByItsAllowsFilter(t *testing.T) {
 	catalogItems := s.do(http.MethodGet, "/v1/connectors", "carol", nil).json(t)["items"].([]any)
 	if len(catalogItems) != 6 {
 		t.Fatalf("the catalog under an empty filter: %d items", len(catalogItems))
+	}
+}
+
+// A service that lists one owner's connections names the owner, the
+// question carries it, and an allow whose filter names that owner alone
+// lists that owner's connections and no other's; a list that names no owner
+// asks with no field.
+func TestAServiceListsTheOwnerItNames(t *testing.T) {
+	iss := stubs.NewIssuer(t)
+	alice, bob, svc := iss.Subject("alice"), iss.Subject("bob"), iss.Subject("svc")
+	az, over := withAuthorizer(t, nil)
+	az.Allow(stub.Rule{Subject: svc, Action: authorizer.ActionConnectionList, Filter: &authz.Filter{Owners: []string{bob}}})
+	s := startStack(t, iss, over)
+	s.connect("alice", "weather", "", nil)
+	s.connect("bob", "weather", "", nil)
+	az.ClearRequests()
+	items := s.do(http.MethodGet, "/v1/connections?owner="+url.QueryEscape(bob), "svc", nil).json(t)["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["owner"] != bob {
+		t.Fatalf("the service lists %v, want bob's one connection", items)
+	}
+	if got := s.do(http.MethodGet, "/v1/connections?owner="+url.QueryEscape(alice), "svc", nil).json(t)["items"].([]any); len(got) != 0 {
+		t.Fatalf("an owner outside the filter: %v", got)
+	}
+	s.do(http.MethodGet, "/v1/connections", "svc", nil)
+	var asked []any
+	for _, q := range az.Requests() {
+		if q.Action == authorizer.ActionConnectionList {
+			asked = append(asked, q.Resource.Fields[authorizer.FieldOwner])
+		}
+	}
+	if want := []any{bob, alice, nil}; !reflect.DeepEqual(asked, want) {
+		t.Fatalf("the questions named %v, want %v", asked, want)
 	}
 }
 

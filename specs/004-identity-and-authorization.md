@@ -96,7 +96,7 @@ action sends.
 | `Connector` | `connector.delete` | `id`, `owner` |
 | `Connection` | `connection.create` | `owner`, `connector`, `name`, `kind`, `auth`, and `id` when a confirm, a reconnect or a replaced key asks |
 | `Connection` | `connection.read` | `id`, `owner`, `connector`, `name`, `kind`, `auth` |
-| `Connection` | `connection.list` | none |
+| `Connection` | `connection.list` | `owner` when the request names one |
 | `Connection` | `connection.update` | `id`, `owner`, `connector`, `name`, `kind`, `auth` |
 | `Connection` | `connection.delete` | `id`, `owner`, `connector`, `name`, `kind`, `auth` |
 | `Connection` | `connection.use` | `id`, `owner`, `connector`, `name`, `kind`, `method`, and `tool` and `effect` when the request names a tool, a path or a git service, and `refs` for a push ([[014-http-forwarding]]) |
@@ -158,7 +158,10 @@ no id is never cached, so every connect, add and list is asked.
 `filter` narrows a list to owners. An allow with no filter lists the
 caller's own, so an authorizer that lets a caller see other owners
 names them. The request's `owner` member narrows further and never
-widens. For `connector.list` the filter narrows the added connectors;
+widens. A list of connections that names an owner sends it in the
+question, so a service that lists one person's connections for them is
+answered by a filter naming that person, and is never handed a filter
+of every owner it might ask about. For `connector.list` the filter narrows the added connectors;
 the catalog is the installation's and is listed whatever the filter. A
 filter that names labels cannot be applied, since nothing in Pons is
 labeled, and is treated as no answer.
@@ -354,6 +357,7 @@ Remains: the same for the address of kind `mcp`, with the MCP carrier.
 | `TestEachMemberOfAnAllowChangesTheOutcome`, `carry.TestALimitRefusesBeforeTheCredential` | written, a case per member and the list of members waiting empty |
 | `TestLimitsHoldWithNoAuthorizer` | written |
 | `TestAListIsNarrowedByItsAllowsFilter` | written |
+| `TestAServiceListsTheOwnerItNames`, `access.TestAListNamesItsOwner` | written |
 | `access.TestTheOwnerPolicy`, `TestTheOwnerPolicyThroughTheAPI`, `TestAnotherOwnersTokenReachesNothing` | written for the routes that exist |
 | `access.TestOwnerPolicyConformance`, `access.TestOwnerPolicyNarrowsByTheGrants`, `TestTheServerRefusesAnEndpointThatAllowsTheProbe` | written |
 | `carry.TestTheSessionClaimIsCopiedNotRead` | written |
@@ -378,6 +382,7 @@ Remains: the same for the address of kind `mcp`, with the MCP carrier.
 | Each member of `Limits` has a case in which an allow carrying it changes the outcome of a request: the connection cap, a connector outside the globs, a writing tool under `read_only`, a tool outside `tools`, and the rate; a call a limit refuses opens no credential, reaches no connector and is recorded `denied` | `TestEachMemberOfAnAllowChangesTheOutcome`, a case per member, which fails when a member has none; `carry.TestALimitRefusesBeforeTheCredential` |
 | With no authorizer, an owner's connection past `PONS_MAX_CONNECTIONS_PER_OWNER` is `403 forbidden` naming the limit, and a subject's create past `PONS_CREATES_PER_MINUTE` is `429 rate_limited`; under an authorizer, an allow's `max_connections` above the variable is held to it | `TestLimitsHoldWithNoAuthorizer` |
 | A list is narrowed by its allow's filter and by the request's `owner`, and the catalog is listed whatever the filter | `TestAListIsNarrowedByItsAllowsFilter` |
+| A list of connections that names an owner asks with that `owner`, one that names none asks with no field, and a service whose allow names that owner in its filter lists that owner's connections and no other's | `TestAServiceListsTheOwnerItNames`, `access.TestAListNamesItsOwner` |
 | Under the owner policy a subject cannot read, list, use, rename, confirm or delete another subject's connection, cannot see another's added connector, and cannot create in another's name; with verified tokens of two owners against a running server, one reaches nothing of the other's | `access.TestTheOwnerPolicy`, `TestTheOwnerPolicyThroughTheAPI`, `TestAnotherOwnersTokenReachesNothing` |
 | The owner policy answers the contract's conformance suite and narrows an allow by the grants of a token; it and the stub authorizer deny the probe id, and a server is refused an endpoint that allows it | `access.TestOwnerPolicyConformance`, `access.TestOwnerPolicyNarrowsByTheGrants`, `TestTheServerRefusesAnEndpointThatAllowsTheProbe` |
 | The `session` claim reaches the authorizer verbatim and the call record as its id, and a claim of another shape or over 128 bytes leaves the record without one | `carry.TestTheSessionClaimIsCopiedNotRead` |

@@ -317,7 +317,7 @@ func (s *Server) listConnections(w http.ResponseWriter, r *http.Request, c acces
 	default:
 		return apierr.OnField(apierr.CodeInvalidField, "state", "not_a_state")
 	}
-	d, err := s.ask(r, c, authorizer.ActionConnectionList, access.List(authorizer.ActionConnectionList))
+	d, err := s.ask(r, c, authorizer.ActionConnectionList, access.ListOf(authorizer.ActionConnectionList, q.Get("owner")))
 	if err != nil {
 		return err
 	}

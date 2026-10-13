@@ -44,7 +44,9 @@ const (
 	// call records.
 	ActionConnectionRead = "connection.read"
 	// ActionConnectionList is asked by the list of connections. Its filter
-	// narrows the list to owners.
+	// narrows the list to owners. A list that names an owner sends it, so
+	// an authorizer can answer a service that lists one owner's
+	// connections with a filter naming that owner.
 	ActionConnectionList   = "connection.list"
 	ActionConnectionUpdate = "connection.update"
 	ActionConnectionDelete = "connection.delete"
@@ -98,7 +100,7 @@ var table = []action{
 	{ActionConnectorDelete, KindConnector, []string{FieldID, FieldOwner}},
 	{ActionConnectionCreate, KindConnection, []string{FieldOwner, FieldConnector, FieldName, FieldKind, FieldAuth, FieldID}},
 	{ActionConnectionRead, KindConnection, connection},
-	{ActionConnectionList, KindConnection, nil},
+	{ActionConnectionList, KindConnection, []string{FieldOwner}},
 	{ActionConnectionUpdate, KindConnection, connection},
 	{ActionConnectionDelete, KindConnection, connection},
 	{ActionConnectionUse, KindConnection, []string{FieldID, FieldOwner, FieldConnector, FieldName, FieldKind, FieldMethod, FieldTool, FieldEffect, FieldRefs}},

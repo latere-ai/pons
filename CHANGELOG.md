@@ -23,6 +23,10 @@ here is refused before it is pushed.
 - Added: callers are verified against the issuers of `PONS_OIDC_ISSUERS`,
   and every request is asked of the authorizer at `PONS_AUTHORIZER_URL`,
   or decided by the owner policy when none is set.
+- Added: `GET /v1/connections?owner=` asks the authorizer
+  `connection.list` with that `owner` in the resource, so an authorizer
+  lets a service list one person's connections by naming that person in
+  its filter. A list that names no owner asks as before.
 - Added: Postgres through `PONS_DATABASE_URL`, served through
   `PONS_DATABASE_POOL_URL` when a pooler is in front; with neither the
   server runs on a store in memory and says so.

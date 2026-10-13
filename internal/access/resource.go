@@ -56,6 +56,13 @@ func List(action string) authz.Resource {
 	return authz.NewResource(authorizer.Kind(action), "", nil)
 }
 
+// ListOf is the resource of a list action that names the owner whose
+// objects it lists, for the actions that send one; an empty owner is
+// List's resource.
+func ListOf(action, owner string) authz.Resource {
+	return build(authorizer.Kind(action), action, "", map[string]string{authorizer.FieldOwner: owner})
+}
+
 // build keeps the members an action sends and that are known.
 func build(kind, action, id string, members map[string]string) authz.Resource {
 	fields := map[string]any{}
