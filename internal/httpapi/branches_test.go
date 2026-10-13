@@ -234,7 +234,7 @@ func TestBodiesThatDoNotRead(t *testing.T) {
 		{`{"connector": "weather"} {}`, apierr.CodeInvalidRequest, ""},
 		{`not json`, apierr.CodeInvalidRequest, ""},
 		{`{"connector": 5}`, apierr.CodeInvalidField, "connector"},
-		{`{"connector": "weather", "colour": "red"}`, apierr.CodeUnknownField, "colour"},
+		{`{"connector": "weather", "color": "red"}`, apierr.CodeUnknownField, "color"},
 		{`{}`, apierr.CodeMissingField, "connector"},
 		{`{"connector": "nothing"}`, apierr.CodeConnectorNotFound, "connector"},
 		{`{"connector": "ctr_01jb2m7c0p5d8f2h6j9k3m4n7q"}`, apierr.CodeConnectorNotFound, "connector"},
