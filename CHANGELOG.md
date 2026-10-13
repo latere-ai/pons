@@ -6,6 +6,11 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+- Added: the release pipeline. A `v*` tag on a commit whose verify run
+  passed builds `ponsd` for linux/amd64 and linux/arm64, signs it,
+  attests its bill of materials and provenance, tags the image at
+  `ghcr.io/<owner>/ponsd:<tag>`, and creates the GitHub release from
+  this file.
 - Added: the server, `ponsd`, with three commands: `serve`, `check` and
   `version`. It is configured by its environment, every variable named
   `PONS_*`.
