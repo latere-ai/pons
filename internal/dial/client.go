@@ -160,6 +160,11 @@ type Request struct {
 	// is undone; reading past it fails with response_too_large. Zero
 	// streams the body unbounded, for the carrier.
 	MaxBody int64
+	// Forward marks a call the carrier forwards. Its bounds are the
+	// carrier's, HeaderTimeout and the carrier's idle time, not the
+	// sign-in's 15 seconds for a request that carries a secret; and a 3xx
+	// is answered as it came, followed nowhere, for the carrier to judge.
+	Forward bool
 }
 
 // headersThatLeaveNot are removed from every request: a trace header, so
@@ -181,7 +186,7 @@ func (c *Client) Do(ctx context.Context, r Request) (*http.Response, error) {
 	timeout := r.Timeout
 	if len(r.Secrets) > 0 {
 		redirects = 0
-		if timeout <= 0 || timeout > c.secretTimeout {
+		if !r.Forward && (timeout <= 0 || timeout > c.secretTimeout) {
 			timeout = c.secretTimeout
 		}
 	}
@@ -210,6 +215,9 @@ func (c *Client) Do(ctx context.Context, r Request) (*http.Response, error) {
 	}
 
 	hc := &http.Client{Transport: c.transport, CheckRedirect: c.redirects(redirects, r.Ports)}
+	if r.Forward {
+		hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
 	var headerLate atomic.Bool
 	var timer *time.Timer
 	if r.HeaderTimeout > 0 {
@@ -230,7 +238,7 @@ func (c *Client) Do(ctx context.Context, r Request) (*http.Response, error) {
 		}
 		return nil, classify(ctx, err)
 	}
-	if redirects == 0 && resp.StatusCode >= 300 && resp.StatusCode < 400 {
+	if redirects == 0 && !r.Forward && resp.StatusCode >= 300 && resp.StatusCode < 400 {
 		closeQuietly(resp.Body)
 		cancel()
 		return nil, refuse(RedirectRefused)

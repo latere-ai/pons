@@ -900,3 +900,48 @@ func TestRefusalText(t *testing.T) {
 		}
 	}
 }
+
+// A forwarded call carries its secret past the sign-in's bound, its time is
+// the carrier's, and a 3xx comes back as it came, followed nowhere.
+func TestAForwardedCallIsTheCarriers(t *testing.T) {
+	ca := newAuthority(t)
+	var mu sync.Mutex
+	var seen []string
+	srv := startServer(t, ca, []string{"svc.example.com"}, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, r.URL.Path+" "+r.Header.Get("Authorization"))
+		mu.Unlock()
+		switch r.URL.Path {
+		case "/slow":
+			time.Sleep(400 * time.Millisecond)
+			_, _ = w.Write([]byte("late"))
+		case "/moved":
+			http.Redirect(w, r, "https://elsewhere.example.com/target", http.StatusFound)
+		}
+	}))
+	res := newResolver()
+	res.set("svc.example.com", addrs("127.0.0.1"))
+	c := New(Options{Resolver: res, Roots: ca.pool, Permit: listeners(srv.port)})
+	c.secretTimeout = 100 * time.Millisecond
+	secret := []Secret{{Value: "Bearer forwarded-secret", Header: "Authorization", Hosts: catalog.Matcher([]string{"svc.example.com"})}}
+
+	_, err := get(t, c, srv.url("svc.example.com", "/slow"), Request{Secrets: secret})
+	refused(t, err, Timeout)
+	resp, err := get(t, c, srv.url("svc.example.com", "/slow"), Request{Secrets: secret, Forward: true})
+	ok(t, resp, err)
+	resp, err = get(t, c, srv.url("svc.example.com", "/moved"), Request{Secrets: secret, Forward: true})
+	if err != nil || resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "https://elsewhere.example.com/target" {
+		t.Fatalf("a forwarded 3xx: %v", err)
+	}
+	ok(t, resp, err)
+	if _, err := get(t, c, srv.url("svc.example.com", "/moved"), Request{Secrets: secret}); err == nil {
+		t.Fatal("a 3xx to a request that is no forwarded call is answered")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for _, s := range seen {
+		if strings.Contains(s, "target") {
+			t.Fatalf("a redirect was followed: %v", seen)
+		}
+	}
+}
