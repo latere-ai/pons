@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/latere-ai/pons/blob/main/SECURITY.md
+    about: Report it privately to security@latere.ai, never as an issue.
+  - name: Running ponsd, writing a catalog, calling the API
+    url: https://github.com/latere-ai/pons/blob/main/docs/README.md
+    about: Install, configuration, the catalog, the API, and writing an authorizer.

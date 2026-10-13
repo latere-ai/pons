@@ -1,0 +1,70 @@
+name: Bug report
+description: Something Pons does that it should not, or does not do that it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report a security vulnerability here. See
+        [SECURITY.md](https://github.com/latere-ai/pons/blob/main/SECURITY.md).
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+      placeholder: |
+        I connected a token connector of kind http and the first request to its address answered ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: >
+        The shortest sequence that shows it: the catalog entry, the `curl`
+        or `git` command, and the answer with its error code. Redact tokens,
+        keys and client secrets.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The release tag or image digest, from `GET /version` or `ponsd version`.
+      placeholder: v0.1.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: store
+    attributes:
+      label: Store
+      options:
+        - Postgres
+        - Postgres through a pooler
+        - Memory (no database)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: decides
+    attributes:
+      label: Who decides
+      description: The `decides` line of `ponsd check`.
+      options:
+        - An authorizer
+        - The owner policy
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        Relevant lines from ponsd's log, and the output of `ponsd check`.
+        Redact tokens and hostnames you would rather not publish.
+      render: text
