@@ -130,9 +130,12 @@ curl -s http://localhost:8080/v1/connections/con_.../confirm \
   -d '{"code": "the code the browser brought back"}'
 ```
 
-Every request through an address leaves a call record that says the
-call happened, by whom and with what outcome, and never what it said:
-`GET /v1/connections/{id}/calls`.
+A call through an address leaves a call record that says the call
+happened, by whom and with what outcome, and never what it said:
+`GET /v1/connections/{id}/calls`. A request refused before it reaches
+its connection, such as one with a bad token, leaves none, and a refused
+call is recorded at most once a minute per caller and connection
+([API](docs/api.md#call-records)).
 
 ## What works today
 
