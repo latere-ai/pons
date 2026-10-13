@@ -23,6 +23,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
 	"math/big"
 	"net"
@@ -73,6 +74,12 @@ func must[T any](v T, err error) T {
 // Roots is the pool of the stubs' authority, the roots a server under test
 // verifies the stubs against.
 func Roots() *x509.CertPool { return theAuthority().pool }
+
+// AuthorityPEM is the stubs' authority as PEM, for a client outside the
+// process, such as git, to verify the stubs against.
+func AuthorityPEM() []byte {
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: theAuthority().cert.Raw})
+}
 
 // Certificate is a certificate of the stubs' authority for the names: each
 // a DNS name or an IP address.
