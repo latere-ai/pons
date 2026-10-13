@@ -21,6 +21,10 @@ test is a claim, and no claim is listed here.
 
 | Who | What Pons commits to | Proved by |
 |---|---|---|
+| a caller with a valid token of another owner | every route verifies the token and asks before it reads or acts; with no authorizer an owner reaches their own connections alone; a connection someone else owns answers exactly as one that does not exist | `TestADenyDoesNotConfirmAnId`, `TestTheOwnerPolicyThroughTheAPI`, `TestAnotherOwnersTokenReachesNothing` |
+| a reader or a writer of the database | every credential is ciphertext under a key the database never holds, bound to its row; copied to another row it does not open, and neither does one whose endpoints or connector address were rewritten | `TestNoPlaintextAtRest`, `store.TestACopiedCiphertextDoesNotOpen`, `store.TestRewrittenEndpointDoesNotOpen` |
+| a reader of responses and logs | a pasted key and a client's secret appear in no response, header, log line or database row | `TestNoCredentialLeavesButTowardItsConnector` |
+| an address that aims at the installation's own network | an address a person adds is refused when it names an address, a private name or a port other than 443, and every request Pons makes connects only to public addresses, checked on the address it connects to | `TestRefusalsNameTheRuleAndNoAddress`, `dial.TestConnectsToTheAddressItChecked`, `dial.TestAnyPrivateAnswerRefusesTheName` |
 
 ## What is not defended
 

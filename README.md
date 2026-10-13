@@ -15,8 +15,10 @@ refresh token. It serves each connection as an address of its own that
 any MCP client can use, and it records every call without recording
 what was said.
 
-> **Status: design under review.** This repository holds the specs and
-> no implementation yet. Start with
+> **Status: in development, with no release yet.** The server keeps
+> connectors and connections, seals a pasted key or a client's secret,
+> and verifies and authorizes every request. Carrying a call and signing
+> in to another service come next. Start with
 > [`specs/001-architecture.md`](specs/001-architecture.md); the index in
 > [`specs/README.md`](specs/README.md) lists every spec in build order.
 
