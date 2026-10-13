@@ -5,7 +5,7 @@
 - Leftovers are cleaned up in follow-up commits.
 - Target a high quality outcome, >90% coverage, each feature verified via an e2e test.
 - Write in audience language: documents aim at user value and usage, the API surface aims at builder precision, code comments aim at technical precision.
-- This repository becomes public at its first release, so it is written as public from the first commit. No Latere hostname, token, or internal reference anywhere but as a default or an example. The hosted plane that builds on it lives elsewhere and is one consumer among any.
+- This repository becomes public once its GitHub connector passes the check against the real GitHub (specs/013-github-connector.md), so it is written as public from the first commit. No Latere hostname, token, or internal reference anywhere but as a default or an example. The hosted plane that builds on it lives elsewhere and is one consumer among any.
 - A credential is the one thing this service exists to protect. No route, event, record, log line, error or test fixture carries a credential's value, and a claim that one never leaves is proven by a test that plants a canary value and searches for it.
 - A request to an address a person supplied is hostile until shown otherwise. Every outbound request goes through the one dialer of specs/009-outbound-requests.md.
 - Relevant latere projects and shared components (latere.ai/x/pkg/*) are in ../
