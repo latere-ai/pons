@@ -70,7 +70,7 @@ protocol to that git host ([API](api.md#the-addresses)).
 | Member | Meaning |
 |---|---|
 | `git.url` | the git host's base, such as `https://forge.example.com` |
-| `git.inject` | where the credential goes on a git request: `{scheme: bearer}`, the default, sends `Authorization: Bearer`; `{scheme: basic, username: <name>}` sends `Authorization: Basic` of the username and the credential |
+| `git.inject` | where the credential goes on a git request: `{scheme: bearer}` sends `Authorization: Bearer`, the default for `oauth` and `client_credentials`; for `token` without `git.inject` the key goes where `inject` says. `{scheme: basic, username: <name>}` sends `Authorization: Basic` of the username and the credential |
 | `http.read_only` | requests that only read beyond `GET`, `HEAD` and `OPTIONS`, as a method in capitals, one space and a glob over the path below the address: `POST /search/*` |
 | `http.pass` | request headers passed to the service beside the ones Pons always passes, such as an API version header. Not the credential's header, and not one Pons sets or removes itself |
 | `http.pass_back` | globs of response headers passed back to the caller, matched without regard to case, such as `X-RateLimit-*` |
