@@ -319,9 +319,10 @@ by digest, and creates the release from the changelog section. A third
 workflow moves the gate's pin once a day when the whole bar passes on
 the new version.
 
-The repository is private until its first release and public from it.
-Nothing in the tree changes at that moment: it is written as public
-from its first commit, and the gate's identity scan refuses a hosted
+The repository is private at its first releases and becomes public once
+the GitHub connector passes its check against the real GitHub
+([[013-github-connector]]). Nothing in the tree changes at that moment:
+it is written as public from its first commit, and the gate's identity scan refuses a hosted
 installation's own values in code, manifests and documents.
 
 ## Not in this spec
@@ -357,10 +358,20 @@ through its hooks. The git host skips the test that starts it, with the
 reason, where `git` is not installed. The authorization server fetches no
 client metadata document: a client id that is a URL is recorded.
 
+The release workflow is built. A `v*` tag on a commit whose verify run
+passed builds the image for both platforms, pushes it by digest, signs
+it, checks that it reports the version the tag names, tags the digest,
+creates the release from the tag's changelog section, and attaches the
+bill of materials with a signed checksum. It attests the bill of
+materials and the provenance only while the repository is public,
+because GitHub keeps attestations for a private repository only on a
+higher plan: v0.1.0 published nothing for that reason, and v0.1.1, of
+2026-10-13, is the first release with an image. With no `deploy/`, a
+release archives no manifests.
+
 Remains: the stub connector;
 `deploy/` and `docs/` with the generated configuration reference, so the
-`deploy` job of `verify` is not there yet; the release workflow and
-`TestReleaseWorkflowShape`.
+`deploy` job of `verify` is not there yet; `TestReleaseWorkflowShape`.
 
 | Criterion | State |
 |---|---|
@@ -377,7 +388,7 @@ Remains: the stub connector;
 | `TestNoCredentialLeavesButTowardItsConnector` | written for a key, issued tokens and a client secret |
 | the `image` job | in `verify` |
 | `TestEveryContainerIsConfined`, `TestDeployVariablesAreInTheTable`, `TestExampleRenders`, `TestExampleDeniesPrivateEgress` | not written: `deploy/` is not built |
-| `TestReleaseWorkflowShape` | not written: no release workflow yet |
+| `TestReleaseWorkflowShape` | not written; the release workflow refuses a tag without a changelog section at its build job |
 | the identity scan | passes |
 
 ## Acceptance criteria
