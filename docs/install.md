@@ -48,7 +48,9 @@ environment:
 | `ponsd version` | prints the version, the commit and the date of the build |
 
 To build it yourself from a clone, `make build` writes `out/ponsd`, and
-`podman build -t ponsd .` builds the same image the release does.
+`podman build -t ponsd .` builds the same image the release does; it
+reports the version `dev` unless you pass the build arguments the
+`Dockerfile` names, `VERSION`, `COMMIT` and `DATE`.
 
 ## Postgres
 
