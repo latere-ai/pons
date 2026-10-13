@@ -391,3 +391,21 @@ func TestAnIdleStreamIsCut(t *testing.T) {
 		t.Fatalf("records %+v", got)
 	}
 }
+
+// A refresh before use that the token endpoint refuses is the call's 409,
+// recorded upstream_refused, and the connection needs a reconnect.
+func TestARefreshRefusedBeforeUse(t *testing.T) {
+	r := newRig(t, false)
+	c, _ := r.signedIn(time.Now().Add(10 * time.Second))
+	r.auth.Set(func(sw *stubs.AuthSwitches) { sw.RefuseRefresh = true })
+	a := r.send(http.MethodGet, address(c, "http")+"/user", "alice", nil)
+	if a.status != http.StatusConflict || a.detail("reason") != store.ReasonRefreshRefused {
+		t.Fatalf("%d %s", a.status, a.body)
+	}
+	if got := r.calls(c); len(got) != 1 || got[0].Outcome != OutcomeUpstreamRefused {
+		t.Fatalf("records %+v", got)
+	}
+	if len(r.api.Requests()) != 0 {
+		t.Fatal("a call whose refresh was refused reached the connector")
+	}
+}

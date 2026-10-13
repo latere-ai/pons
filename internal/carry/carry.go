@@ -279,6 +279,10 @@ func (c *Carrier) serve(w http.ResponseWriter, r *http.Request, call *call) erro
 	if err != nil {
 		return err
 	}
+	if o, err = c.Signin.Fresh(ctx, o); err != nil {
+		call.upstream(err)
+		return err
+	}
 	return c.forward(w, r, call, o, address, service, t, prefix)
 }
 
@@ -309,7 +313,8 @@ func (c *Carrier) hold(l authorizer.Limits, subject, connection, effect, tool st
 
 // usable is the credential of a connection that may be used: one
 // connected, or pending for a reconnect with the credential it had and no
-// reason (specs/002-objects.md). Any other answers 409 with its state.
+// reason (specs/002-objects.md). Any other answers 409 with its state. The
+// credential is opened and not yet refreshed.
 func (c *Carrier) usable(ctx context.Context, row store.Connection, conn signin.Connector, gone bool) (signin.Opened, error) {
 	if gone {
 		return signin.Opened{}, &apierr.Error{Code: apierr.CodeConnectionNotConnected, Reason: "connector_removed", Extra: map[string]any{"state": string(row.State)}}
@@ -339,7 +344,7 @@ func (c *Carrier) usable(ctx context.Context, row store.Connection, conn signin.
 		c.log().WarnContext(ctx, "a credential did not open", "connection", row.ID, "reason", apierr.Classify(err).Reason)
 		return signin.Opened{}, err
 	}
-	return c.Signin.Fresh(ctx, o)
+	return o, nil
 }
 
 // originAllowed is the check against DNS rebinding the transport asks of a

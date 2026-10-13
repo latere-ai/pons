@@ -149,6 +149,9 @@ func (s *Signin) Callback(ctx context.Context, q url.Values) (string, error) {
 	}
 	conn, err := s.Resolve(ctx, row.Connector)
 	if err != nil {
+		// The connection's connector left the catalog, or could not be
+		// read: the flow ends as a sign-in that failed.
+		s.log().WarnContext(ctx, "a sign-in's connector was not found", "flow", f.ID, "error", apierr.LogText(err))
 		s.end(ctx, f, backFailed)
 		return back(f, "error", backFailed), nil
 	}
