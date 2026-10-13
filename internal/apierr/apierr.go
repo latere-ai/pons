@@ -9,10 +9,13 @@ package apierr
 
 import (
 	"errors"
+
 	"fmt"
 	"maps"
 	"net/http"
 	"regexp"
+
+	"latere.ai/x/pons/internal/access"
 
 	"latere.ai/x/pkg/httpjson"
 )
@@ -49,6 +52,22 @@ func Write(w http.ResponseWriter, err error) *Error {
 	}
 	httpjson.WriteError(w, status, body)
 	return e
+}
+
+// Token is the error of a bearer the verifier refused: missing_token for a
+// request that carries none, invalid_token with the verifier's word for why
+// for one it refused, and internal for anything else.
+func Token(err error) *Error {
+	var te *access.TokenError
+	switch {
+	case errors.Is(err, access.ErrMissingToken):
+		return Fail(CodeMissingToken, "")
+	case errors.As(err, &te):
+		e := Fail(CodeInvalidToken, te.Reason)
+		e.Retryable = &te.Retryable
+		return e
+	}
+	return Internal(err)
 }
 
 // Cause is the error an unclassified error was made from, for its log, and

@@ -29,7 +29,9 @@ import (
 	"latere.ai/x/pons/api"
 	"latere.ai/x/pons/catalog"
 	"latere.ai/x/pons/internal/access"
+	"latere.ai/x/pons/internal/carry"
 	"latere.ai/x/pons/internal/id"
+	"latere.ai/x/pons/internal/signin"
 	"latere.ai/x/pons/internal/store"
 	"latere.ai/x/pons/internal/version"
 )
@@ -64,6 +66,11 @@ type Server struct {
 	// AllowPrivate says the dialer treats every address as public, which
 	// /readyz carries.
 	AllowPrivate bool
+
+	// Carrier serves the forwarding and git addresses of connections, and
+	// probes a key. Signin signs people in at the other service.
+	Carrier *carry.Carrier
+	Signin  *signin.Signin
 
 	Log *slog.Logger
 	// IDs makes identifiers. Nil takes id.Default.
@@ -114,13 +121,29 @@ var routes = []route{
 // the base path.
 type Route struct{ Method, Path string }
 
+// carried are the routes of the carrier: the forwarding address takes
+// every method OpenAPI names but TRACE, and the git address git's smart
+// HTTP alone (specs/014-http-forwarding.md).
+var carried = []Route{
+	{http.MethodGet, "/connections/{id}/http/{path}"},
+	{http.MethodPut, "/connections/{id}/http/{path}"},
+	{http.MethodPost, "/connections/{id}/http/{path}"},
+	{http.MethodDelete, "/connections/{id}/http/{path}"},
+	{http.MethodOptions, "/connections/{id}/http/{path}"},
+	{http.MethodHead, "/connections/{id}/http/{path}"},
+	{http.MethodPatch, "/connections/{id}/http/{path}"},
+	{http.MethodGet, "/connections/{id}/git/{path}"},
+	{http.MethodPost, "/connections/{id}/git/{path}"},
+}
+
 // Routes lists every route the server serves below the base path, the
-// contract itself included.
+// carrier's and the contract itself included.
 func Routes() []Route {
-	out := make([]Route, 0, len(routes)+1)
+	out := make([]Route, 0, len(routes)+len(carried)+1)
 	for _, rt := range routes {
 		out = append(out, Route{rt.method, rt.path})
 	}
+	out = append(out, carried...)
 	return append(out, Route{http.MethodGet, "/openapi.yaml"})
 }
 
@@ -146,7 +169,18 @@ func (s *Server) Handler() http.Handler {
 			s.log().WarnContext(r.Context(), "the contract was not written whole", "error", err.Error())
 		}
 	})
-	return otel.Handler(mux, "ponsd",
+	// The carrier's addresses are served before the router, which would
+	// clean a path's dot segments and repeated slashes and decode its
+	// escapes before the carrier could refuse them.
+	front := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.Carrier != nil && s.Carrier.Handles(r) {
+			r.Pattern = s.Carrier.Pattern(r)
+			s.Carrier.ServeHTTP(w, r)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
+	return otel.Handler(front, "ponsd",
 		otel.WithRouteTemplate(func(r *http.Request) string { return r.Pattern }),
 		otel.WithSkip(func(r *http.Request) bool { return !strings.HasPrefix(r.URL.Path, b+"/") }))
 }
@@ -156,27 +190,13 @@ func (s *Server) authenticated(h func(http.ResponseWriter, *http.Request, access
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := s.Auth.Authenticate(r)
 		if err != nil {
-			s.answer(w, r, tokenError(err))
+			s.answer(w, r, apierr.Token(err))
 			return
 		}
 		if err := h(w, r, c); err != nil {
 			s.answer(w, r, err)
 		}
 	})
-}
-
-// tokenError is the route error of a refused bearer.
-func tokenError(err error) error {
-	var te *access.TokenError
-	switch {
-	case errors.Is(err, access.ErrMissingToken):
-		return apierr.Fail(apierr.CodeMissingToken, "")
-	case errors.As(err, &te):
-		e := apierr.Fail(apierr.CodeInvalidToken, te.Reason)
-		e.Retryable = &te.Retryable
-		return e
-	}
-	return apierr.Internal(err)
 }
 
 // answer writes an error. An error nobody classified is logged with its
