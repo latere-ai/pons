@@ -339,5 +339,6 @@ the App itself.
 What a push may update is your authorizer's to say. An allow that names
 `refs`, such as `["refs/heads/agents/*"]`, holds every push through the
 connection to those branches, and a push to any other is refused before
-any of it reaches GitHub, whatever the person's token could do there
+any of it reaches GitHub, whatever the person's token could do there,
+with the rule as the reason git prints
 ([Writing an authorizer](authorizer.md#limits)).

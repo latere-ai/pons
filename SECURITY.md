@@ -42,7 +42,7 @@ code.
 | a reader of responses and logs | a pasted key, an issued token and a client's secret appear in no response, header, log line or database row, and reach only the service they belong to | `TestNoCredentialLeavesButTowardItsConnector` |
 | an address that aims at the installation's own network | an address a person adds is refused when it names an address, a private name or a port other than 443, and every request Pons makes to a service connects only to public addresses, checked on the address it connects to | `TestRefusalsNameTheRuleAndNoAddress`, `dial.TestConnectsToTheAddressItChecked`, `dial.TestAnyPrivateAnswerRefusesTheName` |
 | a caller of a connection's address | a path cannot climb out of the service's address, a redirect elsewhere is not followed, the caller's own `Authorization` and every header not listed are removed | `carry.TestAForwardedPathStaysOnItsConnector`, `carry.TestARedirectStaysOnItsConnector`, `carry.TestForwardedHeaders` |
-| a caller allowed to push to some branches | a push naming a ref outside the allow's `refs` is refused before any of its pack is sent | `carry.TestAPushIsHeldToItsRefs` |
+| a caller allowed to push to some branches | a push naming a ref outside the allow's `refs` is refused before any of its pack is sent to the service, and git prints the rule as the reason | `carry.TestAPushIsHeldToItsRefs`, `carry.TestARefusedPushSaysWhy` |
 
 ## What is not defended
 

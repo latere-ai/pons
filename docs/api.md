@@ -248,8 +248,17 @@ than 2048 bytes. Nothing a request names reaches another host.
 
 **Pushes.** Before any of a push leaves, Pons reads the branches and
 tags it updates. Under an allow that names `refs`, a push naming any
-other ref is refused with `403 forbidden` and `details.field` `refs`. A
-compressed push is not git's, and is `400 invalid_request`.
+other ref is refused, and none of it reaches the service. Pons answers
+it the way a git host refuses a push, `200` with a report that refuses
+every ref of the push, so git prints the rule as the reason and exits
+non-zero:
+
+```text
+ ! [remote rejected] HEAD -> main (only branches under refs/heads/agents/ may be pushed by this caller)
+```
+
+The call record says `denied`. A compressed push is not git's, and is
+`400 invalid_request`.
 
 **A refused credential.** When the service answers `401`, a pasted key
 moves its connection to `needs_reconnect` at once. A credential from a
@@ -334,7 +343,7 @@ the errors below are Pons's.
 | `invalid_code` | 400 | the confirm's code is wrong; the sign-in is spent |
 | `missing_token` | 401 | no bearer |
 | `invalid_token` | 401 | the bearer was refused; `details.reason` says why, such as `expired` or `audience` |
-| `forbidden` | 403 | the authorizer refused a create or a list, or a limit of its allow refused the request; `details.field` names the limit's member |
+| `forbidden` | 403 | the authorizer refused a create or a list, or a limit of its allow refused the request; `details.field` names the limit's member. A push outside `refs` is answered in git's protocol instead, above |
 | `connector_not_found` | 404 | no such connector, or one the caller may not see |
 | `connection_not_found` | 404 | no such connection, or one the caller may not use |
 | `name_taken` | 409 | the owner already holds one of that name |

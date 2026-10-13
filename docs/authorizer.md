@@ -34,6 +34,7 @@ other bearer.
     "owner": "https://login.example.com|alice",
     "connector": "github",
     "name": "github",
+    "connection_kind": "http",
     "method": "POST",
     "tool": "git-receive-pack",
     "effect": "write",
@@ -79,16 +80,20 @@ asked.
 | Kind | Action | Asked by | Resource members |
 |---|---|---|---|
 | `Connector` | `connector.list` | the list of connectors | none |
-| `Connector` | `connector.read` | a read of one connector | `name` for a catalog connector; `id` and `owner` for one a person added |
-| `Connector` | `connector.create` | adding a connector by its address | `owner` when the request names one, `host` |
+| `Connector` | `connector.read` | a read of one connector | `name` for a catalog connector; `id` and `owner` for one a person added; `connector_kind` |
+| `Connector` | `connector.create` | adding a connector by its address | `owner` when the request names one, `connector_kind`, `host` |
 | `Connector` | `connector.delete` | removing an added connector | `id`, `owner` |
-| `Connection` | `connection.create` | a connect; and a confirm, a reconnect and a replaced key, which send the stored connection's `id` | `owner` when named or stored, `connector`, `name`, `auth`, `id` |
-| `Connection` | `connection.read` | a read of a connection, and of its call records | `id`, `owner`, `connector`, `name`, `auth` |
+| `Connection` | `connection.create` | a connect; and a confirm, a reconnect and a replaced key, which send the stored connection's `id` | `owner` when named or stored, `connector`, `name`, `connection_kind`, `auth`, `id` |
+| `Connection` | `connection.read` | a read of a connection, and of its call records | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth` |
 | `Connection` | `connection.list` | the list of connections | `owner` when the request names one |
-| `Connection` | `connection.update` | a rename | `id`, `owner`, `connector`, `name`, `auth` |
-| `Connection` | `connection.delete` | a disconnect | `id`, `owner`, `connector`, `name`, `auth` |
-| `Connection` | `connection.use` | every request to a connection's address | `id`, `owner`, `connector`, `name`, `method`, `tool`, `effect`, and `refs` for a push |
+| `Connection` | `connection.update` | a rename | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth` |
+| `Connection` | `connection.delete` | a disconnect | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth` |
+| `Connection` | `connection.use` | every request to a connection's address | `id`, `owner`, `connector`, `name`, `connection_kind`, `method`, `tool`, `effect`, and `refs` for a push |
 
+- **`kind` and `id`** are the resource's own: `resource.kind` is
+  `Connector` or `Connection`, and `resource.id` the id of a stored
+  object. The kind of the connector or the connection, `http` or `mcp`,
+  is `connector_kind` or `connection_kind`.
 - **`connector`** is a catalog name, or the id of a connector a person
   added. **`auth`** is how the connector takes access: `oauth`, `token`,
   `client_credentials` or `none`. **`host`** is the host of the address a
@@ -122,7 +127,7 @@ others:
 | `connectors` | `connection.create` with no `id` | globs of the connector references the caller may connect. `ctr_*` admits every added connector, and a list of catalog names admits none. Outside them, `403 forbidden` on `connector` |
 | `read_only` | `connection.use` | `true` refuses a request whose effect is `write`: `403 forbidden` on `tool` |
 | `tools` | `connection.use` | globs of the `tool` values the caller may use, such as `["/repos/acme/*", "git-upload-pack"]`. Outside them, `403 forbidden` on `tool` |
-| `refs` | `connection.use` | globs of the full ref names a push may update, such as `["refs/heads/agents/*"]`. A push naming any other, a deletion included, is refused before any of it leaves: `403 forbidden` on `refs` |
+| `refs` | `connection.use` | globs of the full ref names a push may update, such as `["refs/heads/agents/*"]`. A push naming any other, a deletion included, is refused and none of it reaches the service. It is answered in git's own protocol, so git prints the rule, such as `only branches under refs/heads/agents/ may be pushed by this caller` |
 | `calls_per_minute` | `connection.use` | how many requests the caller may send to the connection in a minute, counted per replica. Past it, `429 rate_limited` |
 
 In a glob, `*` stands for any run of characters, the empty one
@@ -130,7 +135,9 @@ included, and a glob matches a whole value, by case. An empty list is no
 limit. The limits of any other action's allow are not read.
 
 A limit refuses after an allow, so the caller gets a `403` that names
-the member, not a `404`, and nothing reaches the service. A limits
+the member, not a `404`, and nothing reaches the service. A push outside
+`refs` is the one exception, answered as a git host refuses a push so
+that git shows the person why. A limits
 object Pons cannot read, with a key it does not know, a figure below
 zero or an empty glob, is no answer: the request fails closed.
 
@@ -207,8 +214,10 @@ endpoint of your own.
 ## In Go
 
 `authorizer.Actions()` lists every action, `authorizer.Kind(action)` is
-the resource kind an action is about, and `authorizer.Fields(action)`
-lists its resource members. `authorizer.Vocabulary()` is the whole table
+the resource kind an action is about, `authorizer.Fields(action)` lists
+the members it may send beside the kind and the id, and
+`authorizer.SendsID(action)` whether it sends the id of a stored
+object. `authorizer.Vocabulary()` is the whole table
 for a shared authorizer scaffold or conformance suite to validate
 against. The limits of an answer are `authorizer.Limits`:
 
