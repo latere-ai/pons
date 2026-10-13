@@ -128,6 +128,7 @@ others:
 | `read_only` | `connection.use` | `true` refuses a request whose effect is `write`: `403 forbidden` on `tool` |
 | `tools` | `connection.use` | globs of the `tool` values the caller may use, such as `["/repos/acme/*", "git-upload-pack"]`. Outside them, `403 forbidden` on `tool` |
 | `refs` | `connection.use` | globs of the full ref names a push may update, such as `["refs/heads/agents/*"]`. A push naming any other, a deletion included, is refused and none of it reaches the service. It is answered in git's own protocol, so git prints the rule, such as `only branches under refs/heads/agents/ may be pushed by this caller` |
+| `requests` | `connection.use` | the requests the caller may send to the forwarding address, each a method in capitals, one space, and a path pattern, such as `["GET /**", "POST /repos/*/*/issues"]`. In a pattern `*` is exactly one non-empty segment, a last `**` is the rest of the path, and `/` alone is the address itself. Outside them, `403 forbidden` on `tool` with the reason `requests`, so the caller learns the request is not allowed rather than that the connection is missing. The git address is held by `refs` instead |
 | `calls_per_minute` | `connection.use` | how many requests the caller may send to the connection in a minute, counted per replica. Past it, `429 rate_limited` |
 
 In a glob, `*` stands for any run of characters, the empty one

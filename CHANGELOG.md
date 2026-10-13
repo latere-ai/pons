@@ -6,6 +6,18 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+- Added: the limit `requests`, with which an authorizer holds a caller
+  to some of a service's API: each entry is a method and a path pattern,
+  such as `GET /**` or `POST /repos/*/*/issues`, where `*` is one path
+  segment and a last `**` the rest of the path. A request to a forwarding
+  address that no entry names is answered `403 forbidden` with the reason
+  `requests`, so the caller learns the request is not allowed. Before, an
+  authorizer could only deny such a request, which a caller reads as a
+  connection that is not there. In the public package `authorizer`,
+  `Limits` has `Requests` and `AdmitsRequest`. An older Pons refuses an
+  allow that names `requests` as limits it cannot read, so roll Pons
+  before an authorizer that sends it.
+
 - Fixed: the forwarding address carries only the methods an API is
   called with, `GET`, `HEAD`, `OPTIONS`, `POST`, `PUT`, `PATCH` and
   `DELETE`. Any other method, `TRACE` and `CONNECT` among them, is

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"latere.ai/x/pkg/authz"
 
@@ -37,6 +38,13 @@ type Limits struct {
 	// Refs are globs of the full ref names a push may update; empty is
 	// all.
 	Refs []string `json:"refs,omitempty"`
+	// Requests are the requests a use of a forwarding address may send,
+	// each a method in capitals, one space, and a pattern over the path
+	// below the address (specs/014-http-forwarding.md): a segment `*`
+	// stands for one non-empty segment, a last segment `**` for the rest of
+	// the path, and every other segment for itself. Empty is all. A git
+	// address is held by Refs instead.
+	Requests []string `json:"requests,omitempty"`
 	// CallsPerMinute caps the requests of one subject to one connection;
 	// 0 is no cap.
 	CallsPerMinute int `json:"calls_per_minute,omitempty"`
@@ -87,11 +95,64 @@ func DecodeLimits(d authz.Decision) (Limits, error) {
 	case emptyGlob(l.Refs):
 		return Limits{}, fmt.Errorf("%w: refs has an empty glob", ErrUnreadableLimits)
 	}
+	for _, r := range l.Requests {
+		if !validRequest(r) {
+			return Limits{}, fmt.Errorf("%w: requests has %q, which is not a method, a space and a path pattern", ErrUnreadableLimits, r)
+		}
+	}
 	return l, nil
 }
 
 // wireNames are the keys of the limits object.
-var wireNames = []string{"owner", "max_connections", "connectors", "read_only", "tools", "refs", "calls_per_minute"}
+var wireNames = []string{"owner", "max_connections", "connectors", "read_only", "tools", "refs", "requests", "calls_per_minute"}
+
+// validRequest reports whether an entry of Requests is a method of capital
+// letters, one space, and a pattern that starts with `/` whose segments are
+// each `*`, a literal with no `*`, or, last, `**`; the pattern `/` alone is
+// the address itself.
+func validRequest(r string) bool {
+	method, pattern, ok := strings.Cut(r, " ")
+	if !ok || method == "" || strings.Trim(method, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") != "" || !strings.HasPrefix(pattern, "/") {
+		return false
+	}
+	segments := strings.Split(pattern[1:], "/")
+	for i, s := range segments {
+		switch {
+		case s == "**":
+			if i != len(segments)-1 {
+				return false
+			}
+		case s == "":
+			if len(segments) != 1 {
+				return false
+			}
+		case strings.Contains(s, "*"):
+			if s != "*" {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// requestMatch reports whether a path below an address has the segments of
+// a pattern of Requests.
+func requestMatch(pattern, path string) bool {
+	want := strings.Split(strings.TrimPrefix(pattern, "/"), "/")
+	got := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	for i, w := range want {
+		if w == "**" && i == len(want)-1 {
+			return true
+		}
+		if i >= len(got) {
+			return false
+		}
+		if (w == "*" && got[i] == "") || (w != "*" && w != got[i]) {
+			return false
+		}
+	}
+	return len(got) == len(want)
+}
 
 func emptyGlob(globs []string) bool {
 	return slices.Contains(globs, "")
@@ -107,6 +168,21 @@ func (l Limits) AdmitsConnector(ref string) bool {
 // AdmitsTool reports whether a call of the tool is within Tools.
 func (l Limits) AdmitsTool(tool string) bool {
 	return len(l.Tools) == 0 || catalog.MatchAny(l.Tools, tool)
+}
+
+// AdmitsRequest reports whether a request of method to path, the path
+// below a forwarding address, is within Requests.
+func (l Limits) AdmitsRequest(method, path string) bool {
+	if len(l.Requests) == 0 {
+		return true
+	}
+	for _, r := range l.Requests {
+		m, pattern, _ := strings.Cut(r, " ")
+		if m == method && requestMatch(pattern, path) {
+			return true
+		}
+	}
+	return false
 }
 
 // AdmitsRef reports whether a push may update the ref, by its full name.

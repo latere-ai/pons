@@ -187,6 +187,9 @@ func TestDecodeRefusesWhatItCannotHold(t *testing.T) {
 		`[]`, `{"owner": 1}`, `{"max_connections": "5"}`, `{"plan": "pro"}`, `{"owner": "x", "Owner": "y"}`,
 		`{"max_connections": -1}`, `{"calls_per_minute": -5}`,
 		`{"connectors": [""]}`, `{"tools": ["get_*", ""]}`, `{"refs": [""]}`, `{} {}`, `{`,
+		`{"requests": [""]}`, `{"requests": ["GET"]}`, `{"requests": ["get /x"]}`, `{"requests": ["GET x"]}`,
+		`{"requests": ["GET  /x"]}`, `{"requests": ["GET /a/**/b"]}`, `{"requests": ["GET /a*"]}`, `{"requests": ["GET /a//b"]}`,
+		`{"requests": ["GET /a/"]}`, `{"requests": ["POST/x"]}`,
 	} {
 		_, err := authorizer.DecodeLimits(authz.Decision{Allow: true, Limits: json.RawMessage(raw)})
 		if !errors.Is(err, authorizer.ErrUnreadableLimits) {
@@ -202,15 +205,16 @@ func TestDecodeRefusesWhatItCannotHold(t *testing.T) {
 }
 
 func isZero(l authorizer.Limits) bool {
-	return l.Owner == "" && l.MaxConnections == 0 && l.Connectors == nil && !l.ReadOnly && l.Tools == nil && l.Refs == nil && l.CallsPerMinute == 0
+	return l.Owner == "" && l.MaxConnections == 0 && l.Connectors == nil && !l.ReadOnly && l.Tools == nil && l.Refs == nil && l.Requests == nil && l.CallsPerMinute == 0
 }
 
-// The limits object carries exactly the six keys, and DecodeLimits reads
+// The limits object carries exactly the eight keys, and DecodeLimits reads
 // back what an authorizer renders.
 func TestTheWireNamesEveryMemberAndNoOther(t *testing.T) {
 	full := authorizer.Limits{
 		Owner: "https://issuer.example.com|team", MaxConnections: 3, Connectors: []string{"notion", "ctr_*"},
 		ReadOnly: true, Tools: []string{"get_*"}, Refs: []string{"refs/heads/agent/*"}, CallsPerMinute: 60,
+		Requests: []string{"GET /**", "POST /repos/*/*/issues", "GET /"},
 	}
 	raw, err := json.Marshal(full)
 	if err != nil {
@@ -225,7 +229,7 @@ func TestTheWireNamesEveryMemberAndNoOther(t *testing.T) {
 		names = append(names, k)
 	}
 	sort.Strings(names)
-	want := []string{"calls_per_minute", "connectors", "max_connections", "owner", "read_only", "refs", "tools"}
+	want := []string{"calls_per_minute", "connectors", "max_connections", "owner", "read_only", "refs", "requests", "tools"}
 	if !slices.Equal(names, want) {
 		t.Fatalf("the wire names %v, want %v", names, want)
 	}
@@ -234,7 +238,8 @@ func TestTheWireNamesEveryMemberAndNoOther(t *testing.T) {
 		t.Fatal(err)
 	}
 	if back.Owner != full.Owner || back.MaxConnections != 3 || !slices.Equal(back.Connectors, full.Connectors) ||
-		!back.ReadOnly || !slices.Equal(back.Tools, full.Tools) || !slices.Equal(back.Refs, full.Refs) || back.CallsPerMinute != 60 {
+		!back.ReadOnly || !slices.Equal(back.Tools, full.Tools) || !slices.Equal(back.Refs, full.Refs) || back.CallsPerMinute != 60 ||
+		!slices.Equal(back.Requests, full.Requests) {
 		t.Fatalf("read back %+v", back)
 	}
 	if empty, _ := json.Marshal(authorizer.Limits{}); string(empty) != "{}" {
@@ -277,5 +282,49 @@ func TestWhatALimitAdmits(t *testing.T) {
 func TestTheSubjectShape(t *testing.T) {
 	if got := authz.Subject("https://issuer.example.com/", "alice"); !strings.HasSuffix(got, "|alice") {
 		t.Fatalf("subject %q", got)
+	}
+}
+
+// Requests admits a request by its method and its path's segments: `*` is
+// one non-empty segment and never spans a `/`, a last `**` is the rest of
+// the path, the pattern `/` is the address itself, and an empty list admits
+// every request.
+func TestWhatRequestsAdmit(t *testing.T) {
+	if !(authorizer.Limits{}).AdmitsRequest("DELETE", "/repos/acme/app") {
+		t.Error("no requests admits nothing")
+	}
+	l := authorizer.Limits{Requests: []string{
+		"GET /**", "PATCH /repos/*/*/pulls/*", "PUT /repos/*/*/pulls/*/reviews/*", "POST /gmail/v1/users/*/drafts", "POST /",
+	}}
+	for _, c := range []struct {
+		method, path string
+		want         bool
+	}{
+		{"GET", "/", true},
+		{"GET", "/repos/acme/app/pulls/7/merge", true},
+		{"PATCH", "/repos/acme/app/pulls/7", true},
+		{"PATCH", "/repos/acme/app/pulls/7/merge", false},
+		{"PUT", "/repos/acme/app/pulls/7/reviews/3", true},
+		{"PUT", "/repos/acme/app/pulls/7/reviews/3/dismissals", false},
+		{"PUT", "/repos/acme/app/pulls/7/merge", false},
+		{"POST", "/gmail/v1/users/me/drafts", true},
+		{"POST", "/gmail/v1/users/me/drafts/send", false},
+		{"POST", "/gmail/v1/users/me/messages/send", false},
+		{"POST", "/", true},
+		{"POST", "/x", false},
+		{"get", "/repos", false},
+		{"HEAD", "/repos", false},
+	} {
+		if got := l.AdmitsRequest(c.method, c.path); got != c.want {
+			t.Errorf("%s %s: %v, want %v", c.method, c.path, got, c.want)
+		}
+	}
+	under := authorizer.Limits{Requests: []string{"GET /calendar/v3/**"}}
+	for path, want := range map[string]bool{
+		"/calendar/v3/calendars/primary/events": true, "/calendar/v3": true, "/calendar/v3x/y": false, "/drive/v3/files": false, "/calendar": false,
+	} {
+		if got := under.AdmitsRequest("GET", path); got != want {
+			t.Errorf("GET %s under /calendar/v3/**: %v, want %v", path, got, want)
+		}
 	}
 }

@@ -277,7 +277,7 @@ func (c *Carrier) serve(w http.ResponseWriter, r *http.Request, call *call) erro
 		call.outcome = OutcomeDenied
 		return apierr.Fail(apierr.CodeWrongKind, "address_"+address)
 	}
-	releaseConn, err := c.hold(d.Limits, caller.Subject, row.ID, effect, tool, refs)
+	releaseConn, err := c.hold(d.Limits, caller.Subject, row.ID, r.Method, effect, tool, refs, address == AddressHTTP)
 	if err != nil {
 		call.outcome = OutcomeDenied
 		if e := apierr.Classify(err); e.Field == fieldRefs {
@@ -305,12 +305,15 @@ const fieldRefs = "refs"
 // hold applies the limits of an allow (specs/004-identity-and-authorization.md)
 // and takes the connection's place in flight. A refusal is a 403 on the
 // member it is about, or a 429.
-func (c *Carrier) hold(l authorizer.Limits, subject, connection, effect, tool string, refs []string) (func(), error) {
+func (c *Carrier) hold(l authorizer.Limits, subject, connection, method, effect, tool string, refs []string, forwarding bool) (func(), error) {
 	if l.ReadOnly && effect == catalog.EffectWrite {
 		return nil, apierr.OnField(apierr.CodeForbidden, "tool", "read_only")
 	}
 	if !l.AdmitsTool(tool) {
 		return nil, apierr.OnField(apierr.CodeForbidden, "tool", "tools")
+	}
+	if forwarding && !l.AdmitsRequest(method, tool) {
+		return nil, apierr.OnField(apierr.CodeForbidden, "tool", "requests")
 	}
 	for _, ref := range refs {
 		if !l.AdmitsRef(ref) {

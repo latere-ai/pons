@@ -126,7 +126,9 @@ differences.
    ([[004-identity-and-authorization]]).
 
 The allow's limits apply as for a call: `ReadOnly` refuses a write,
-`Tools` holds the `tool` value to its globs, and `Refs` holds a push.
+`Tools` holds the `tool` value to its globs, `Requests` holds a request
+to the forwarding address to the methods and path patterns it names, and
+`Refs` holds a push ([[004-identity-and-authorization]]).
 
 ### A push names the refs it updates
 

@@ -213,15 +213,17 @@ type Limits struct {
     ReadOnly       bool     // on a use: only tools whose effect is read
     Tools          []string // globs of tools the caller may call; empty is all
     Refs           []string // globs of full ref names a push may update; empty is all
+    Requests       []string // "METHOD /path/pattern" a forwarding request may be; empty is all
     CallsPerMinute int      // per connection and subject; 0 is no cap
 }
 ```
 
 The JSON form has every member optional and exactly these keys:
 `owner`, `max_connections`, `connectors`, `read_only`, `tools`,
-`refs`, `calls_per_minute`. `DecodeLimits(authz.Decision)` reads it. An object
+`refs`, `requests`, `calls_per_minute`. `DecodeLimits(authz.Decision)` reads it. An object
 that does not parse, a key this version does not know, a figure below
-zero and an empty glob make the answer no decision,
+zero, an empty glob and an entry of `requests` that is not a method and
+a pattern make the answer no decision,
 and the request fails closed with `503 authorizer_unavailable`: a
 ceiling Pons cannot read is not one it can hold. Globs are those of the
 catalog's tool marks ([[006-catalog]]).
@@ -233,6 +235,7 @@ catalog's tool marks ([[006-catalog]]).
 | `connectors` | `connection.create` with no `id` | before anything is stored: `403 forbidden` on `connector` |
 | `read_only` | `connection.use` | a `tools/call` whose effect is `write`: `403 forbidden` on `tool` |
 | `tools` | `connection.use` | a `tools/call` of a tool no glob matches: `403 forbidden` on `tool` |
+| `requests` | `connection.use` | a request to a forwarding address that no entry names: `403 forbidden` on `tool` with the reason `requests` ([[014-http-forwarding]]) |
 | `calls_per_minute` | `connection.use` | `429 rate_limited`, retryable |
 | `refs` | `connection.use` | a push naming a ref no glob matches: answered in git's protocol, every ref refused with the rule, so git prints it ([[014-http-forwarding]]) |
 
@@ -252,6 +255,19 @@ refused call opens no credential, reaches no connector, and is
 recorded `denied`, at most once per subject and connection per minute
 ([[008-carrying-a-call]]). `read_only` and `tools` bind `tools/call`
 alone; a list of tools is carried as it is ([[008-carrying-a-call]]).
+
+`requests` is how an authorizer holds a caller to some of a service's
+API without hiding the connection from it. Each entry is a method in
+capitals, one space, and a pattern over the path below the forwarding
+address, read by segments: `*` stands for exactly one non-empty segment
+and never spans a `/`, a last segment `**` stands for the rest of the
+path, the pattern `/` is the address itself, and every other segment is
+compared as written. `GET /**` admits every read of the API, and
+`PATCH /repos/*/*/pulls/*` admits a change of a pull request and not
+`/repos/o/r/pulls/7/merge`. A request outside them is refused after the
+allow, so the caller learns that the request is not allowed, where a
+deny would answer it as a connection that is not there. A git address
+is held by `refs` and not by `requests`.
 
 `calls_per_minute` is counted per replica, in memory, with
 `latere.ai/x/pkg/ratelimit`, so N replicas admit up to N times the
@@ -362,6 +378,7 @@ Remains: the same for the address of kind `mcp`, with the MCP carrier.
 | `carry.TestAnAllowIsRememberedPerTool` | written, against the stub authorizer |
 | `TestADenyDoesNotConfirmAnId` | written, the confirm, the reconnect and a use included |
 | `access.TestTheClientFailsClosed`, `authorizer.TestDecodeRefusesWhatItCannotHold` | written |
+| `authorizer.TestWhatRequestsAdmit`, `carry.TestARequestOutsideRequestsIsForbidden` | written |
 | `authorizer.TestTheWireNamesEveryMemberAndNoOther` | written, with seven keys |
 | `TestWhoseACreateIs`, `TestAStoredConnectionKeepsItsOwner` | written, the second for a replaced key, a reconnect and its confirm |
 | `TestEachMemberOfAnAllowChangesTheOutcome`, `carry.TestALimitRefusesBeforeTheCredential` | written, a case per member and the list of members waiting empty |
@@ -387,7 +404,8 @@ Remains: the same for the address of kind `mcp`, with the MCP carrier.
 | The client holds an allow for its `ttl`, a deny briefly and an outage never, asks a create and a list every time, and retries once on a connection failure | `access.TestWhatTheClientRemembers`, `access.TestACreateIsAlwaysAsked`, `access.TestOneRetryOnAConnectionFailure` |
 | An allow of a use is remembered per tool: a second call of the same tool asks nothing within the `ttl`, a call of another tool asks, and a deny at the authorizer holds once the `ttl` has passed | `carry.TestAnAllowIsRememberedPerTool` |
 | A deny of a read, a change, a delete, a use, a confirm and a reconnect is the `404` of its kind, byte for byte the answer of an id that names nothing; a deny of a create or a list is `403 forbidden` | `TestADenyDoesNotConfirmAnId` |
-| Another status, a body with no `allow`, a late answer, limits with an unknown key, a negative figure or an empty glob, and a filter with labels are each `503 authorizer_unavailable` with nothing done | `access.TestTheClientFailsClosed`, `authorizer.TestDecodeRefusesWhatItCannotHold` |
+| Another status, a body with no `allow`, a late answer, limits with an unknown key, a negative figure, an empty glob or an entry of `requests` that is not a method and a pattern, and a filter with labels are each `503 authorizer_unavailable` with nothing done | `access.TestTheClientFailsClosed`, `authorizer.TestDecodeRefusesWhatItCannotHold` |
+| `requests` admits a request by its method and its path's segments, `*` one segment and a last `**` the rest; a forwarding request outside it is `403 forbidden` on `tool` with the reason `requests`, reaches no connector and is recorded `denied`, and the git address is not held by it | `authorizer.TestWhatRequestsAdmit`, `carry.TestARequestOutsideRequestsIsForbidden` |
 | The limits object carries exactly the 7 keys above, and `DecodeLimits` reads back what an authorizer renders | `authorizer.TestTheWireNamesEveryMemberAndNoOther` |
 | A create is recorded under the owner its allow names, else the owner the request named, else the caller's subject; a confirm and a reconnect do not move a connection to another owner | `TestWhoseACreateIs`, `TestAStoredConnectionKeepsItsOwner` |
 | Each member of `Limits` has a case in which an allow carrying it changes the outcome of a request: the connection cap, a connector outside the globs, a writing tool under `read_only`, a tool outside `tools`, and the rate; a call a limit refuses opens no credential, reaches no connector and is recorded `denied` | `TestEachMemberOfAnAllowChangesTheOutcome`, a case per member, which fails when a member has none; `carry.TestALimitRefusesBeforeTheCredential` |

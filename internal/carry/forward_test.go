@@ -107,6 +107,47 @@ func TestOnlyAnAPIsMethodsAreForwarded(t *testing.T) {
 	}
 }
 
+// Under an allow whose limits give Requests, a request to the forwarding
+// address that no entry names is 403 forbidden on tool with the reason
+// requests, so the caller learns that the connection is there and the
+// request is not allowed; nothing reaches the connector, and the call is
+// recorded denied. A request an entry names is forwarded, and the git
+// address is held by refs alone.
+func TestARequestOutsideRequestsIsForbidden(t *testing.T) {
+	r := newRig(t, true)
+	c := r.keyed()
+	r.az.set(authorizer.Limits{Requests: []string{"GET /**", "POST /repos/*/*/issues"}})
+	for _, ok := range []struct{ method, path string }{
+		{http.MethodGet, "/repos/acme/app/issues"},
+		{http.MethodPost, "/repos/acme/app/issues"},
+	} {
+		if a := r.send(ok.method, address(c, "http")+ok.path, "alice", strings.NewReader("{}")); a.status != http.StatusOK && a.status != http.StatusCreated {
+			t.Errorf("%s %s: %d %s", ok.method, ok.path, a.status, a.body)
+		}
+	}
+	before := len(r.api.Requests())
+	for _, bad := range []struct{ method, path string }{
+		{http.MethodPut, "/repos/acme/app/pulls/7/merge"},
+		{http.MethodPost, "/repos/acme/app/issues/1/comments"},
+		{http.MethodDelete, "/repos/acme/app"},
+	} {
+		a := r.send(bad.method, address(c, "http")+bad.path, "alice", strings.NewReader("{}"))
+		if a.status != http.StatusForbidden || a.code() != "forbidden" || a.detail("field") != "tool" || a.detail("reason") != "requests" {
+			t.Errorf("%s %s: %d %s", bad.method, bad.path, a.status, a.body)
+		}
+	}
+	if got := r.api.Requests(); len(got) != before {
+		t.Fatalf("a refused request reached the connector: %+v", got[before:])
+	}
+	calls := r.calls(c)
+	if last := calls[len(calls)-1]; last.Outcome != OutcomeDenied || last.Method != http.MethodPut {
+		t.Fatalf("the refused request was recorded %+v", last)
+	}
+	if a := r.send(http.MethodGet, address(c, "git")+"/acme/app.git/info/refs?service=git-upload-pack", "alice", nil); a.status != http.StatusOK {
+		t.Fatalf("a clone under requests: %d %s", a.status, a.body)
+	}
+}
+
 func httpRequest(t *testing.T, path string) *http.Request {
 	t.Helper()
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://pons.example.com"+path, nil)
