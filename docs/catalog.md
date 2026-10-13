@@ -220,7 +220,9 @@ new service's hosts.
 
 [`catalog/example.yaml`](../catalog/example.yaml) has one entry per way
 to give access, for invented services. All four are of kind `mcp`, so
-they load and connect, and none can be called in this release:
+none can be called in this release. Since the services are invented,
+only `search` and `weather` can be connected, and the file loads only
+with `TRACKER_CLIENT_SECRET` set:
 
 ```yaml
 connectors:
