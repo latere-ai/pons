@@ -164,7 +164,7 @@ func (s *Server) addConnector(w http.ResponseWriter, r *http.Request, c access.C
 		conn.Tools = *req.Tools
 	}
 	if ps := catalog.Validate(conn, true); len(ps) > 0 {
-		return onField(CodeInvalidField, ps[0].Field, ps[0].Why)
+		return onField(CodeInvalidField, ps[0].Field, ps[0].Rule())
 	}
 	u, err := url.Parse(conn.URL)
 	if err != nil {

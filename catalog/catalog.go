@@ -206,6 +206,44 @@ type Problem struct {
 
 func (p Problem) Error() string { return p.Field + ": " + p.Why }
 
+// rules name each problem in one word, the names of
+// specs/009-outbound-requests.md for an address, by the start of its
+// sentence.
+var rules = []struct{ prefix, rule string }{
+	{"is not https", "scheme_not_https"},
+	{"carries a user part", "scheme_not_https"},
+	{"has a host that is an address", "host_not_a_name"},
+	{"is not a host pattern", "host_not_a_name"},
+	{"has a port that is not a number", "port_not_allowed"},
+	{"is not on port 443", "port_not_allowed"},
+	{"is not a URL", "not_a_url"},
+	{"carries a fragment", "fragment"},
+	{"does not cover the host of url", "hosts_miss_url"},
+	{"is on a host hosts does not cover", "host_not_bound"},
+	{"is not a DNS label", "not_a_dns_label"},
+	{"is empty or longer than", "length"},
+	{"is longer than", "length"},
+	{"has an empty", "empty"},
+	{"is required", "missing"},
+	{"takes authorize_url", "missing"},
+	{"is not taken", "not_taken"},
+	{"is not a member", "not_taken"},
+	{"is not mcp:", "not_taken"},
+	{"is resource for", "not_taken"},
+	{"is oauth, token or none for", "not_taken"},
+}
+
+// Rule is the problem in one word, for a developer's detail: the name of
+// the rule an address broke, or what is wrong with another member.
+func (p Problem) Rule() string {
+	for _, r := range rules {
+		if strings.HasPrefix(p.Why, r.prefix) {
+			return r.rule
+		}
+	}
+	return "invalid"
+}
+
 // Options configure Load.
 type Options struct {
 	// LookupEnv resolves an {env: NAME} reference. Nil resolves none: every

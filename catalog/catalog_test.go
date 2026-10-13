@@ -341,3 +341,27 @@ func TestPorts(t *testing.T) {
 		t.Fatalf("a url that does not parse has hosts %v", got)
 	}
 }
+
+// A problem names its rule in one word, the dialer's names for an address.
+func TestProblemRules(t *testing.T) {
+	cases := map[string]string{
+		"https://wiki.example.com:8443/mcp": "port_not_allowed",
+		"http://wiki.example.com/mcp":       "scheme_not_https",
+		"https://u:p@wiki.example.com/mcp":  "scheme_not_https",
+		"https://10.0.0.1/mcp":              "host_not_a_name",
+		"https://wiki.example.com/mcp#x":    "fragment",
+		"":                                  "not_a_url",
+	}
+	for u, want := range cases {
+		c := catalog.Connector{Name: "w", Title: "W", Kind: "mcp", URL: u, Auth: catalog.Auth{Type: "none"}}
+		ps := catalog.Validate(c, true)
+		if len(ps) == 0 || ps[0].Rule() != want {
+			t.Errorf("%q: %v", u, ps)
+		}
+	}
+	for why, want := range map[string]string{"is not a DNS label of at most 40 characters": "not_a_dns_label", "something else": "invalid"} {
+		if got := (catalog.Problem{Field: "f", Why: why}).Rule(); got != want {
+			t.Errorf("%q: %s", why, got)
+		}
+	}
+}
