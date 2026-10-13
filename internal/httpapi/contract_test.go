@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 
+	"latere.ai/x/pons/internal/apierr"
+
 	"go.yaml.in/yaml/v3"
 
 	"latere.ai/x/pons/api"
@@ -238,28 +240,31 @@ func TestErrorTable(t *testing.T) {
 	if err := scan.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if len(spec) != len(table) {
-		t.Errorf("the spec has %d codes and the table %d", len(spec), len(table))
+	if len(spec) != len(apierr.Codes()) {
+		t.Errorf("the spec has %d codes and the table %d", len(spec), len(apierr.Codes()))
 	}
 	documented, _ := at(resolve(at(contract, "components", "schemas", "Error")), "properties", "error", "properties", "code", "enum").([]any)
 	for c, status := range spec {
-		k, ok := table[c]
-		if !ok || k.status != status {
-			t.Errorf("%s: the spec says %d, the table has %+v", c, status, k)
+		message := apierr.Message(c)
+		if !slices.Contains(apierr.Codes(), c) || apierr.Status(c) != status {
+			t.Errorf("%s: the spec says %d, the table has %d", c, status, apierr.Status(c))
 		}
-		if k.message == "" || !strings.HasSuffix(k.message, ".") {
+		if message == "" || !strings.HasSuffix(message, ".") {
 			t.Errorf("%s has no sentence", c)
 		}
 		if !slices.Contains(documented, any(c)) {
 			t.Errorf("%s is not in the contract's enum", c)
 		}
-		st, body := (&Error{Code: c, Reason: "r"}).envelope()
-		if st != status || body.Code != c || body.Message != k.message {
+		st, body := (&apierr.Error{Code: c, Reason: "r"}).Envelope()
+		if st != status || body.Code != c || body.Message != message {
 			t.Errorf("%s renders %d %+v", c, st, body)
 		}
 	}
-	if st, body := (&Error{Code: "nothing"}).envelope(); st != http.StatusInternalServerError || body.Code != CodeInternal || body.Details != nil {
+	if st, body := (&apierr.Error{Code: "nothing"}).Envelope(); st != http.StatusInternalServerError || body.Code != apierr.CodeInternal || body.Details != nil {
 		t.Errorf("an unknown code renders %d %+v", st, body)
+	}
+	if apierr.Status("nothing") != http.StatusInternalServerError || apierr.Message("nothing") != "" {
+		t.Error("a code the table lacks has a status or a sentence")
 	}
 }
 
@@ -276,7 +281,7 @@ func TestRoutesNeedABearer(t *testing.T) {
 			}
 			continue
 		}
-		if a.status != http.StatusUnauthorized || a.code() != CodeMissingToken {
+		if a.status != http.StatusUnauthorized || a.code() != apierr.CodeMissingToken {
 			t.Errorf("%s %s without a bearer: %d %s", rt.Method, path, a.status, a.body)
 		}
 		hold(t, rt.Method, path, a)

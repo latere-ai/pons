@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"latere.ai/x/pons/internal/apierr"
+
 	"latere.ai/x/pons/authorizer"
 	"latere.ai/x/pons/catalog"
 	"latere.ai/x/pons/internal/access"
@@ -49,21 +51,21 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request, c acce
 		return err
 	}
 	if req.Connector == "" {
-		return onField(CodeMissingField, "connector", "")
+		return apierr.OnField(apierr.CodeMissingField, "connector", "")
 	}
 	conn, err := s.resolve(r.Context(), req.Connector)
 	switch {
 	case errors.Is(err, errNoConnector):
-		return onField(CodeConnectorNotFound, "connector", "")
+		return apierr.OnField(apierr.CodeConnectorNotFound, "connector", "")
 	case err != nil:
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	name := req.Name
 	if name == "" {
 		name = conn.Name
 	}
 	if !catalog.IsLabel(name) {
-		return onField(CodeInvalidField, "name", "not_a_dns_label")
+		return apierr.OnField(apierr.CodeInvalidField, "name", "not_a_dns_label")
 	}
 	secrets, meta, err := credentialOf(conn, req.Credential)
 	if err != nil {
@@ -71,10 +73,10 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request, c acce
 	}
 	if conn.Auth.Type != catalog.AuthOAuth {
 		if req.ReturnTo != "" {
-			return onField(CodeInvalidField, "return_to", "no_sign_in")
+			return apierr.OnField(apierr.CodeInvalidField, "return_to", "no_sign_in")
 		}
 		if len(req.Scopes) > 0 {
-			return onField(CodeInvalidField, "scopes", "no_sign_in")
+			return apierr.OnField(apierr.CodeInvalidField, "scopes", "no_sign_in")
 		}
 	}
 	res := access.Connection{Owner: req.Owner, Connector: conn.ref(), Name: name, Kind: conn.Kind, Auth: conn.Auth.Type}
@@ -86,15 +88,15 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request, c acce
 		return forbidden(d)
 	}
 	if !d.Limits.AdmitsConnector(conn.ref()) {
-		return onField(CodeForbidden, "connector", "connectors")
+		return apierr.OnField(apierr.CodeForbidden, "connector", "connectors")
 	}
 	owner := ownerOf(d, req.Owner, c)
 	if conn.added != nil && conn.added.Owner != owner {
 		// An added connector is its owner's alone.
-		return onField(CodeConnectorNotFound, "connector", "")
+		return apierr.OnField(apierr.CodeConnectorNotFound, "connector", "")
 	}
 	if conn.Auth.Type == catalog.AuthOAuth {
-		return fail(CodeSignInUnsupported, "sign_in_not_available")
+		return apierr.Fail(apierr.CodeSignInUnsupported, "sign_in_not_available")
 	}
 
 	row := store.Connection{
@@ -123,9 +125,9 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request, c acce
 	})
 	switch {
 	case errors.Is(err, store.ErrNameTaken):
-		return onField(CodeNameTaken, "name", "")
+		return apierr.OnField(apierr.CodeNameTaken, "name", "")
 	case errors.Is(err, store.ErrLimitReached):
-		return onField(CodeForbidden, "owner", "max_connections="+strconv.Itoa(limit))
+		return apierr.OnField(apierr.CodeForbidden, "owner", "max_connections="+strconv.Itoa(limit))
 	case err != nil:
 		return err
 	}
@@ -145,7 +147,7 @@ func credentialOf(conn connector, cr *credentialRequest) (*store.Secrets, store.
 	refuse := func(set map[string]bool) error {
 		for _, field := range []string{"value", "client_id", "client_secret"} {
 			if set[field] {
-				return onField(CodeInvalidField, "credential."+field, "not_taken_by_"+conn.Auth.Type)
+				return apierr.OnField(apierr.CodeInvalidField, "credential."+field, "not_taken_by_"+conn.Auth.Type)
 			}
 		}
 		return nil
@@ -153,9 +155,9 @@ func credentialOf(conn connector, cr *credentialRequest) (*store.Secrets, store.
 	secret := func(field string, v *string) error {
 		switch {
 		case v == nil || *v == "":
-			return onField(CodeMissingField, "credential."+field, "")
+			return apierr.OnField(apierr.CodeMissingField, "credential."+field, "")
 		case len(*v) < store.MinSecretBytes:
-			return onField(CodeInvalidField, "credential."+field, "shorter_than_8_bytes")
+			return apierr.OnField(apierr.CodeInvalidField, "credential."+field, "shorter_than_8_bytes")
 		}
 		return nil
 	}
@@ -174,7 +176,7 @@ func credentialOf(conn connector, cr *credentialRequest) (*store.Secrets, store.
 			return nil, store.Meta{}, err
 		}
 		if cr.ClientID == nil || *cr.ClientID == "" {
-			return nil, store.Meta{}, onField(CodeMissingField, "credential.client_id", "")
+			return nil, store.Meta{}, apierr.OnField(apierr.CodeMissingField, "credential.client_id", "")
 		}
 		if err := secret("client_secret", cr.ClientSecret); err != nil {
 			return nil, store.Meta{}, err
@@ -193,18 +195,18 @@ func credentialOf(conn connector, cr *credentialRequest) (*store.Secrets, store.
 func (s *Server) seal(c store.Connection, conn connector, secrets store.Secrets, meta store.Meta) (store.SealedCredential, error) {
 	plaintext, err := secrets.Encode()
 	if err != nil {
-		return store.SealedCredential{}, internal(err)
+		return store.SealedCredential{}, apierr.Internal(err)
 	}
 	doc, err := store.EncodeMeta(meta)
 	if err != nil {
-		return store.SealedCredential{}, internal(err)
+		return store.SealedCredential{}, apierr.Internal(err)
 	}
 	sealed, err := s.Sealer.Seal(plaintext, store.CredentialBinding(c.ID, c.Owner, c.Auth, meta, conn.addedURL()))
 	switch {
 	case errors.Is(err, store.ErrNoSealingKey):
-		return store.SealedCredential{}, fail(CodeSealingUnavailable, "no_sealing_key")
+		return store.SealedCredential{}, apierr.Fail(apierr.CodeSealingUnavailable, "no_sealing_key")
 	case err != nil:
-		return store.SealedCredential{}, internal(err)
+		return store.SealedCredential{}, apierr.Internal(err)
 	}
 	return store.SealedCredential{Kind: c.Auth, Meta: doc, Sealed: sealed}, nil
 }
@@ -232,10 +234,10 @@ func (s *Server) idempotent(r *http.Request, c access.Caller, key, route, object
 	}
 	stored, err := s.Store.Idempotency().Get(r.Context(), c.Subject, key)
 	if err != nil {
-		return "", internal(err)
+		return "", apierr.Internal(err)
 	}
 	if stored.Route != route {
-		return "", onField(CodeInvalidRequest, "Idempotency-Key", "used_by_another_route")
+		return "", apierr.OnField(apierr.CodeInvalidRequest, "Idempotency-Key", "used_by_another_route")
 	}
 	return stored.Object, nil
 }
@@ -245,13 +247,13 @@ func (s *Server) writeConnection(w http.ResponseWriter, r *http.Request, connID 
 	row, err := s.Store.Connections().Get(r.Context(), connID)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return fail(CodeConnectionNotFound, "")
+		return apierr.Fail(apierr.CodeConnectionNotFound, "")
 	case err != nil:
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	v, err := s.connectionOf(r.Context(), row)
 	if err != nil {
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	return write(w, status, v)
 }
@@ -263,9 +265,9 @@ func (s *Server) stored(r *http.Request, c access.Caller, action string) (store.
 	row, err := s.Store.Connections().Get(r.Context(), r.PathValue("id"))
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return store.Connection{}, fail(CodeConnectionNotFound, "")
+		return store.Connection{}, apierr.Fail(apierr.CodeConnectionNotFound, "")
 	case err != nil:
-		return store.Connection{}, internal(err)
+		return store.Connection{}, apierr.Internal(err)
 	}
 	res := access.Connection{ID: row.ID, Owner: row.Owner, Connector: row.Connector, Name: row.Name, Kind: row.Kind, Auth: row.Auth}
 	d, err := s.ask(r, c, action, res.Resource(action))
@@ -273,7 +275,7 @@ func (s *Server) stored(r *http.Request, c access.Caller, action string) (store.
 		return store.Connection{}, err
 	}
 	if !d.Allow {
-		return store.Connection{}, fail(CodeConnectionNotFound, "")
+		return store.Connection{}, apierr.Fail(apierr.CodeConnectionNotFound, "")
 	}
 	return row, nil
 }
@@ -291,7 +293,7 @@ func (s *Server) listConnections(w http.ResponseWriter, r *http.Request, c acces
 	switch state {
 	case "", store.StatePending, store.StateConnected, store.StateNeedsReconnect:
 	default:
-		return onField(CodeInvalidField, "state", "not_a_state")
+		return apierr.OnField(apierr.CodeInvalidField, "state", "not_a_state")
 	}
 	d, err := s.ask(r, c, authorizer.ActionConnectionList, access.List(authorizer.ActionConnectionList))
 	if err != nil {
@@ -303,13 +305,13 @@ func (s *Server) listConnections(w http.ResponseWriter, r *http.Request, c acces
 	f := store.Filter{Owners: d.Owners(c, q.Get("owner")), Connector: q.Get("connector"), State: state}
 	rows, next, err := s.Store.Connections().List(r.Context(), f, p)
 	if err != nil {
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	out := list[connectionView]{Items: []connectionView{}, NextCursor: next}
 	for _, row := range rows {
 		v, err := s.connectionOf(r.Context(), row)
 		if err != nil {
-			return internal(err)
+			return apierr.Internal(err)
 		}
 		out.Items = append(out.Items, v)
 	}
@@ -324,7 +326,7 @@ func (s *Server) readConnection(w http.ResponseWriter, r *http.Request, c access
 	}
 	v, err := s.connectionOf(r.Context(), row)
 	if err != nil {
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	return write(w, http.StatusOK, v)
 }
@@ -341,10 +343,10 @@ func (s *Server) renameConnection(w http.ResponseWriter, r *http.Request, c acce
 		return err
 	}
 	if req.Name == "" {
-		return onField(CodeMissingField, "name", "")
+		return apierr.OnField(apierr.CodeMissingField, "name", "")
 	}
 	if !catalog.IsLabel(req.Name) {
-		return onField(CodeInvalidField, "name", "not_a_dns_label")
+		return apierr.OnField(apierr.CodeInvalidField, "name", "not_a_dns_label")
 	}
 	row, err := s.stored(r, c, authorizer.ActionConnectionUpdate)
 	if err != nil {
@@ -352,11 +354,11 @@ func (s *Server) renameConnection(w http.ResponseWriter, r *http.Request, c acce
 	}
 	switch err := s.Store.Connections().Rename(r.Context(), row.ID, req.Name); {
 	case errors.Is(err, store.ErrNameTaken):
-		return onField(CodeNameTaken, "name", "")
+		return apierr.OnField(apierr.CodeNameTaken, "name", "")
 	case errors.Is(err, store.ErrNotFound):
-		return fail(CodeConnectionNotFound, "")
+		return apierr.Fail(apierr.CodeConnectionNotFound, "")
 	case err != nil:
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	return s.writeConnection(w, r, row.ID, http.StatusOK)
 }
@@ -376,21 +378,21 @@ func (s *Server) replaceCredential(w http.ResponseWriter, r *http.Request, c acc
 		return err
 	}
 	if req.Credential == nil {
-		return onField(CodeMissingField, "credential", "")
+		return apierr.OnField(apierr.CodeMissingField, "credential", "")
 	}
 	row, err := s.stored(r, c, authorizer.ActionConnectionCreate)
 	if err != nil {
 		return err
 	}
 	if row.Auth != catalog.AuthToken && row.Auth != catalog.AuthClientCredentials {
-		return fail(CodeWrongKind, "auth_"+row.Auth)
+		return apierr.Fail(apierr.CodeWrongKind, "auth_"+row.Auth)
 	}
 	conn, err := s.resolve(r.Context(), row.Connector)
 	switch {
 	case errors.Is(err, errNoConnector) || (err == nil && (conn.Kind != row.Kind || conn.Auth.Type != row.Auth)):
-		return &Error{Code: CodeConnectionNotConnected, Reason: "connector_removed", Extra: map[string]any{"state": string(row.State)}}
+		return &apierr.Error{Code: apierr.CodeConnectionNotConnected, Reason: "connector_removed", Extra: map[string]any{"state": string(row.State)}}
 	case err != nil:
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	secrets, meta, err := credentialOf(conn, req.Credential)
 	if err != nil {
@@ -412,9 +414,9 @@ func (s *Server) replaceCredential(w http.ResponseWriter, r *http.Request, c acc
 	})
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return fail(CodeConnectionNotFound, "")
+		return apierr.Fail(apierr.CodeConnectionNotFound, "")
 	case err != nil:
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil
@@ -429,9 +431,9 @@ func (s *Server) deleteConnection(w http.ResponseWriter, r *http.Request, c acce
 	}
 	switch err := s.Store.Connections().Delete(r.Context(), row.ID); {
 	case errors.Is(err, store.ErrNotFound):
-		return fail(CodeConnectionNotFound, "")
+		return apierr.Fail(apierr.CodeConnectionNotFound, "")
 	case err != nil:
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil
@@ -450,7 +452,7 @@ func (s *Server) listCalls(w http.ResponseWriter, r *http.Request, c access.Call
 	}
 	calls, next, err := s.Store.Calls().List(r.Context(), row.ID, p)
 	if err != nil {
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	out := list[callView]{Items: []callView{}, NextCursor: next}
 	for _, call := range calls {

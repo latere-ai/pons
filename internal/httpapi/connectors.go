@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 
+	"latere.ai/x/pons/internal/apierr"
+
 	"latere.ai/x/pkg/httpjson"
 
 	"latere.ai/x/pons/authorizer"
@@ -33,7 +35,7 @@ func (s *Server) listConnectors(w http.ResponseWriter, r *http.Request, c access
 	}
 	kind := r.URL.Query().Get("kind")
 	if kind != "" && kind != catalog.KindMCP && kind != catalog.KindHTTP {
-		return onField(CodeInvalidField, "kind", "not_mcp_or_http")
+		return apierr.OnField(apierr.CodeInvalidField, "kind", "not_mcp_or_http")
 	}
 	d, err := s.ask(r, c, authorizer.ActionConnectorList, access.List(authorizer.ActionConnectorList))
 	if err != nil {
@@ -76,7 +78,7 @@ func (s *Server) listConnectors(w http.ResponseWriter, r *http.Request, c access
 		// first added connector, if there is one.
 		rows, _, err := s.Store.Connectors().List(r.Context(), d.Owners(c, ""), store.Page{Limit: 1})
 		if err != nil {
-			return internal(err)
+			return apierr.Internal(err)
 		}
 		if len(rows) > 0 {
 			out.NextCursor = out.Items[len(out.Items)-1].Name
@@ -85,12 +87,12 @@ func (s *Server) listConnectors(w http.ResponseWriter, r *http.Request, c access
 	}
 	rows, next, err := s.Store.Connectors().List(r.Context(), d.Owners(c, ""), added)
 	if err != nil {
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	for _, row := range rows {
 		conn, err := fromRow(row)
 		if err != nil {
-			return internal(err)
+			return apierr.Internal(err)
 		}
 		out.Items = append(out.Items, conn.view())
 	}
@@ -104,9 +106,9 @@ func (s *Server) readConnector(w http.ResponseWriter, r *http.Request, c access.
 	conn, err := s.resolve(r.Context(), r.PathValue("ref"))
 	switch {
 	case errors.Is(err, errNoConnector):
-		return fail(CodeConnectorNotFound, "")
+		return apierr.Fail(apierr.CodeConnectorNotFound, "")
 	case err != nil:
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	res := access.Connector{Name: conn.Name, Kind: conn.Kind}
 	if conn.added != nil {
@@ -117,7 +119,7 @@ func (s *Server) readConnector(w http.ResponseWriter, r *http.Request, c access.
 		return err
 	}
 	if !d.Allow {
-		return fail(CodeConnectorNotFound, "")
+		return apierr.Fail(apierr.CodeConnectorNotFound, "")
 	}
 	return write(w, http.StatusOK, conn.view())
 }
@@ -153,7 +155,7 @@ func (s *Server) addConnector(w http.ResponseWriter, r *http.Request, c access.C
 	}
 	for field, missing := range map[string]bool{"name": req.Name == "", "title": req.Title == "", "kind": req.Kind == "", "url": req.URL == "", "auth": req.Auth == nil} {
 		if missing {
-			return onField(CodeMissingField, field, "")
+			return apierr.OnField(apierr.CodeMissingField, field, "")
 		}
 	}
 	conn := catalog.Connector{
@@ -164,11 +166,11 @@ func (s *Server) addConnector(w http.ResponseWriter, r *http.Request, c access.C
 		conn.Tools = *req.Tools
 	}
 	if ps := catalog.Validate(conn, true); len(ps) > 0 {
-		return onField(CodeInvalidField, ps[0].Field, ps[0].Rule())
+		return apierr.OnField(apierr.CodeInvalidField, ps[0].Field, ps[0].Rule())
 	}
 	u, err := url.Parse(conn.URL)
 	if err != nil {
-		return onField(CodeInvalidField, "url", "not_a_url")
+		return apierr.OnField(apierr.CodeInvalidField, "url", "not_a_url")
 	}
 	res := access.Connector{Owner: req.Owner, Kind: conn.Kind, Host: catalog.Normalize(u.Hostname())}
 	d, err := s.ask(r, c, authorizer.ActionConnectorCreate, res.Resource(authorizer.ActionConnectorCreate))
@@ -179,16 +181,16 @@ func (s *Server) addConnector(w http.ResponseWriter, r *http.Request, c access.C
 		return forbidden(d)
 	}
 	if conn.Auth.Type == catalog.AuthOAuth {
-		return fail(CodeSignInUnsupported, "sign_in_not_available")
+		return apierr.Fail(apierr.CodeSignInUnsupported, "sign_in_not_available")
 	}
 	owner := ownerOf(d, req.Owner, c)
 	authDoc, err := json.Marshal(conn.Auth)
 	if err != nil {
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	toolsDoc, err := json.Marshal(conn.Tools)
 	if err != nil {
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	row := store.Connector{
 		ID: s.newID(id.Connector), Owner: owner, Name: conn.Name, Title: conn.Title, Description: conn.Description,
@@ -201,17 +203,17 @@ func (s *Server) addConnector(w http.ResponseWriter, r *http.Request, c access.C
 	})
 	switch {
 	case errors.Is(err, store.ErrNameTaken):
-		return onField(CodeNameTaken, "name", "")
+		return apierr.OnField(apierr.CodeNameTaken, "name", "")
 	case err != nil:
 		return err
 	}
 	stored, err := s.Store.Connectors().Get(r.Context(), replayed)
 	if err != nil {
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	view, err := fromRow(stored)
 	if err != nil {
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	return write(w, http.StatusCreated, view.view())
 }
@@ -223,14 +225,14 @@ func (s *Server) removeConnector(w http.ResponseWriter, r *http.Request, c acces
 	if !strings.Contains(ref, "_") {
 		// A catalog connector is the installation's, and no person removes
 		// it: to the API it is no connector this route knows.
-		return fail(CodeConnectorNotFound, "")
+		return apierr.Fail(apierr.CodeConnectorNotFound, "")
 	}
 	conn, err := s.resolve(r.Context(), ref)
 	switch {
 	case errors.Is(err, errNoConnector):
-		return fail(CodeConnectorNotFound, "")
+		return apierr.Fail(apierr.CodeConnectorNotFound, "")
 	case err != nil:
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	res := access.Connector{ID: conn.added.ID, Owner: conn.added.Owner}
 	d, err := s.ask(r, c, authorizer.ActionConnectorDelete, res.Resource(authorizer.ActionConnectorDelete))
@@ -238,15 +240,15 @@ func (s *Server) removeConnector(w http.ResponseWriter, r *http.Request, c acces
 		return err
 	}
 	if !d.Allow {
-		return fail(CodeConnectorNotFound, "")
+		return apierr.Fail(apierr.CodeConnectorNotFound, "")
 	}
 	switch err := s.Store.Connectors().Delete(r.Context(), ref); {
 	case errors.Is(err, store.ErrInUse):
-		return fail(CodeConnectorInUse, "")
+		return apierr.Fail(apierr.CodeConnectorInUse, "")
 	case errors.Is(err, store.ErrNotFound):
-		return fail(CodeConnectorNotFound, "")
+		return apierr.Fail(apierr.CodeConnectorNotFound, "")
 	case err != nil:
-		return internal(err)
+		return apierr.Internal(err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 	return nil

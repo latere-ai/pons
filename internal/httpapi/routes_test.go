@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"latere.ai/x/pons/internal/apierr"
+
 	"latere.ai/x/pkg/health"
 
 	"latere.ai/x/pons/internal/access"
@@ -182,19 +184,19 @@ func TestAddedConnectorRules(t *testing.T) {
 		change      func(map[string]any)
 		code, field string
 	}{
-		{"kind http", func(b map[string]any) { b["kind"] = "http" }, CodeInvalidField, "kind"},
-		{"another port", func(b map[string]any) { b["url"] = "https://wiki.example.com:8443/mcp" }, CodeInvalidField, "url"},
-		{"an address", func(b map[string]any) { b["url"] = "https://10.0.0.1/mcp" }, CodeInvalidField, "url"},
-		{"a private name", func(b map[string]any) { b["url"] = "https://wiki.internal/mcp" }, CodeInvalidField, "url"},
-		{"http", func(b map[string]any) { b["url"] = "http://wiki.example.com/mcp" }, CodeInvalidField, "url"},
-		{"hosts", func(b map[string]any) { b["hosts"] = []string{"wiki.example.com"} }, CodeUnknownField, "hosts"},
+		{"kind http", func(b map[string]any) { b["kind"] = "http" }, apierr.CodeInvalidField, "kind"},
+		{"another port", func(b map[string]any) { b["url"] = "https://wiki.example.com:8443/mcp" }, apierr.CodeInvalidField, "url"},
+		{"an address", func(b map[string]any) { b["url"] = "https://10.0.0.1/mcp" }, apierr.CodeInvalidField, "url"},
+		{"a private name", func(b map[string]any) { b["url"] = "https://wiki.internal/mcp" }, apierr.CodeInvalidField, "url"},
+		{"http", func(b map[string]any) { b["url"] = "http://wiki.example.com/mcp" }, apierr.CodeInvalidField, "url"},
+		{"hosts", func(b map[string]any) { b["hosts"] = []string{"wiki.example.com"} }, apierr.CodeUnknownField, "hosts"},
 		{"a client", func(b map[string]any) {
 			b["auth"] = map[string]any{"type": "oauth", "client": map[string]any{"id": "x"}}
-		}, CodeUnknownField, "client"},
-		{"client_credentials", func(b map[string]any) { b["auth"] = map[string]any{"type": "client_credentials"} }, CodeInvalidField, "auth.type"},
-		{"no title", func(b map[string]any) { delete(b, "title") }, CodeMissingField, "title"},
-		{"no auth", func(b map[string]any) { delete(b, "auth") }, CodeMissingField, "auth"},
-		{"a bad name", func(b map[string]any) { b["name"] = "Wiki_1" }, CodeInvalidField, "name"},
+		}, apierr.CodeUnknownField, "client"},
+		{"client_credentials", func(b map[string]any) { b["auth"] = map[string]any{"type": "client_credentials"} }, apierr.CodeInvalidField, "auth.type"},
+		{"no title", func(b map[string]any) { delete(b, "title") }, apierr.CodeMissingField, "title"},
+		{"no auth", func(b map[string]any) { delete(b, "auth") }, apierr.CodeMissingField, "auth"},
+		{"a bad name", func(b map[string]any) { b["name"] = "Wiki_1" }, apierr.CodeInvalidField, "name"},
 	}
 	for _, tc := range cases {
 		a := h.do(http.MethodPost, "/v1/connectors", "alice", base(tc.change))
@@ -203,7 +205,7 @@ func TestAddedConnectorRules(t *testing.T) {
 		}
 	}
 	a := h.do(http.MethodPost, "/v1/connectors", "alice", base(func(b map[string]any) { b["auth"] = map[string]any{"type": "oauth", "scopes": []string{"read"}} }))
-	if a.status != http.StatusUnprocessableEntity || a.code() != CodeSignInUnsupported {
+	if a.status != http.StatusUnprocessableEntity || a.code() != apierr.CodeSignInUnsupported {
 		t.Fatalf("oauth: %d %s", a.status, a.body)
 	}
 	ok := h.do(http.MethodPost, "/v1/connectors", "alice", base(func(map[string]any) {}))
@@ -215,16 +217,16 @@ func TestAddedConnectorRules(t *testing.T) {
 		t.Fatalf("the added connector %v", got)
 	}
 	id := got["id"].(string)
-	if a := h.do(http.MethodGet, "/v1/connectors/"+id, "bob", nil); a.status != http.StatusNotFound || a.code() != CodeConnectorNotFound {
+	if a := h.do(http.MethodGet, "/v1/connectors/"+id, "bob", nil); a.status != http.StatusNotFound || a.code() != apierr.CodeConnectorNotFound {
 		t.Fatalf("bob reads alice's connector: %d", a.status)
 	}
 	if a := h.do(http.MethodGet, "/v1/connectors?kind=mcp", "bob", nil); strings.Contains(string(a.body), id) {
 		t.Fatal("bob lists alice's connector")
 	}
-	if a := h.connect("bob", id, "", ""); a.status != http.StatusNotFound || a.code() != CodeConnectorNotFound {
+	if a := h.connect("bob", id, "", ""); a.status != http.StatusNotFound || a.code() != apierr.CodeConnectorNotFound {
 		t.Fatalf("bob connects alice's connector: %d %s", a.status, a.body)
 	}
-	if a := h.do(http.MethodPost, "/v1/connectors", "alice", base(func(map[string]any) {})); a.code() != CodeNameTaken {
+	if a := h.do(http.MethodPost, "/v1/connectors", "alice", base(func(map[string]any) {})); a.code() != apierr.CodeNameTaken {
 		t.Fatalf("a name twice: %d %s", a.status, a.body)
 	}
 }
@@ -266,14 +268,14 @@ func TestProbes(t *testing.T) {
 func TestTokensAndUnclassifiedErrors(t *testing.T) {
 	h := newHarness(t)
 	a := h.do(http.MethodGet, "/v1/connections", "expired", nil)
-	if a.status != http.StatusUnauthorized || a.code() != CodeInvalidToken || a.detail("reason") != "expired" || a.detail("retryable") != false {
+	if a.status != http.StatusUnauthorized || a.code() != apierr.CodeInvalidToken || a.detail("reason") != "expired" || a.detail("retryable") != false {
 		t.Fatalf("expired: %d %s", a.status, a.body)
 	}
 	if a := h.do(http.MethodGet, "/v1/connections", "unreachable", nil); a.detail("retryable") != true {
 		t.Fatalf("an unreachable issuer: %s", a.body)
 	}
 	a = h.do(http.MethodGet, "/v1/connections", "broken", nil)
-	if a.status != http.StatusInternalServerError || a.code() != CodeInternal || strings.Contains(string(a.body), "details") {
+	if a.status != http.StatusInternalServerError || a.code() != apierr.CodeInternal || strings.Contains(string(a.body), "details") {
 		t.Fatalf("broken: %d %s", a.status, a.body)
 	}
 	if !strings.Contains(h.logText(), "unexpected EOF") {
@@ -285,14 +287,14 @@ func TestTokensAndUnclassifiedErrors(t *testing.T) {
 // the query cut.
 func TestAnErrorsURLLosesItsQuery(t *testing.T) {
 	err := errors.New(`Get "https://api.example.com/v1/items?token=s3cr3t&x=1#frag": dial tcp: refused, and http://other.example.com/p?q=2`)
-	got := logText(err)
+	got := apierr.LogText(err)
 	if strings.Contains(got, "s3cr3t") || strings.Contains(got, "q=2") || strings.Contains(got, "frag") {
 		t.Fatalf("logged %q", got)
 	}
 	if !strings.Contains(got, "https://api.example.com/v1/items") || !strings.Contains(got, "http://other.example.com/p") {
 		t.Fatalf("logged %q", got)
 	}
-	if logText(nil) != "" {
+	if apierr.LogText(nil) != "" {
 		t.Fatal("a nil error has text")
 	}
 	h := newHarness(t, func(s *Server) {

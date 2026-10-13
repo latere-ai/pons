@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 
+	"latere.ai/x/pons/internal/apierr"
+
 	"latere.ai/x/pons/internal/store"
 )
 
@@ -26,10 +28,10 @@ const (
 func decode(r *http.Request, v any) error {
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes+1))
 	if err != nil {
-		return fail(CodeInvalidRequest, "body_unreadable")
+		return apierr.Fail(apierr.CodeInvalidRequest, "body_unreadable")
 	}
 	if len(body) > maxBodyBytes {
-		return fail(CodeRequestTooLarge, "")
+		return apierr.Fail(apierr.CodeRequestTooLarge, "")
 	}
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.DisallowUnknownFields()
@@ -37,7 +39,7 @@ func decode(r *http.Request, v any) error {
 		return decodeError(err)
 	}
 	if dec.More() {
-		return fail(CodeInvalidRequest, "trailing_data")
+		return apierr.Fail(apierr.CodeInvalidRequest, "trailing_data")
 	}
 	return nil
 }
@@ -48,11 +50,11 @@ func decodeError(err error) error {
 	switch {
 	case strings.HasPrefix(err.Error(), "json: unknown field "):
 		name := strings.Trim(strings.TrimPrefix(err.Error(), "json: unknown field "), `"`)
-		return onField(CodeUnknownField, name, "")
+		return apierr.OnField(apierr.CodeUnknownField, name, "")
 	case errors.As(err, &typeErr):
-		return onField(CodeInvalidField, typeErr.Field, "wrong_type")
+		return apierr.OnField(apierr.CodeInvalidField, typeErr.Field, "wrong_type")
 	}
-	return fail(CodeInvalidRequest, "not_json")
+	return apierr.Fail(apierr.CodeInvalidRequest, "not_json")
 }
 
 // page reads limit and cursor: 50 by default, 200 at most, and a cursor
@@ -62,7 +64,7 @@ func page(r *http.Request) (store.Page, error) {
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 1 {
-			return p, onField(CodeInvalidField, "limit", "not_a_positive_number")
+			return p, apierr.OnField(apierr.CodeInvalidField, "limit", "not_a_positive_number")
 		}
 		p.Limit = min(n, maxLimit)
 	}

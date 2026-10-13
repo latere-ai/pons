@@ -1,7 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Latere AI
 // SPDX-License-Identifier: Apache-2.0
 
-package httpapi
+// Package apierr is the error table of specs/003-api.md, shared by every
+// surface that answers in its shape: the API's routes, the addresses a
+// caller uses, and the sign-in. An error has one code, one fixed sentence a
+// person reads in message, and the developer detail of its instance apart.
+package apierr
 
 import (
 	"errors"
@@ -12,6 +16,49 @@ import (
 
 	"latere.ai/x/pkg/httpjson"
 )
+
+// Status is the status of a code, and 500 for a code the table lacks.
+func Status(code string) int {
+	if k, ok := table[code]; ok {
+		return k.status
+	}
+	return table[CodeInternal].status
+}
+
+// Message is the fixed sentence a person reads for a code, and "" for a code
+// the table lacks.
+func Message(code string) string { return table[code].message }
+
+// Codes lists every code of the table.
+func Codes() []string {
+	out := make([]string, 0, len(table))
+	for c := range table {
+		out = append(out, c)
+	}
+	return out
+}
+
+// Write answers an error in the shape of specs/003-api.md, with Retry-After
+// on a refusal of a rate, and returns the classified error so the caller
+// logs one nobody classified.
+func Write(w http.ResponseWriter, err error) *Error {
+	e := Classify(err)
+	status, body := e.Envelope()
+	if body.Code == CodeRateLimited && w.Header().Get("Retry-After") == "" {
+		w.Header().Set("Retry-After", "1")
+	}
+	httpjson.WriteError(w, status, body)
+	return e
+}
+
+// Cause is the error an unclassified error was made from, for its log, and
+// e itself otherwise.
+func (e *Error) Cause() error {
+	if e.cause != nil {
+		return e.cause
+	}
+	return e
+}
 
 // The error codes of specs/003-api.md.
 const (
@@ -101,7 +148,7 @@ type Error struct {
 }
 
 func (e *Error) Error() string {
-	s := "httpapi: " + e.Code
+	s := "apierr: " + e.Code
 	if e.Reason != "" {
 		s += ": " + e.Reason
 	}
@@ -114,20 +161,20 @@ func (e *Error) Error() string {
 // Unwrap is the cause.
 func (e *Error) Unwrap() error { return e.cause }
 
-// fail builds an error of a code.
-func fail(code, reason string) *Error { return &Error{Code: code, Reason: reason} }
+// Fail builds an error of a code.
+func Fail(code, reason string) *Error { return &Error{Code: code, Reason: reason} }
 
-// onField builds an error about one member of the request.
-func onField(code, field, reason string) *Error {
+// OnField builds an error about one member of the request.
+func OnField(code, field, reason string) *Error {
 	return &Error{Code: code, Field: field, Reason: reason}
 }
 
-// internal is an error nobody classified. Its text is logged and never
+// Internal is an error nobody classified. Its text is logged and never
 // answered.
-func internal(err error) *Error { return &Error{Code: CodeInternal, cause: err} }
+func Internal(err error) *Error { return &Error{Code: CodeInternal, cause: err} }
 
-// envelope renders an error as the body a route answers.
-func (e *Error) envelope() (int, httpjson.Error) {
+// Envelope renders an error as the status and the body a route answers.
+func (e *Error) Envelope() (int, httpjson.Error) {
 	k, ok := table[e.Code]
 	if !ok || e.Code == CodeInternal {
 		k = table[CodeInternal]
@@ -149,27 +196,27 @@ func (e *Error) envelope() (int, httpjson.Error) {
 	return k.status, httpjson.Error{Code: e.Code, Message: k.message, Details: details}
 }
 
-// classify is the route error of any error.
-func classify(err error) *Error {
+// Classify is the route error of any error.
+func Classify(err error) *Error {
 	var e *Error
 	if errors.As(err, &e) {
 		return e
 	}
-	return internal(err)
+	return Internal(err)
 }
 
 // query matches the query of a URL in an error's text: a transport error can
 // hold the whole URL it was asked for.
 var query = regexp.MustCompile(`(https?://[^\s?#"']*)[?#][^\s"']*`)
 
-// cutQueries removes the query and fragment of every URL in a text, so a
+// CutQueries removes the query and fragment of every URL in a text, so a
 // logged error keeps the scheme, the host and the path alone.
-func cutQueries(s string) string { return query.ReplaceAllString(s, "$1") }
+func CutQueries(s string) string { return query.ReplaceAllString(s, "$1") }
 
-// logText is the text of an unclassified error as it is logged.
-func logText(err error) string {
+// LogText is the text of an unclassified error as it is logged.
+func LogText(err error) string {
 	if err == nil {
 		return ""
 	}
-	return cutQueries(fmt.Sprint(err))
+	return CutQueries(fmt.Sprint(err))
 }

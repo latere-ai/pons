@@ -19,9 +19,10 @@ import (
 	"strings"
 	"time"
 
+	"latere.ai/x/pons/internal/apierr"
+
 	"latere.ai/x/pkg/authz"
 	"latere.ai/x/pkg/health"
-	"latere.ai/x/pkg/httpjson"
 	"latere.ai/x/pkg/otel"
 	"latere.ai/x/pkg/ratelimit"
 
@@ -169,32 +170,22 @@ func tokenError(err error) error {
 	var te *access.TokenError
 	switch {
 	case errors.Is(err, access.ErrMissingToken):
-		return fail(CodeMissingToken, "")
+		return apierr.Fail(apierr.CodeMissingToken, "")
 	case errors.As(err, &te):
-		e := fail(CodeInvalidToken, te.Reason)
+		e := apierr.Fail(apierr.CodeInvalidToken, te.Reason)
 		e.Retryable = &te.Retryable
 		return e
 	}
-	return internal(err)
+	return apierr.Internal(err)
 }
 
 // answer writes an error. An error nobody classified is logged with its
 // text, any URL in it cut to its scheme, host and path, and answered as
 // internal with no detail.
 func (s *Server) answer(w http.ResponseWriter, r *http.Request, err error) {
-	e := classify(err)
-	status, body := e.envelope()
-	if body.Code == CodeInternal {
-		cause := e.cause
-		if cause == nil {
-			cause = err
-		}
-		s.log().ErrorContext(r.Context(), "a request failed", "route", r.Pattern, "error", logText(cause))
+	if e := apierr.Write(w, err); e.Code == apierr.CodeInternal {
+		s.log().ErrorContext(r.Context(), "a request failed", "route", r.Pattern, "error", apierr.LogText(e.Cause()))
 	}
-	if body.Code == CodeRateLimited {
-		w.Header().Set("Retry-After", "1")
-	}
-	httpjson.WriteError(w, status, body)
 }
 
 // ask asks one question and turns its failure into the route's error.
@@ -202,23 +193,23 @@ func (s *Server) ask(r *http.Request, c access.Caller, action string, res authz.
 	d, err := s.Authz.Authorize(r.Context(), c, access.Ask(r, action, res))
 	switch {
 	case errors.Is(err, access.ErrUnavailable):
-		s.log().WarnContext(r.Context(), "the authorizer gave no decision", "route", r.Pattern, "error", logText(err))
-		return access.Decision{}, fail(CodeAuthorizerUnavailable, "")
+		s.log().WarnContext(r.Context(), "the authorizer gave no decision", "route", r.Pattern, "error", apierr.LogText(err))
+		return access.Decision{}, apierr.Fail(apierr.CodeAuthorizerUnavailable, "")
 	case err != nil:
-		return access.Decision{}, internal(err)
+		return access.Decision{}, apierr.Internal(err)
 	}
 	return d, nil
 }
 
 // forbidden is the refusal of a deny of a create or a list, with the
 // authorizer's reason as the detail.
-func forbidden(d access.Decision) error { return fail(CodeForbidden, d.Reason) }
+func forbidden(d access.Decision) error { return apierr.Fail(apierr.CodeForbidden, d.Reason) }
 
 // limited holds a subject to the creates it may make in a minute: an add, a
 // connect and a reconnect each fetch discovery documents.
 func (s *Server) limited(c access.Caller) error {
 	if a := s.creates.Allow(c.Subject); !a.OK {
-		return fail(CodeRateLimited, "creates_per_minute="+strconv.Itoa(s.CreatesPerMinute))
+		return apierr.Fail(apierr.CodeRateLimited, "creates_per_minute="+strconv.Itoa(s.CreatesPerMinute))
 	}
 	return nil
 }
@@ -251,7 +242,7 @@ func (s *Server) probes() http.Handler {
 // error can hold one, so it is logged and not answered.
 func (s *Server) storeReady(ctx context.Context) error {
 	if err := s.Store.Ready(ctx); err != nil {
-		s.log().WarnContext(ctx, "the store is not ready", "error", logText(err))
+		s.log().WarnContext(ctx, "the store is not ready", "error", apierr.LogText(err))
 		return errors.New("the store does not answer")
 	}
 	return nil

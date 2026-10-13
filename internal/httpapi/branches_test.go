@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"latere.ai/x/pons/internal/apierr"
+
 	"latere.ai/x/pons/internal/access"
 	"latere.ai/x/pons/internal/id"
 	"latere.ai/x/pons/internal/store"
@@ -213,7 +215,7 @@ func TestAFailingStoreIsInternal(t *testing.T) {
 		f.set(tc.fail)
 		a := h.do(tc.method, tc.path, "alice", tc.body, tc.headers...)
 		f.set()
-		if a.status != http.StatusInternalServerError || a.code() != CodeInternal || strings.Contains(string(a.body), "injected") {
+		if a.status != http.StatusInternalServerError || a.code() != apierr.CodeInternal || strings.Contains(string(a.body), "injected") {
 			t.Errorf("%s %s with %s failing: %d %s", tc.method, tc.path, tc.fail, a.status, a.body)
 		}
 	}
@@ -229,21 +231,21 @@ func TestBodiesThatDoNotRead(t *testing.T) {
 		body        string
 		code, field string
 	}{
-		{`{"connector": "weather"} {}`, CodeInvalidRequest, ""},
-		{`not json`, CodeInvalidRequest, ""},
-		{`{"connector": 5}`, CodeInvalidField, "connector"},
-		{`{"connector": "weather", "colour": "red"}`, CodeUnknownField, "colour"},
-		{`{}`, CodeMissingField, "connector"},
-		{`{"connector": "nothing"}`, CodeConnectorNotFound, "connector"},
-		{`{"connector": "ctr_01jb2m7c0p5d8f2h6j9k3m4n7q"}`, CodeConnectorNotFound, "connector"},
-		{`{"connector": "weather", "name": "Not_A_Label"}`, CodeInvalidField, "name"},
-		{`{"connector": "weather", "return_to": "https://app.example.com"}`, CodeInvalidField, "return_to"},
-		{`{"connector": "weather", "scopes": ["a"]}`, CodeInvalidField, "scopes"},
-		{`{"connector": "weather", "credential": {"value": "a-key-0000003"}}`, CodeInvalidField, "credential.value"},
-		{`{"connector": "warehouse", "credential": {"value": "a-key-0000003"}}`, CodeInvalidField, "credential.value"},
-		{`{"connector": "warehouse", "credential": {"client_secret": "a-secret-00001"}}`, CodeMissingField, "credential.client_id"},
-		{`{"connector": "search", "credential": {"client_id": "x", "value": "a-key-0000003"}}`, CodeInvalidField, "credential.client_id"},
-		{`{"connector": "search"}`, CodeMissingField, "credential.value"},
+		{`{"connector": "weather"} {}`, apierr.CodeInvalidRequest, ""},
+		{`not json`, apierr.CodeInvalidRequest, ""},
+		{`{"connector": 5}`, apierr.CodeInvalidField, "connector"},
+		{`{"connector": "weather", "colour": "red"}`, apierr.CodeUnknownField, "colour"},
+		{`{}`, apierr.CodeMissingField, "connector"},
+		{`{"connector": "nothing"}`, apierr.CodeConnectorNotFound, "connector"},
+		{`{"connector": "ctr_01jb2m7c0p5d8f2h6j9k3m4n7q"}`, apierr.CodeConnectorNotFound, "connector"},
+		{`{"connector": "weather", "name": "Not_A_Label"}`, apierr.CodeInvalidField, "name"},
+		{`{"connector": "weather", "return_to": "https://app.example.com"}`, apierr.CodeInvalidField, "return_to"},
+		{`{"connector": "weather", "scopes": ["a"]}`, apierr.CodeInvalidField, "scopes"},
+		{`{"connector": "weather", "credential": {"value": "a-key-0000003"}}`, apierr.CodeInvalidField, "credential.value"},
+		{`{"connector": "warehouse", "credential": {"value": "a-key-0000003"}}`, apierr.CodeInvalidField, "credential.value"},
+		{`{"connector": "warehouse", "credential": {"client_secret": "a-secret-00001"}}`, apierr.CodeMissingField, "credential.client_id"},
+		{`{"connector": "search", "credential": {"client_id": "x", "value": "a-key-0000003"}}`, apierr.CodeInvalidField, "credential.client_id"},
+		{`{"connector": "search"}`, apierr.CodeMissingField, "credential.value"},
 	}
 	for _, tc := range cases {
 		a := h.do(http.MethodPost, "/v1/connections", "alice", tc.body)
@@ -255,38 +257,38 @@ func TestBodiesThatDoNotRead(t *testing.T) {
 	if a := h.do(http.MethodPost, "/v1/connections", "alice", big); a.status != http.StatusRequestEntityTooLarge {
 		t.Errorf("a large body: %d", a.status)
 	}
-	if a := h.do(http.MethodPatch, "/v1/connections/con_1", "alice", `{}`); a.code() != CodeMissingField {
+	if a := h.do(http.MethodPatch, "/v1/connections/con_1", "alice", `{}`); a.code() != apierr.CodeMissingField {
 		t.Errorf("a rename with no name: %s", a.body)
 	}
-	if a := h.do(http.MethodPatch, "/v1/connections/con_1", "alice", `{"name": "A B"}`); a.code() != CodeInvalidField {
+	if a := h.do(http.MethodPatch, "/v1/connections/con_1", "alice", `{"name": "A B"}`); a.code() != apierr.CodeInvalidField {
 		t.Errorf("a rename with a bad name: %s", a.body)
 	}
-	if a := h.do(http.MethodPatch, "/v1/connections/con_1", "alice", `x`); a.code() != CodeInvalidRequest {
+	if a := h.do(http.MethodPatch, "/v1/connections/con_1", "alice", `x`); a.code() != apierr.CodeInvalidRequest {
 		t.Errorf("a rename that is no JSON: %s", a.body)
 	}
-	if a := h.do(http.MethodPut, "/v1/connections/con_1/credential", "alice", `{}`); a.code() != CodeMissingField {
+	if a := h.do(http.MethodPut, "/v1/connections/con_1/credential", "alice", `{}`); a.code() != apierr.CodeMissingField {
 		t.Errorf("a replacement with no credential: %s", a.body)
 	}
-	if a := h.do(http.MethodPut, "/v1/connections/con_1/credential", "alice", `[`); a.code() != CodeInvalidRequest {
+	if a := h.do(http.MethodPut, "/v1/connections/con_1/credential", "alice", `[`); a.code() != apierr.CodeInvalidRequest {
 		t.Errorf("a replacement that is no JSON: %s", a.body)
 	}
-	if a := h.do(http.MethodPost, "/v1/connectors", "alice", `[`); a.code() != CodeInvalidRequest {
+	if a := h.do(http.MethodPost, "/v1/connectors", "alice", `[`); a.code() != apierr.CodeInvalidRequest {
 		t.Errorf("an add that is no JSON: %s", a.body)
 	}
 	for _, q := range []string{"limit=0", "limit=x", "state=gone"} {
-		if a := h.do(http.MethodGet, "/v1/connections?"+q, "alice", nil); a.code() != CodeInvalidField {
+		if a := h.do(http.MethodGet, "/v1/connections?"+q, "alice", nil); a.code() != apierr.CodeInvalidField {
 			t.Errorf("?%s: %s", q, a.body)
 		}
 	}
 	for _, path := range []string{"/v1/connectors?limit=-1", "/v1/connections/con_1/calls?limit=x"} {
-		if a := h.do(http.MethodGet, path, "alice", nil); a.code() != CodeInvalidField {
+		if a := h.do(http.MethodGet, path, "alice", nil); a.code() != apierr.CodeInvalidField {
 			t.Errorf("%s: %s", path, a.body)
 		}
 	}
-	if got := (&Error{Code: CodeInvalidField, Reason: "r", Field: "f"}).Error(); got != "httpapi: invalid_field: r (f)" {
+	if got := (&apierr.Error{Code: apierr.CodeInvalidField, Reason: "r", Field: "f"}).Error(); got != "apierr: invalid_field: r (f)" {
 		t.Errorf("Error() = %q", got)
 	}
-	if got := (&Error{Code: CodeInternal}).Error(); got != "httpapi: internal" {
+	if got := (&apierr.Error{Code: apierr.CodeInternal}).Error(); got != "apierr: internal" {
 		t.Errorf("Error() = %q", got)
 	}
 }
@@ -412,10 +414,10 @@ func TestReplacingACredential(t *testing.T) {
 		t.Fatalf("a new client: %d %s", a.status, a.body)
 	}
 	none := idOf(t, h.connect("alice", "weather", "", ""))
-	if a := h.do(http.MethodPut, "/v1/connections/"+none+"/credential", "alice", map[string]any{"credential": map[string]any{"value": "a-key-0000007"}}); a.code() != CodeWrongKind {
+	if a := h.do(http.MethodPut, "/v1/connections/"+none+"/credential", "alice", map[string]any{"credential": map[string]any{"value": "a-key-0000007"}}); a.code() != apierr.CodeWrongKind {
 		t.Fatalf("a credential for none: %d %s", a.status, a.body)
 	}
-	if a := h.do(http.MethodPatch, "/v1/connections/"+none, "alice", map[string]any{"name": "search"}); a.code() != CodeNameTaken {
+	if a := h.do(http.MethodPatch, "/v1/connections/"+none, "alice", map[string]any{"name": "search"}); a.code() != apierr.CodeNameTaken {
 		t.Fatalf("a rename to a taken name: %d %s", a.status, a.body)
 	}
 	api := h.connect("alice", "api", "", "a-key-0000008").json(t)
@@ -423,7 +425,7 @@ func TestReplacingACredential(t *testing.T) {
 		t.Fatalf("the address of kind http: %v", api["address"])
 	}
 	code := h.connect("alice", "code", "", "")
-	if code.code() != CodeSignInUnsupported {
+	if code.code() != apierr.CodeSignInUnsupported {
 		t.Fatalf("an oauth connect: %d %s", code.status, code.body)
 	}
 }
