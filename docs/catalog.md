@@ -121,7 +121,7 @@ access token and the refresh token it is given and refreshes them.
 | `authorize_url`, `token_url` | | the endpoints. Required with `discovery: none`, refused otherwise |
 | `revoke_url` | | the revocation endpoint (RFC 7009), with `discovery: none`. A disconnect revokes there; without one it deletes the credential and revokes nothing |
 | `client.id`, `client.secret` | | the OAuth application you registered at the service. `secret` is a [reference](#secrets), absent for a public client. Required with `discovery: none` |
-| `scopes` | the server's | the scopes to ask for |
+| `scopes` | | the scopes to ask for. Without it, a `resource` sign-in asks for the scopes the service's challenge or its resource metadata names, and an `issuer` or `none` sign-in names none. With `resource` or `issuer`, Pons adds `offline_access` whenever the authorization server's metadata lists it |
 | `resource` | `true` for `mcp`, `false` for `http` | whether the sign-in names the service a token is for (RFC 8707). Turn it off for a server that refuses the member |
 | `account` | | `{url, field}`: after the sign-in, Pons sends one `GET` to `url` with the new token and keeps the string at the top-level JSON member `field` as the connection's `account`, such as a login. `url` is `https` and on a host `hosts` covers. A failure leaves `account` empty and does not fail the sign-in |
 
