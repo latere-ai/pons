@@ -19,22 +19,19 @@ permissions:
   contents: read
 
 jobs:
-  # While the repository is private the jobs that need Go alone run on the
-  # organization's self-hosted runner, because hosted minutes are metered
-  # for a private repository; the image job needs Docker and runs on a
-  # hosted runner. Once the repository is public every job runs on
-  # ubuntu-latest.
+  # Every job runs on a hosted runner. The repository is public, so its
+  # pull requests never run on the organization's self-hosted runners.
   gate:
     if: "!startsWith(github.ref, 'refs/tags/')"
     uses: latere-ai/ci/.github/workflows/lateregate.yml@v1
     with:
-      runs_on: linux-vm
-      test_os: '["linux-vm"]'
+      runs_on: ubuntu-latest
+      test_os: '["ubuntu-latest"]'
 
   tidy:
     name: go.mod and go.sum are tidy
     if: "!startsWith(github.ref, 'refs/tags/')"
-    runs-on: linux-vm
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
