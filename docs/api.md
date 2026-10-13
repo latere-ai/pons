@@ -268,10 +268,12 @@ moves its connection to `needs_reconnect` at once. A credential from a
 sign-in is refreshed, or a client's token minted again, and a request
 with no body is sent once more; a request with a body is answered the
 `401` as it came, and the next request uses the new credential. A
-credential that cannot be renewed moves the connection to
-`needs_reconnect`. Every later request answers
-`409 connection_not_connected` until the person reconnects or gives a
-new key.
+credential the service will not renew, or refuses again once renewed,
+moves the connection to `needs_reconnect` too. The request that met the
+refusal and every later one answer `409 connection_not_connected` until
+the person reconnects or gives a new key. A renewal that fails another
+way, such as a token endpoint that does not answer, moves nothing and
+answers `502 connector_unavailable`.
 
 **From a browser.** A request carrying an `Origin` header is refused
 with `403 forbidden` unless that origin is the origin of an entry of
