@@ -508,3 +508,38 @@ func TestAStopClosesWhatOutlivesTheGrace(t *testing.T) {
 		t.Fatal("the server waited past its grace")
 	}
 }
+
+// A malformed or repeated sealing key stops the start, naming its position
+// and never a key.
+func TestAMalformedKeyStopsTheStart(t *testing.T) {
+	for _, keys := range []string{key(1) + ",not-a-key-of-32-bytes", key(1) + "," + key(1)} {
+		_, err := startErr(t, map[string]string{"PONS_SEALING_KEYS": keys})
+		if err == nil || !strings.Contains(err.Error(), "position 2") || strings.Contains(err.Error(), key(1)) || strings.Contains(err.Error(), "not-a-key") {
+			t.Errorf("%v", err)
+		}
+	}
+}
+
+// A refusal of an address answers the code of its route with its rule's
+// name as details.reason, and no member of the answer holds the address.
+// At an add, the rules before a name is resolved answer 400; the refusals
+// of the dialer at discovery wait for the sign-in.
+func TestRefusalsNameTheRuleAndNoAddress(t *testing.T) {
+	s := startStack(t, stubs.NewIssuer(t), nil)
+	for address, rule := range map[string]string{
+		"http://wiki.example.com/mcp":       "scheme_not_https",
+		"https://169.254.169.254/mcp":       "host_not_a_name",
+		"https://0x7f.1/mcp":                "host_not_a_name",
+		"https://wiki.internal/mcp":         "host_not_a_name",
+		"https://wiki.example.com:6443/mcp": "port_not_allowed",
+	} {
+		a := s.do(http.MethodPost, "/v1/connectors", "alice", map[string]any{
+			"name": "wiki", "title": "Wiki", "kind": "mcp", "url": address, "auth": map[string]any{"type": "none"},
+		})
+		host := strings.TrimPrefix(strings.TrimPrefix(address, "https://"), "http://")
+		host, _, _ = strings.Cut(host, "/")
+		if a.status != http.StatusBadRequest || a.code() != "invalid_field" || a.detail("field") != "url" || a.detail("reason") != rule || strings.Contains(string(a.body), host) {
+			t.Errorf("%s: %d %s", address, a.status, a.body)
+		}
+	}
+}
