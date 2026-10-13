@@ -411,7 +411,7 @@ func StateMachine(t *testing.T, st store.Store) {
 			start = store.StateConnected
 		}
 		c := Connection("owner", "c-"+id.New(id.Connection)[4:], start)
-		Create(t, st, c)
+		ok(t, cs.Create(ctx, c, 0))
 		if s == store.StateNeedsReconnect {
 			ok(t, cs.Move(ctx, c.ID, store.StateConnected, store.StateNeedsReconnect, store.ReasonRevoked))
 		}
