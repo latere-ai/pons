@@ -194,8 +194,8 @@ the forwarding address with the next page's `Link` under it, and, once the
 person takes the App's access away at GitHub, a `409
 connection_not_connected` on the next request.
 
-Remains: the manual check against the real GitHub, recorded in an
-Outcome before the entry ships.
+The manual check against the real GitHub passed on 2026-10-13; the
+Outcome records it.
 
 | Criterion | State |
 |---|---|
@@ -203,7 +203,35 @@ Outcome before the entry ships.
 | `signin.TestGitHubManner` | written |
 | `signin.TestAccountReadIsBestEffort` | written |
 | `TestLinksAndNoRevokeURL` | written, in the e2e tier |
-| the manual check against the real GitHub | open |
+| the manual check against the real GitHub | passed on 2026-10-13 |
+
+## Outcome
+
+Checked against the real GitHub on 2026-10-13, with an installation's
+GitHub App and a person's own account, through the chat of that
+installation:
+
+- **Sign-in.** The first attempt was refused at the callback: GitHub
+  sends `iss` in its answer, and the entry named no `issuer`, so the rule
+  of [[007-sign-in]] refused it. The entry now names
+  `https://github.com/login/oauth`, the issuer GitHub's OpenID
+  configuration states. The next attempt connected, and the connection
+  showed the person's login as its `account`.
+- **Clone.** The session's sandbox cloned the person's repository
+  through the git address; three `git-upload-pack` requests, each
+  answered 200 by GitHub. The first try was refused by the installation's
+  authorizer, which read no connection kind: the shared authorizer
+  envelope keeps `kind` for the resource itself and drops a field of
+  that name. That was fixed in the authorizer. The field's name is a
+  defect of [[004-identity-and-authorization]] to rename.
+- **Push.** A push to a branch under `refs/heads/agents/` landed on
+  GitHub with the agent as its author; a push to another branch and one
+  to `main` were refused before any of the pack left, as the allow's
+  `Refs` says. git showed only `HTTP 403`: the reason
+  [[014-http-forwarding]] promises a person sees is not yet written in
+  git's protocol.
+- **The REST API.** `GET /repos/{owner}/{repo}/issues` through the
+  forwarding address was answered by GitHub.
 
 ## Not in this spec
 
