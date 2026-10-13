@@ -360,6 +360,7 @@ func TestWhatAnAllowHolds(t *testing.T) {
 	every := map[string]any{
 		"owner": "https://issuer.example.com|team", "max_connections": 3, "connectors": []any{"notion"},
 		"read_only": true, "tools": []any{"get_*"}, "refs": []any{"refs/heads/agent/*"}, "calls_per_minute": 5,
+		"requests": []any{"GET /**"},
 	}
 	s.Allow(stub.Rule{Action: "*", Limits: every})
 	az := asking(t, s, nil)
@@ -370,7 +371,7 @@ func TestWhatAnAllowHolds(t *testing.T) {
 		}
 		return d.Limits
 	}
-	if l := ask(connect("")); l.Owner == "" || l.MaxConnections != 3 || len(l.Connectors) != 1 || l.ReadOnly || l.Tools != nil || l.CallsPerMinute != 0 {
+	if l := ask(connect("")); l.Owner == "" || l.MaxConnections != 3 || len(l.Connectors) != 1 || l.ReadOnly || l.Tools != nil || l.Requests != nil || l.CallsPerMinute != 0 {
 		t.Errorf("a connect holds %+v", l)
 	}
 	add := access.Question{Action: authorizer.ActionConnectorCreate, Resource: access.Connector{Kind: "mcp", Host: "wiki.example.com"}.Resource(authorizer.ActionConnectorCreate)}
@@ -378,7 +379,7 @@ func TestWhatAnAllowHolds(t *testing.T) {
 		t.Errorf("an add holds %+v", l)
 	}
 	use := access.Question{Action: authorizer.ActionConnectionUse, Resource: access.Connection{ID: "con_1", Owner: alice}.Resource(authorizer.ActionConnectionUse)}
-	if l := ask(use); !l.ReadOnly || len(l.Tools) != 1 || len(l.Refs) != 1 || l.CallsPerMinute != 5 || l.Owner != "" {
+	if l := ask(use); !l.ReadOnly || len(l.Tools) != 1 || len(l.Refs) != 1 || len(l.Requests) != 1 || l.CallsPerMinute != 5 || l.Owner != "" {
 		t.Errorf("a use holds %+v", l)
 	}
 	confirm := connect(alice)

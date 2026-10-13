@@ -375,6 +375,18 @@ func TestEachMemberOfAnAllowChangesTheOutcome(t *testing.T) {
 			t.Fatalf("a push to main: %d %s", a.status, a.body)
 		}
 	}
+	cases["Requests"] = func(t *testing.T) {
+		s, web := use(t, map[string]any{"requests": []string{"GET /**", "POST /repos/*/*/issues"}})
+		if a := s.do(http.MethodGet, web+"/user", "alice", nil); a.status != http.StatusOK {
+			t.Fatalf("a read: %d %s", a.status, a.body)
+		}
+		if a := s.do(http.MethodPost, web+"/repos/acme/app/issues", "alice", map[string]any{"title": "x"}); a.status/100 != 2 {
+			t.Fatalf("a named write: %d %s", a.status, a.body)
+		}
+		if a := s.do(http.MethodPut, web+"/repos/acme/app/pulls/7/merge", "alice", map[string]any{}); a.status != http.StatusForbidden || a.detail("reason") != "requests" {
+			t.Fatalf("a write no entry names: %d %s", a.status, a.body)
+		}
+	}
 	cases["CallsPerMinute"] = func(t *testing.T) {
 		s, web := use(t, map[string]any{"calls_per_minute": 1})
 		if a := s.do(http.MethodGet, web+"/user", "alice", nil); a.status != http.StatusOK {

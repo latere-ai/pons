@@ -208,7 +208,7 @@ func held(q Question, l authorizer.Limits) authorizer.Limits {
 	case authorizer.ActionConnectorCreate:
 		return authorizer.Limits{Owner: l.Owner}
 	}
-	return authorizer.Limits{ReadOnly: l.ReadOnly, Tools: l.Tools, Refs: l.Refs, CallsPerMinute: l.CallsPerMinute}
+	return authorizer.Limits{ReadOnly: l.ReadOnly, Tools: l.Tools, Refs: l.Refs, Requests: l.Requests, CallsPerMinute: l.CallsPerMinute}
 }
 
 // envelope is what one call carries: the caller's subject and its claims
