@@ -319,9 +319,10 @@ by digest, and creates the release from the changelog section. A third
 workflow moves the gate's pin once a day when the whole bar passes on
 the new version.
 
-The repository is private at its first releases and becomes public once
-the GitHub connector passes its check against the real GitHub
-([[013-github-connector]]). Nothing in the tree changes at that moment:
+The repository was private at its first releases and became public on
+2026-10-13, once the GitHub connector passed its check against the real
+GitHub ([[013-github-connector]]). Only the runners of its workflows
+changed at that moment, to hosted ones:
 it is written as public from its first commit, and the gate's identity scan refuses a hosted
 installation's own values in code, manifests and documents.
 
@@ -335,16 +336,17 @@ answers ([[010-records-and-observability]]). The text of `SECURITY.md`
 
 ## Implementation status
 
-Built: the layout of the table above but `deploy/` and `docs/`; `ponsd` with `serve`, `check` and
-`version`; `internal/config`, which reads every variable of the table
+Built: the layout of the table above but `deploy/`; `docs/`, written
+by hand, its configuration reference not yet generated; `ponsd` with
+`serve`, `check` and `version`; `internal/config`, which reads every variable of the table
 once, `PONS_MAX_FORWARD_BYTES` included, and is the one package that
 reads the environment; the gate's configuration, with `identity`
 (`api_group: pons`, since Pons writes no resource under a group of its
 own and a value under a hosted installation's domain would be one more
 name of it), `postgres`, `license` and `cover`, the last exempting the
 helper that starts the test containers; the `Makefile`, the two hooks,
-the `verify` and `ci-gate bump` workflows on the self-hosted runner while
-the repository is private, the image job on a hosted runner; the
+the `verify` and `ci-gate bump` workflows, every job on a hosted runner
+since the repository is public; the
 community files; the `Dockerfile`; the stub issuer and the stub
 authorizer over TLS on one authority, which panics, as
 `net/http/httptest` does, when the system cannot make a key; the test
@@ -370,7 +372,7 @@ higher plan: v0.1.0 published nothing for that reason, and v0.1.1, of
 release archives no manifests.
 
 Remains: the stub connector;
-`deploy/` and `docs/` with the generated configuration reference, so the
+`deploy/`, and `docs/configuration.md` generated from the table, so the
 `deploy` job of `verify` is not there yet; `TestReleaseWorkflowShape`.
 
 | Criterion | State |
