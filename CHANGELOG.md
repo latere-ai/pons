@@ -6,6 +6,8 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+## v0.1.2 - 2026-10-13
+
 - Added: the limit `requests`, with which an authorizer holds a caller
   to some of a service's API: each entry is a method and a path pattern,
   such as `GET /**` or `POST /repos/*/*/issues`, where `*` is one path
