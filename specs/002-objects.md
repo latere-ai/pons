@@ -136,7 +136,7 @@ no object of the API: no route returns one, lists one or names one.
 
 | Kind | Sealed | Kept in the clear beside it |
 |---|---|---|
-| `oauth` | the access token and the refresh token | the token type, the access token's expiry, the refresh token's expiry when known, the issuer, the token endpoint and the revocation endpoint recorded at the sign-in, the client id used, the scopes, the `resource` a refresh sends |
+| `oauth` | the access token and the refresh token | the token type, the access token's expiry, the refresh token's expiry when known, the issuer, the token endpoint and the revocation endpoint recorded at the sign-in, the client id used, the scopes, the `resource` a refresh sends, and the account the sign-in read |
 | `token` | the value | the header and the format it is placed in |
 | `client_credentials` | the client secret | the client id, the token endpoint, the scopes and the audience. The access token it mints is kept in memory only |
 
@@ -217,7 +217,8 @@ reason.
 The sign-in moves a connection by its confirm and its reconnect, keeps a
 flow per connection with its pending credential, and the sweep returns a
 reconnecting connection to the state it left. The account a sign-in read
-is kept in the flow's pending meta until the confirm writes it.
+is kept in the clear beside the pending credential, and stays in the
+credential's meta after the confirm writes it to the connection.
 
 | Criterion | State |
 |---|---|

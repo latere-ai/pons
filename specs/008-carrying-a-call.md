@@ -386,8 +386,9 @@ streamed and flushed per read with the idle bound, the refusal of a
 credential and the scope challenge, and the record, denied calls once a
 minute per subject and connection.
 
-Remains: the address of kind `mcp`, which answers `404` until it is
-served, and what is read from its body: the method and the tool, the
+Remains: the address of kind `mcp`, which no route serves yet, so the
+router answers it with a plain-text `404` and not an error of
+[[003-api]]'s shape, and what is read from its body: the method and the tool, the
 mirrored headers, the earlier revisions' `GET`, `DELETE` and sessions,
 and the probe of a key by `tools/list`. Until then a key of kind `mcp` is
 stored without a probe ([[003-api]]).

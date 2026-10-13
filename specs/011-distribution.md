@@ -235,9 +235,13 @@ the stub's value.
 stub's name under `example.com` to its listener. A test hands both to
 the server with a `Permit` for the listeners, the options of
 [[009-outbound-requests]], so the host rule and the address check stay
-on in every test. `stubs.Browser` stands for the person: it follows the
-sign-in's redirects by hand and returns what the last one carried.
-The package is public, so a consumer's own tests can start the stubs.
+on in every test. A browser stands for the person: it follows the
+sign-in's redirects by hand and returns what the last one carried. It
+lives in the tests that drive a sign-in, the e2e tier's and the sign-in
+package's, and not in `test/stubs`: it builds an HTTP client of its own,
+which the rule that only the dialer builds one forbids to every file but
+a test's. The package is public, so a consumer's own tests can start the
+stubs.
 
 ### Test tiers
 
