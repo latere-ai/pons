@@ -1,6 +1,6 @@
 ---
 title: "Architecture: one binary, Postgres for connections and sealed credentials, a sign-in with the other service, and every call carried through"
-status: drafted
+status: in-progress
 track: core
 depends_on: []
 affects: [cmd/ponsd/, internal/, authorizer/, api/]
@@ -32,8 +32,7 @@ invariants every other spec assumes.
 
 ## Current state
 
-Nothing is built. The repository holds its rules, the spec gate and
-these specs.
+The first half of the build order is built: the scaffold, identity and the store, the dialer, the catalog and a connection made with a key. See Implementation status.
 
 Three designs in sibling projects are the precedent, and each spec says
 under this heading what it takes from them. A model gateway seals each
@@ -243,6 +242,27 @@ The objects and their fields ([[002-objects]]); the routes
 ([[011-distribution]]); a code host's install step
 ([[013-github-connector]]); plain HTTP through a connection
 ([[014-http-forwarding]]).
+
+## Implementation status
+
+Built: the binary and its three commands; the package layout of the
+table above, but `internal/signin` and `internal/carry`; the memory and
+the Postgres stores with the first log line naming the one in use; the
+dialer, which builds every client, transport and dialer of the module,
+the operator client toward the issuer and the authorizer included; the
+owner policy and the authorizer client; invariants 1, 2, 5, 6 and 10 for
+the routes that exist.
+
+Remains: the sign-in and the carrier, so invariants 3, 4, 7, 8 and 9 have
+no code path yet, and a credential is never opened.
+
+| Criterion | State |
+|---|---|
+| `TestTwoReplicasShareOneConnection` | not written: it needs the carrier and a refresh |
+| `TestNoCredentialLeavesButTowardItsConnector` | written for the routes that exist: a pasted key, a client's secret and a catalog client secret appear in no response, header, log line or database row of either store. The value at its stub waits for the carrier |
+| `TestOnlyTheDialerDials` | written, over the call sites that build a client, a transport or a dialer, the one package that takes the operator client, and the imports of an exporter |
+| `TestPublicPackagesDialNothing` | written, over call sites and `go list -deps` |
+| `TestStoreSelection` | written |
 
 ## Acceptance criteria
 

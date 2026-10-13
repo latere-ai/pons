@@ -1,6 +1,6 @@
 ---
 title: "Distribution: the repository scaffold, the binary and its images, configuration, the stubs, test tiers, and release"
-status: drafted
+status: in-progress
 track: core
 depends_on:
   - specs/001-architecture.md
@@ -24,9 +24,7 @@ spec lands into a repository with its gate already running.
 
 ## Current state
 
-The repository holds a readme, a license, the agent guide, a module
-file that pins the gate as a tool, a `Makefile` with one target, and
-the gate's configuration for the spec tree. Nothing else is built.
+The scaffold is built; see Implementation status.
 
 A document service in a sibling project is the model for what follows:
 its gate configuration, its two hooks, its verify and release
@@ -117,7 +115,8 @@ environment.
 | `version` | prints the version, the commit and the date of the build |
 
 `check` fails, with a status that is not zero, on everything `serve`
-would refuse at start. It reports three things an operator should see:
+would refuse at start. It applies the schema as `serve` does, since a
+database `serve` would migrate is not one to refuse. It reports three things an operator should see:
 per table, how many sealed values are not wrapped under the first
 sealing key, which is how far a key rotation has come, and how many no
 listed key wraps, which fails the check ([[005-store-and-sealing]]);
@@ -328,6 +327,47 @@ any particular installation, which live with that installation. The
 catalog entries of real services ([[006-catalog]]). What `/readyz`
 answers ([[010-records-and-observability]]). The text of `SECURITY.md`
 ([[012-security-and-threat-model]]).
+
+## Implementation status
+
+Built: the layout of the table above but `internal/signin`,
+`internal/carry`, `deploy/` and `docs/`; `ponsd` with `serve`, `check` and
+`version`; `internal/config`, which reads every variable of the table
+once, `PONS_MAX_FORWARD_BYTES` included, and is the one package that
+reads the environment; the gate's configuration, with `identity`
+(`api_group: pons`, since Pons writes no resource under a group of its
+own and a value under a hosted installation's domain would be one more
+name of it), `postgres`, `license` and `cover`, the last exempting the
+helper that starts the test containers; the `Makefile`, the two hooks,
+the `verify` and `ci-gate bump` workflows on the self-hosted runner while
+the repository is private, the image job on a hosted runner; the
+community files; the `Dockerfile`; the stub issuer and the stub
+authorizer over TLS on one authority, which panics, as
+`net/http/httptest` does, when the system cannot make a key; the test
+tiers, with the e2e tier beside `serve`.
+
+Remains: the stub connector, authorization server, API and git host;
+`deploy/` and `docs/` with the generated configuration reference, so the
+`deploy` job of `verify` is not there yet; the release workflow and
+`TestReleaseWorkflowShape`.
+
+| Criterion | State |
+|---|---|
+| the `gate` job | the gate passes locally with every package over the floor |
+| `config.TestTableMatchesWhatIsRead`, `TestOnlyConfigReadsTheEnvironment` | written; the first reads the table of this spec until `docs/configuration.md` is generated |
+| `config.TestErrorsNameTheVariableOnly` | written |
+| `TestStartRefusals` | written |
+| `TestCheckReports`, `TestCheckReportsWhatRemains` | written |
+| `TestVersionIsStamped` | written |
+| `stubs.TestConnectorSpeaksStreamableHTTP`, `stubs.TestEachSwitchChangesOneAnswer` | not written: the stub connector comes with the carrier |
+| `stubs.TestAuthorizationServerRunsASignIn`, `stubs.TestAuthorizerRecordsEveryQuestion` | the second written; the first comes with the sign-in |
+| `TestMemoryStore`, `TestPostgresStore`, `TestPostgresStoreThroughAPooler` | written |
+| `TestEveryRouteIsExercised` | written, over the routes served |
+| `TestNoCredentialLeavesButTowardItsConnector` | written for a key and a client secret; issued tokens wait for the stub authorization server |
+| the `image` job | in `verify` |
+| `TestEveryContainerIsConfined`, `TestDeployVariablesAreInTheTable`, `TestExampleRenders`, `TestExampleDeniesPrivateEgress` | not written: `deploy/` is not built |
+| `TestReleaseWorkflowShape` | not written: no release workflow yet |
+| the identity scan | passes |
 
 ## Acceptance criteria
 

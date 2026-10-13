@@ -1,6 +1,6 @@
 ---
 title: "Identity and authorization: verifying a caller, the action vocabulary, the question to the authorizer, limits on an allow, the owner policy"
-status: drafted
+status: in-progress
 track: core
 depends_on:
   - specs/001-architecture.md
@@ -29,7 +29,7 @@ a caller's reach over a connection can be narrowed to single tools.
 
 ## Current state
 
-Nothing is built.
+The first half of the build order is built: the scaffold, identity and the store, the dialer, the catalog and a connection made with a key. See Implementation status.
 
 The verifier and the authorizer contract are shared packages. A
 document parsing service in a sibling project is the precedent for the
@@ -316,6 +316,44 @@ as itself and names the user as `owner`. Hiding a catalog connector
 from one caller's list. Asking a person before a tool changes
 something, which is the caller's ([[001-architecture]]). Deciding by a
 call's arguments, which Pons does not read.
+
+## Implementation status
+
+Built: the verifier over `latere.ai/x/pkg/authkit/jwt`, with grants
+admitted and handed on; the vocabulary, `Vocabulary()`, `Fields` and
+`Limits` in `authorizer`; the authorizer client of
+`latere.ai/x/pkg/authz` through the operator client; the owner policy,
+narrowed by a token's grants; the table of routes; the limits of a
+connect and an add, held with the insert; `PONS_MAX_CONNECTIONS_PER_OWNER`
+and `PONS_CREATES_PER_MINUTE`; the probe at start and in `ponsd check`.
+`Limits` carries `refs` beside the six members the first draft listed,
+so the key list above and its criterion name seven.
+
+Remains: everything a use asks and holds (`connection.use`, `read_only`,
+`tools`, `refs`, `calls_per_minute`, the counts in flight and the
+`session` claim), which comes with the carrier.
+
+| Criterion | State |
+|---|---|
+| `access.TestVerifierConformance`, `access.TestAVerifiedTokenBecomesACaller` | written |
+| `access.TestWhatTheVerifierRefuses`, `access.TestTheSkewOnExpAndNbf` | written |
+| `TestAServerWithNoIssuerIsRefused`, `TestAnAuthorizerNeedsItsTokenFile` | written |
+| `authorizer.TestTheVocabularyIsTheSpecs`, `access.TestTheRowsAreTheSpecs` | written |
+| `httpapi.TestEveryRouteAsksItsAction`, `httpapi.TestADenyAndAnOutageAnswerBeforeAnythingIsDone` | written, over both stores |
+| `access.TestTheEnvelopeCarriesTheCallerAndTheQuestion`, `carry.TestAUseAsksWithItsTool` | the first written; the second waits for the carrier |
+| `access.TestAuthorizerConformance` | written, against the stub authorizer over TLS |
+| `access.TestWhatTheClientRemembers`, `access.TestACreateIsAlwaysAsked`, `access.TestOneRetryOnAConnectionFailure` | written |
+| `carry.TestAnAllowIsRememberedPerTool` | not written: it needs the carrier |
+| `TestADenyDoesNotConfirmAnId` | written for the routes that exist |
+| `access.TestTheClientFailsClosed`, `authorizer.TestDecodeRefusesWhatItCannotHold` | written |
+| `authorizer.TestTheWireNamesEveryMemberAndNoOther` | written, with seven keys |
+| `TestWhoseACreateIs`, `TestAStoredConnectionKeepsItsOwner` | written; the second for a replaced key, the confirm and the reconnect wait for the sign-in |
+| `TestEachMemberOfAnAllowChangesTheOutcome`, `carry.TestALimitRefusesBeforeTheCredential` | the first written with cases for the owner, the cap and the connectors, and an exact list of the members waiting for the carrier, which only shrinks; the second waits for the carrier |
+| `TestLimitsHoldWithNoAuthorizer` | written |
+| `TestAListIsNarrowedByItsAllowsFilter` | written |
+| `access.TestTheOwnerPolicy`, `TestTheOwnerPolicyThroughTheAPI`, `TestAnotherOwnersTokenReachesNothing` | written for the routes that exist |
+| `access.TestOwnerPolicyConformance`, `access.TestOwnerPolicyNarrowsByTheGrants`, `TestTheServerRefusesAnEndpointThatAllowsTheProbe` | written |
+| `carry.TestTheSessionClaimIsCopiedNotRead` | not written: it needs the carrier |
 
 ## Acceptance criteria
 

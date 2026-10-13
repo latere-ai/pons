@@ -1,6 +1,6 @@
 ---
 title: "Store and sealing: the tables, the two adapters and their one suite, envelope encryption, key rotation"
-status: drafted
+status: in-progress
 track: core
 depends_on:
   - specs/001-architecture.md
@@ -25,7 +25,7 @@ three primitives that make a refresh the work of one writer.
 
 ## Current state
 
-Nothing is built.
+The first half of the build order is built: the scaffold, identity and the store, the dialer, the catalog and a connection made with a key. See Implementation status.
 
 A sandbox control plane in a sibling project has one store contract
 with a memory and a Postgres adapter under one suite, and seals each
@@ -68,6 +68,7 @@ type Connections interface {
     Touch(ctx context.Context, id string, at time.Time) error // last_used_at
     Delete(ctx context.Context, id string) error              // with its credential and its flow
     CountByState(ctx context.Context) (map[State]int64, error) // every owner's, for the pons.connections gauge
+    InUse(ctx context.Context, connector string) (bool, error)  // a connection names the reference
 }
 
 type Credentials interface {
@@ -330,6 +331,43 @@ A refresh's timing, a flow's steps and the flow sweep's schedule
 ([[007-sign-in]]). The schedule of the record and idempotency sweeps
 ([[010-records-and-observability]]). The catalog, a file
 ([[006-catalog]]). A key service outside the process. Backups.
+
+## Implementation status
+
+Built: the contract, the memory and the Postgres adapters and one suite
+both pass, on a direct connection and through PgBouncer in transaction
+mode; the migrations and their guards; sealing with a data key per value,
+bound to its row, and the key list; `RewrapBatch`, `CountNotFirst` and
+the background rewrap at start; the three refresh primitives; idempotency
+keys written first in the transaction that makes the object; `Prune` and
+the sweep of records and keys (`store.Sweep`), which `serve` runs every
+10 minutes. Three rules the contract leaves open are fixed in both
+adapters and the suite: `Touch` of an id that names nothing writes
+nothing and is no error, a move with an empty reason keeps the reason, and
+`InUse` answers whether a connection names a connector, which a delete of
+an added connector reads.
+
+Remains: the callers of `Open` (the sign-in and the carrier) and what
+they do with a value no key opens.
+
+| Criterion | State |
+|---|---|
+| `TestMemoryStore`, `TestPostgresStore`, `TestPostgresStoreThroughAPooler` | written |
+| the `Transactions`, `Names`, `Cap`, `Delete`, `Flows`, `Refresh` and `Prune` cases | written |
+| `store.TestConnectionStateMachine` | written |
+| `TestDeleteRemovesTheCredentialFirst` | written |
+| `store.TestACopiedCiphertextDoesNotOpen`, `store.TestEverySealIsFresh`, `store.TestRewrittenEndpointDoesNotOpen` | written |
+| `TestNoPlaintextAtRest` | written |
+| `TestOpenIsConfined` | written, over the typed call sites; the store's own suite, which test binaries alone import, opens what it sealed |
+| `store.TestTheKeyList`, `TestAMalformedKeyStopsTheStart` | written |
+| `TestRotationRewrapsEveryValue`, `TestRewrapNeverOverwritesARefresh`, `TestCheckReportsWhatRemains` | written |
+| `TestWithoutASealingKey`, `TestAValueNoKeyOpens` | the first written; the second waits for a caller of `Open` |
+| `TestAReconnectWinsOverARefresh` | written, at the store |
+| `TestNoTransactionSpansARefresh` | not written: it needs the refresh of the sign-in |
+| `TestLastUsedIsWrittenOnceAMinute` | `Touch` is held by the suite; the 100 calls wait for the carrier |
+| `store.TestIdempotencyKeyRace` | written |
+| `TestSchemaGuards`, `TestDriverIsConfined` | written |
+| `TestStoreSelection` | written |
 
 ## Acceptance criteria
 

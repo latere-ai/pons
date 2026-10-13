@@ -1,6 +1,6 @@
 ---
 title: "Records and observability: the call record and its retention, metrics, traces, logs that hold no content, the probes"
-status: drafted
+status: in-progress
 track: core
 depends_on:
   - specs/002-objects.md
@@ -27,7 +27,7 @@ credential.
 
 ## Current state
 
-Nothing is built.
+The first half of the build order is built: the scaffold, identity and the store, the dialer, the catalog and a connection made with a key. See Implementation status.
 
 The shared package `latere.ai/x/pkg/otel` wires logs, traces and
 metrics in one call and exports them over OTLP when an endpoint is set,
@@ -212,6 +212,30 @@ and alert rules, which belong to whoever operates an installation. An
 audit log of reads and changes through the API, which the authorizer
 can keep, since it is asked about every one. Export of records to
 another system.
+
+## Implementation status
+
+Built: the call record's table in both stores and its route, the sweep
+of records and idempotency keys every 10 minutes on every replica, the
+probes with the checks `store`, `sealing` and `catalog` and the dial
+line, `otel.Handler` over every route with the probes skipped, and an
+unclassified error logged with any URL cut to its scheme, host and path.
+
+Remains: writing a record when a call ends, the metrics, the spans of a
+call and of an outbound request, and the test over the keys of every log
+call, all of which come with the carrier.
+
+| Criterion | State |
+|---|---|
+| `carry.TestACallLeavesOneRecord`, `carry.TestEveryOutcomeIsRecorded`, `carry.TestAStreamIsRecordedWhenItEnds`, `carry.TestARecordFailureNeverFailsTheCall` | not written: they need the carrier |
+| `TestRetentionSweep` | written, over both stores |
+| `TestNoCredentialLeavesButTowardItsConnector`, `TestATrickedSessionObtainsNoCredential` | the first written for the routes that exist, over responses, logs and the store; spans, metrics and the second wait for the carrier |
+| `TestMetricLabelsAreBounded`, `TestEachMetricCountsItsEvent` | not written: no metric is recorded yet |
+| `carry.TestACallHasOneSpan` | not written |
+| `TestLogKeysAreTheSet` | not written |
+| `TestAnErrorsURLLosesItsQuery` | written |
+| `TestReadiness` | written |
+| `httpapi.TestProbes` | written |
 
 ## Acceptance criteria
 

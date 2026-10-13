@@ -1,6 +1,6 @@
 ---
 title: "Outbound requests: the one dialer, public addresses only, redirects, limits, and a credential bound to its hosts"
-status: drafted
+status: in-progress
 track: core
 depends_on:
   - specs/001-architecture.md
@@ -30,7 +30,7 @@ credential to a request.
 
 ## Current state
 
-Nothing is built.
+The first half of the build order is built: the scaffold, identity and the store, the dialer, the catalog and a connection made with a key. See Implementation status.
 
 Two designs in sibling projects are the precedent. A document service
 fetches a file from an address a caller names and checks the address at
@@ -253,7 +253,7 @@ is stored, and the third holds if the second has a bug.
 
 | Name | Means | Kind |
 |---|---|---|
-| `scheme_not_https` | the address is not an https address | rule |
+| `scheme_not_https` | the address is not an https address, or carries a user part | rule |
 | `host_not_a_name` | the host is an address, a single label or a reserved name | rule |
 | `port_not_allowed` | the port is not 443 or one the catalog names | rule |
 | `address_not_public` | the name resolves to an address that is not public | rule |
@@ -282,6 +282,36 @@ endpoint a secret belongs to ([[007-sign-in]]); how the catalog writes
 `hosts` and a port ([[006-catalog]]); the manifest of the network rule
 ([[011-distribution]]); paths under a connector's address
 ([[014-http-forwarding]]).
+
+## Implementation status
+
+Built: `internal/dial` with `Public`, the outside client and its four
+checks, the one resolution, the refusal of a name with any address that
+is not public, the connection by address and the check in the socket's
+control hook; TLS verified for the URL's name; redirects; `dial.Secret`
+written last toward its hosts; the limits; the proxy by `CONNECT` to the
+checked address; the switch and the three options of `dial.New`; the
+operator client. A URL with a user part is refused as `scheme_not_https`,
+since it is not an https address of the form the rule admits and the
+table names no other refusal for it.
+
+Remains: the callers of the outside client, the sign-in and the carrier,
+and the counts of refusals ([[010-records-and-observability]]).
+
+| Criterion | State |
+|---|---|
+| `TestOnlyTheDialerDials` | written |
+| `dial.TestPublic` | written |
+| `dial.TestAnyPrivateAnswerRefusesTheName`, `dial.TestConnectsToTheAddressItChecked` | written |
+| `catalog.TestHostRule`, `dial.TestChecksBeforeResolving`, `dial.TestPorts` | written |
+| `TestTheHostRuleHasOneImplementation`, `catalog.TestHostsCoverTheURL` | written |
+| `dial.TestCertificateIsVerifiedForTheName`, `TestNothingTurnsVerificationOff` | written |
+| `TestCarrierFollowsNoRedirect`, `dial.TestRedirects` | the second written; the first waits for the carrier |
+| `dial.TestSecretIsBoundToItsHosts`, `dial.TestNoCookieAndNoTraceHeaderLeave` | written |
+| `dial.TestLimits` | written |
+| `dial.TestNoProxyFromTheEnvironment`, `dial.TestOutboundProxy` | written |
+| `TestAllowPrivateIsLoud` | written for the log line, `ponsd check` and `/readyz`; a stub on loopback refused without the switch waits for the carrier |
+| `TestRefusalsNameTheRuleAndNoAddress` | written for the add route, whose refusals are the rules before resolving; the `422` and the `502` wait for discovery and the carrier |
 
 ## Acceptance criteria
 

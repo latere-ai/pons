@@ -1,6 +1,6 @@
 ---
 title: "Objects: connector, connection, credential, flow, registration and call record, their fields, states and identifiers"
-status: drafted
+status: in-progress
 track: core
 depends_on:
   - specs/001-architecture.md
@@ -26,7 +26,7 @@ the API, the store and the catalog share one description.
 
 ## Current state
 
-Nothing is built.
+The first half of the build order is built: the scaffold, identity and the store, the dialer, the catalog and a connection made with a key. See Implementation status.
 
 ## Design
 
@@ -200,6 +200,29 @@ No field holds an argument, a result, a header or a query string.
 The catalog file's syntax and the members of `auth` ([[006-catalog]]);
 the routes that read and write these objects ([[003-api]]); the tables
 ([[005-store-and-sealing]]).
+
+## Implementation status
+
+Built: the identifiers (`internal/id`); the connector, connection and call
+record as the store keeps them and as the API shows them; the credential
+as sealed columns with its meta in the clear and the 8-byte floor; flows
+and registrations in both stores; the state machine as one Go table both
+stores read (`store.Edges`).
+
+Remains: the moves the sign-in and the carrier make (a confirm, a
+reconnect, a refusal by the connector), the flow's use, and
+`git_address`, which needs the `git` member of a catalog entry
+([[014-http-forwarding]]); the API omits it until then.
+
+| Criterion | State |
+|---|---|
+| `id.TestPrefixedAndOrdered` | written |
+| `catalog.TestNameRules` | written |
+| `store.TestConnectionStateMachine` | written, over both stores |
+| `TestReconnectKeepsServing` | not written: it needs the sign-in and the carrier |
+| `TestDeleteRemovesTheCredentialFirst`, `TestDeleteRevokesBestEffort` | the first written, over both stores; the second waits for revocation in the sign-in |
+| `api.TestObjectShapes` | written |
+| `TestShortCredentialRefused` | written |
 
 ## Acceptance criteria
 

@@ -1,6 +1,6 @@
 ---
 title: "Catalog: the file an operator writes, the members of each way to give access, a connector a person adds, tool marks"
-status: drafted
+status: in-progress
 track: core
 depends_on:
   - specs/002-objects.md
@@ -25,7 +25,7 @@ and what a person may add.
 
 ## Current state
 
-Nothing is built. A sandbox control plane in a sibling project is the
+The catalog is built; see Implementation status. A sandbox control plane in a sibling project is the
 precedent: it declares each secret with the hosts it may be sent to
 and the place it is put, a header and a format, and refuses a scope
 aimed at an address or a private name. A connector's `hosts` and
@@ -263,7 +263,7 @@ connectors:
 `catalog` is public and imports nothing that dials. It holds the types,
 `Load`, `Validate` for one connector with a flag for one a person adds,
 `CheckHost`, and the carrier's `Marks.Effect(tool)` and
-`Marks.Hidden(tool)`.
+`Marks.IsHidden(tool)`, which takes its name beside the field `Hidden`.
 
 ## Not in this spec
 
@@ -273,6 +273,35 @@ how the credential is placed and a hidden tool refused
 ([[009-outbound-requests]]); the table of added connectors
 ([[005-store-and-sealing]]); a code host's own `auth.type`
 ([[013-github-connector]]).
+
+## Implementation status
+
+Built: `catalog.Load` and `catalog.Parse` with one line per problem
+naming the entry and the member; every member of the four ways to give
+access with their defaults; secret references resolved at start and read
+at each use; the host rule as `CheckHost` and `CheckPattern`, one
+implementation; tool marks and the glob; `Validate` for an entry and for
+a connector a person adds; `auth.account` and `links.manage` of
+[[013-github-connector]]; `catalog/example.yaml`, embedded as
+`catalog.Example`.
+
+Remains: the members a connector of kind `http` takes, `git` and `http`,
+which [[014-http-forwarding]] defines and the next phase builds; until
+then a catalog entry that writes them does not load. A connector a person
+adds of type `oauth` answers `422 sign_in_unsupported` until discovery is
+built ([[003-api]]).
+
+| Criterion | State |
+|---|---|
+| `catalog.TestLoadRefusals` | written |
+| `catalog.TestExampleFileLoads`, `catalog.TestAuthMembers` | written |
+| `catalog.TestSecretRefIsReadAtUse` | written |
+| `httpapi.TestConnectorShowsNoSecretReference` | written |
+| `catalog.TestHostRule`, `catalog.TestHostsCoverTheURL` | written |
+| `catalog.TestEffect`, `catalog.FuzzGlob` | written |
+| `httpapi.TestAddedConnectorRules`, `TestAnAddedConnectorIsItsOwnersAlone` | written; the check of a server's metadata waits for discovery |
+| `TestRemovedConnectorKeepsItsConnections` | written: the connection is kept and reads with empty marks, and they return with the entry; the `409` of a call waits for the carrier |
+| `TestPublicPackagesDialNothing` | written |
 
 ## Acceptance criteria
 
