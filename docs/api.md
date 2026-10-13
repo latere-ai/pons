@@ -337,7 +337,7 @@ Records are kept for `PONS_RECORDS_RETENTION`, 30 days by default.
 
 ## Errors
 
-Every error Pons raises is one JSON body:
+Every error Pons raises at a route it serves is one JSON body:
 
 ```json
 {
@@ -348,6 +348,10 @@ Every error Pons raises is one JSON body:
   }
 }
 ```
+
+A path or a method no route serves, such as the `address` of a
+connection of kind `mcp` in this release, is answered a plain `404` or
+`405` with no JSON body.
 
 Branch on `code`. `message` is a sentence to show a person, and never
 changes for a code. `details.reason` says what happened in this

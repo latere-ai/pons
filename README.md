@@ -147,7 +147,7 @@ call is recorded at most once a minute per caller and connection
 | **Client credentials** (`client_credentials`): the connection holds its owner's client id and secret, and Pons mints a token at use | works |
 | **A sign-in** (`oauth`) for a catalog connector, with refresh by one writer across replicas | works |
 | **A push held to the branches your authorizer names** | works; a push to another branch is refused before any of it reaches the service, and git prints the rule as the reason |
-| **The MCP address** of a connector of kind `mcp`, for Model Context Protocol clients | not built yet. Such a connection can be made, and its `address` answers `404` |
+| **The MCP address** of a connector of kind `mcp`, for Model Context Protocol clients | not built yet. Such a connection can be made, and its `address` answers a plain `404` with no JSON body |
 | **A connector a person adds by its address** | partly. One that takes a key or no credential can be added and connected; one whose people sign in is refused with `422 sign_in_unsupported`. It is of kind `mcp` alone, so it cannot be called until the MCP address exists |
 | **Kubernetes manifests** | not in the repository yet; [Install](docs/install.md) lists what a deployment needs |
 
