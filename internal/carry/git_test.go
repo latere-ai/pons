@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -286,9 +287,11 @@ func TestARefusedPushSaysWhy(t *testing.T) {
 		t.Fatalf("the records %+v", denied)
 	}
 
-	// A pack past the bound is 413, as a forwarded body is.
+	// A pack past the bound is 413, as a forwarded body is. The body names
+	// no length, as a chunked push does, so the bound is found while the
+	// pack is read and dropped.
 	over := pkt(main+"\x00report-status\n") + "0000" + strings.Repeat("P", 1<<20)
-	if a := r.send(http.MethodPost, push, "alice", strings.NewReader(over)); a.status != http.StatusRequestEntityTooLarge {
+	if a := r.send(http.MethodPost, push, "alice", io.MultiReader(strings.NewReader(over))); a.status != http.StatusRequestEntityTooLarge || a.detail("reason") != "max_forward_bytes=1048576" {
 		t.Fatalf("a refused push past the bound: %d %s", a.status, a.body)
 	}
 }
