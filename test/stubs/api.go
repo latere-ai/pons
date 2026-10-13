@@ -335,11 +335,16 @@ func (a *API) upload(w http.ResponseWriter, r *http.Request) {
 	writeStubJSON(w, http.StatusOK, map[string]any{"bytes": total})
 }
 
-// writeStubJSON answers a JSON value. The headers are out before the body
-// is encoded, so a write that fails is a client that went away, and no
-// answer is left to tell it.
+// writeStubJSON answers a JSON value, or 500 for one that does not encode.
 func writeStubJSON(w http.ResponseWriter, status int, v any) {
+	body, err := json.Marshal(v)
+	if err != nil {
+		http.Error(w, "the stub's answer does not encode: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	// The headers are out, so a write that fails is a client that went
+	// away, and no answer is left to tell it.
+	_, _ = w.Write(append(body, '\n'))
 }

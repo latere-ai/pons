@@ -38,8 +38,6 @@ const (
 	ConfirmTime = 2 * time.Minute
 	// tokenTimeout bounds a request to a token endpoint.
 	tokenTimeout = 15 * time.Second
-	// revokeTimeout bounds a revocation.
-	revokeTimeout = 10 * time.Second
 	// RefreshAhead is how long before its expiry an access token is
 	// refreshed.
 	RefreshAhead = 60 * time.Second
@@ -54,8 +52,6 @@ const (
 	mintedFor = 5 * time.Minute
 	// SweepEvery is how often a replica sweeps the flows that ran out.
 	SweepEvery = time.Minute
-	// sweepBatch is how many flows one sweep takes at once.
-	sweepBatch = 100
 )
 
 // Connector is a connector as the sign-in reads it: the entry, and the url

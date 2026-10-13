@@ -6,6 +6,7 @@ package carry
 import (
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"latere.ai/x/pons/catalog"
@@ -35,10 +36,10 @@ func toward(in http.Header, conn catalog.Connector, address, service string) htt
 		names = towardGit
 		if service == UploadPack {
 			// A fetch's body may be compressed by git; a push's never is.
-			names = append(names[:len(names):len(names)], "Content-Encoding")
+			names = append(slices.Clip(names), "Content-Encoding")
 		}
 	} else if conn.HTTP != nil {
-		names = append(names[:len(names):len(names)], conn.HTTP.Pass...)
+		names = append(slices.Clip(names), conn.HTTP.Pass...)
 	}
 	out := http.Header{}
 	for _, name := range names {

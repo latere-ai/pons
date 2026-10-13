@@ -29,7 +29,7 @@ func TestWrite(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	if rec.Code != http.StatusConflict || body.Error.Details["state"] != "needs_reconnect" || body.Error.Details["reason"] != "revoked" || e.Cause() != e {
+	if rec.Code != http.StatusConflict || body.Error.Details["state"] != "needs_reconnect" || body.Error.Details["reason"] != "revoked" || e.Cause().Error() != e.Error() {
 		t.Fatalf("%d %+v", rec.Code, body)
 	}
 	rec = httptest.NewRecorder()

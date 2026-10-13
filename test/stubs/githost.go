@@ -55,14 +55,24 @@ type gitConfig struct{ name string }
 // default.
 func WithGitName(name string) GitOption { return func(c *gitConfig) { c.name = name } }
 
+// gitPlaces are where git is installed on the systems a test runs on, read
+// when the search path of a test's environment names none: a gate may run
+// the suite with a path of its own toolchain alone.
+var gitPlaces = []string{"/usr/bin/git", "/usr/local/bin/git", "/opt/homebrew/bin/git"}
+
 // GitPath is the git binary, or the reason a test that needs it is
 // skipped: git is not installed.
 func GitPath() (string, error) {
 	path, err := exec.LookPath("git")
-	if err != nil {
-		return "", fmt.Errorf("git is not installed, and the stub git host serves through git http-backend: %w", err)
+	if err == nil {
+		return path, nil
 	}
-	return path, nil
+	for _, p := range gitPlaces {
+		if info, serr := os.Stat(p); serr == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("git is not installed, and the stub git host serves through git http-backend: %w", err)
 }
 
 // NewGitHost starts a stub git host for the test, and skips the test with

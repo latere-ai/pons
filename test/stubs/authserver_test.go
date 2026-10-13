@@ -155,14 +155,14 @@ func TestAuthorizationServerRunsASignIn(t *testing.T) {
 
 	// A catalog client, by HTTP Basic, its secret form-encoded as RFC 6749
 	// asks.
-	q, verifier, status := h.authorize("pons", callback, nil)
+	q, _, status := h.authorize("pons", callback, nil)
 	if status != http.StatusFound || q.Get("state") != "the-state" || q.Get("iss") != h.a.Issuer() || q.Get("code") == "" {
 		t.Fatalf("authorize %d %v", status, q)
 	}
 	if resp, _ := h.exchange(q.Get("code"), "another-verifier", "pons:pons-secret%2B1", nil); resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("a wrong verifier: %d", resp.StatusCode)
 	}
-	q, verifier, _ = h.authorize("pons", callback, nil)
+	q, verifier, _ := h.authorize("pons", callback, nil)
 	resp, tokens := h.exchange(q.Get("code"), verifier, "pons:pons-secret%2B1", nil)
 	if resp.StatusCode != http.StatusOK || tokens["token_type"] != "Bearer" || tokens["expires_in"] != float64(3600) ||
 		!strings.HasPrefix(tokens["access_token"].(string), "stub-") || tokens["scope"] != "read offline_access" {
@@ -241,7 +241,7 @@ func TestAuthorizationServerRunsASignIn(t *testing.T) {
 	var basic, cimd bool
 	for _, r := range h.a.Requests() {
 		basic = basic || (r.Path == "/token" && r.Basic && r.ClientID == "pons")
-		cimd = cimd || (r.Path == "/authorize" && r.ClientID == doc && r.Query.Get("resource") == "https://api.example.com")
+		cimd = cimd || (r.Path == "/consent" && r.ClientID == doc && r.Query.Get("resource") == "https://api.example.com")
 	}
 	if !basic || !cimd {
 		t.Fatalf("the requests were not recorded: basic %v, url client %v", basic, cimd)

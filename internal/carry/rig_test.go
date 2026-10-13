@@ -407,10 +407,20 @@ func (r *rig) calls(c store.Connection) []store.Call {
 // caller's bearer in every request.
 func gitRun(t *testing.T, dir, bearer string, args ...string) (string, error) {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), "git", append([]string{"-c", "http.extraHeader=Authorization: Bearer " + bearer}, args...)...)
+	cmd := exec.CommandContext(t.Context(), gitBinary(t), append([]string{"-c", "http.extraHeader=Authorization: Bearer " + bearer}, args...)...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+filepath.Join(dir, "none"), "GIT_TERMINAL_PROMPT=0",
 		"GIT_AUTHOR_NAME=Agent", "GIT_AUTHOR_EMAIL=agent@example.com", "GIT_COMMITTER_NAME=Agent", "GIT_COMMITTER_EMAIL=agent@example.com")
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+// gitBinary is the git a test runs, or a skip with the reason.
+func gitBinary(t *testing.T) string {
+	t.Helper()
+	path, err := stubs.GitPath()
+	if err != nil {
+		t.Skip(err.Error())
+	}
+	return path
 }

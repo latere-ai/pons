@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -186,7 +185,7 @@ func NewAuthServer(t TB, opts ...AuthOption) *AuthServer {
 		o(a)
 	}
 	srv := serveTLS(t, http.HandlerFunc(a.serve), a.name)
-	port := srv.Listener.Addr().(*net.TCPAddr).Port
+	port := portOf(srv.URL)
 	a.mu.Lock()
 	a.port = port
 	a.url = "https://" + a.name + ":" + strconv.Itoa(a.port)
@@ -225,8 +224,12 @@ func (a *AuthServer) Port() int {
 // Issuer is the stub's issuer: its address and the issuer's path.
 func (a *AuthServer) Issuer() string { return a.URL() + a.path }
 
+// consentPath is the authorization endpoint's path: where a person is asked
+// to consent.
+const consentPath = "/consent"
+
 // AuthorizeURL is the authorization endpoint.
-func (a *AuthServer) AuthorizeURL() string { return a.URL() + "/authorize" }
+func (a *AuthServer) AuthorizeURL() string { return a.URL() + consentPath }
 
 // TokenURL is the token endpoint.
 func (a *AuthServer) TokenURL() string { return a.URL() + "/token" }
@@ -316,7 +319,7 @@ func (a *AuthServer) serve(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == a.metadataPath(sw.MetadataAt):
 		writeJSONStatus(w, http.StatusOK, a.metadata(sw, base))
-	case r.Method == http.MethodGet && r.URL.Path == "/authorize":
+	case r.Method == http.MethodGet && r.URL.Path == consentPath:
 		a.authorize(w, r, sw)
 	case r.Method == http.MethodPost && r.URL.Path == "/token":
 		a.token(w, r, sw, form, id, secret, basic)
@@ -344,7 +347,7 @@ func (a *AuthServer) metadataPath(at MetadataAt) string {
 func (a *AuthServer) metadata(sw AuthSwitches, base string) map[string]any {
 	md := map[string]any{
 		"issuer":                                         base + a.path,
-		"authorization_endpoint":                         base + "/authorize",
+		"authorization_endpoint":                         base + consentPath,
 		"token_endpoint":                                 base + "/token",
 		"revocation_endpoint":                            base + "/revoke",
 		"response_types_supported":                       []string{"code"},
@@ -574,10 +577,6 @@ func writeToken(w http.ResponseWriter, r *http.Request, sw AuthSwitches, status 
 
 // writeJSONStatus writes v as JSON with a status.
 func writeJSONStatus(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(status)
-	// v is built by the stub and always encodes; a write to a test's own
-	// client that fails leaves nothing to answer.
-	_ = json.NewEncoder(w).Encode(v)
+	writeStubJSON(w, status, v)
 }

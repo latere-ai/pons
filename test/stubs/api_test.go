@@ -214,7 +214,7 @@ func TestGitHostServesGit(t *testing.T) {
 	dir := t.TempDir()
 	git := func(args ...string) string {
 		t.Helper()
-		cmd := exec.CommandContext(t.Context(), "git", append([]string{"-c", "http.sslCAInfo=" + ca, "-c", "http.extraHeader=Authorization: Basic c3R1Yjp0b2tlbg=="}, args...)...)
+		cmd := exec.CommandContext(t.Context(), gitBinary(t), append([]string{"-c", "http.sslCAInfo=" + ca, "-c", "http.extraHeader=Authorization: Basic c3R1Yjp0b2tlbg=="}, args...)...)
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+filepath.Join(dir, "none"), "GIT_TERMINAL_PROMPT=0")
 		out, err := cmd.CombinedOutput()
@@ -243,7 +243,7 @@ func TestGitHostServesGit(t *testing.T) {
 		t.Fatalf("requests %+v", g.Requests())
 	}
 	g.Refuse(true)
-	cmd := exec.CommandContext(t.Context(), "git", "-c", "http.sslCAInfo="+ca, "ls-remote", local+"/acme/app.git")
+	cmd := exec.CommandContext(t.Context(), gitBinary(t), "-c", "http.sslCAInfo="+ca, "ls-remote", local+"/acme/app.git")
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0")
 	if out, err := cmd.CombinedOutput(); err == nil {
 		t.Fatalf("a refusing host answered: %s", out)
@@ -254,4 +254,14 @@ func TestGitHostServesGit(t *testing.T) {
 	if _, err := g.Refs("acme/none.git"); err == nil {
 		t.Fatal("the refs of no repository")
 	}
+}
+
+// gitBinary is the git a test runs, or a skip with the reason.
+func gitBinary(t *testing.T) string {
+	t.Helper()
+	path, err := stubs.GitPath()
+	if err != nil {
+		t.Skip(err.Error())
+	}
+	return path
 }
