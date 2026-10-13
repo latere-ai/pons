@@ -29,17 +29,26 @@ func (c Connector) Resource(action string) authz.Resource {
 }
 
 // Connection is what a question about a connection carries: a stored one,
-// with its id, or one a connect would make, with none.
+// with its id, or one a connect would make, with none. A use also carries
+// what the request names: its method, the tool, a path or a git service,
+// with its effect, and the refs a push updates.
 type Connection struct {
 	ID, Owner, Connector, Name, Kind, Auth string
+	Method, Tool, Effect                   string
+	Refs                                   []string
 }
 
 // Resource is the connection as the resource of an action.
 func (c Connection) Resource(action string) authz.Resource {
-	return build(authorizer.KindConnection, action, c.ID, map[string]string{
+	r := build(authorizer.KindConnection, action, c.ID, map[string]string{
 		authorizer.FieldOwner: c.Owner, authorizer.FieldConnector: c.Connector, authorizer.FieldName: c.Name,
 		authorizer.FieldKind: c.Kind, authorizer.FieldAuth: c.Auth,
+		authorizer.FieldMethod: c.Method, authorizer.FieldTool: c.Tool, authorizer.FieldEffect: c.Effect,
 	})
+	if len(c.Refs) > 0 && slices.Contains(authorizer.Fields(action), authorizer.FieldRefs) {
+		r.Fields[authorizer.FieldRefs] = slices.Clone(c.Refs)
+	}
+	return r
 }
 
 // List is the resource of a list action, which names no object.
