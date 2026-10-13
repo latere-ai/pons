@@ -35,7 +35,9 @@ probed for what somebody else owns.
 **Bodies** are JSON, at most 64 KiB. A member the API does not describe
 is `400 unknown_field`, with the member in `details.field`.
 
-**Lists** answer `{"items": [...], "next_cursor": "..."}`, newest first.
+**Lists** answer `{"items": [...], "next_cursor": "..."}`, newest first,
+except the catalog part of `GET /connectors`, which keeps the file's
+order.
 Pass `next_cursor` back as `cursor` for the next page; its absence is
 the end. `limit` is 50 by default and at most 200.
 
