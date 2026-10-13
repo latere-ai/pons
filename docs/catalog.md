@@ -41,7 +41,7 @@ start.
 
 | Member | Required | Rule |
 |---|---|---|
-| `name` | yes | the entry's name, which a connect names: lowercase letters, digits and hyphens, at most 40 characters, unique in the file |
+| `name` | yes | the entry's name, which a connect names: lowercase letters, digits and hyphens, not starting or ending with a hyphen, at most 40 characters, unique in the file |
 | `title` | yes | what a person reads, at most 60 characters |
 | `description` | no | at most 200 characters |
 | `icon` | no | an `https` URL. Pons never fetches it |
@@ -273,7 +273,7 @@ connectors:
   so `ponsd` refuses to start without it.
 - **search** takes a pasted key, sent as `X-Api-Key: <key>`.
 - **warehouse** holds each person's own client, and mints a token for
-  the audience the service names.
+  the audience the entry's `audience` names.
 - **weather** takes no credential.
 
 ## GitHub
