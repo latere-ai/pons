@@ -1,6 +1,6 @@
 ---
 title: "A code host's connector: GitHub through a GitHub App, signed in like any connector, with git and the REST API carried through Pons"
-status: drafted
+status: in-progress
 track: core
 depends_on:
   - specs/006-catalog.md
@@ -9,7 +9,7 @@ depends_on:
 affects: [catalog/, internal/signin/, internal/httpapi/]
 effort: medium
 created: 2026-10-12
-updated: 2026-10-12
+updated: 2026-10-13
 author: changkun
 ---
 
@@ -37,7 +37,8 @@ repositories the App reaches.
 
 ## Current state
 
-Nothing is built. The precedent is a connector an identity provider
+The entry loads and connects against the stubs; see Implementation
+status. The precedent is a connector an identity provider
 carried for the same GitHub App: it sent the person to GitHub's
 authorize endpoint with the App's client id, exchanged the code, kept
 the person's token with a sealed refresh token, and read the person's
@@ -174,6 +175,30 @@ What the operator sets on the GitHub App, which Pons cannot set:
 The App's client id and secret go into the catalog entry and the
 installation's secret store. The App's private key is not needed: Pons
 never acts as the App itself.
+
+## Implementation status
+
+Built: the entry loads as this spec writes it; a sign-in in GitHub's
+manner connects with the account read once, the connection carries
+`links.manage`, and a disconnect revokes nothing; git and the REST API are
+carried through the git and forwarding addresses of
+[[014-http-forwarding]], a push held to the refs of its allow. The e2e
+tier runs the whole path against the stubs: a sign-in, a clone, a push of
+a session's branch, a push to `main` refused, the issues listed through
+the forwarding address with the next page's `Link` under it, and, once the
+person takes the App's access away at GitHub, a `409
+connection_not_connected` on the next request.
+
+Remains: the manual check against the real GitHub, recorded in an
+Outcome before the entry ships.
+
+| Criterion | State |
+|---|---|
+| `catalog.TestTheGitHubEntry`, `catalog.TestAccountAndLinksRules` | written; the first loads the entry from this file |
+| `signin.TestGitHubManner` | written |
+| `signin.TestAccountReadIsBestEffort` | written |
+| `TestLinksAndNoRevokeURL` | written, in the e2e tier |
+| the manual check against the real GitHub | open |
 
 ## Not in this spec
 

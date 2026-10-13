@@ -1,6 +1,6 @@
 ---
 title: "Security and threat model: what is protected, who attacks, each defense and the test that holds it, and what is not defended"
-status: drafted
+status: in-progress
 track: core
 depends_on:
   - specs/001-architecture.md
@@ -11,7 +11,7 @@ depends_on:
 affects: [cmd/ponsd/, internal/, test/stubs/, SECURITY.md]
 effort: medium
 created: 2026-10-12
-updated: 2026-10-12
+updated: 2026-10-13
 author: changkun
 ---
 
@@ -33,7 +33,8 @@ this one is the place a reviewer checks that none is missing.
 
 ## Current state
 
-Nothing is built.
+The defenses of most rows are built with the specs that own them; see
+Implementation status. This spec's own tests are not written.
 
 Two threat models in sibling projects are the precedent, of a sandbox
 control plane and of an object store: every control is a row with the
@@ -178,6 +179,20 @@ the project commits to, each commitment one row of the table above in a
 reader's words, and what is not defended, as the list above. A
 commitment whose test is not written yet is not listed. A test reads
 both files and holds each commitment to a row.
+
+## Implementation status
+
+The tests the table names exist for rows 1, 5, 6, 8, 9, 10, 12 and 13;
+for row 2 but `TestATrickedSessionObtainsNoCredential`; for row 4
+`dial.TestConnectsToTheAddressItChecked`; for row 7 all but
+`TestATokenStaysWithItsAuthorizationServer`; for row 11
+`TestLimitsHoldWithNoAuthorizer`, `TestEachMemberOfAnAllowChangesTheOutcome`
+and `dial.TestLimits`. Row 3 waits for the MCP address, whose stub
+connector its tests run against.
+
+Remains: `TestThreatModelTestsExist` and `TestSecurityPolicyMatchesTheModel`,
+which hold this table and `SECURITY.md` to the tree, and the tests of the
+rows above that are not written.
 
 ## Not in this spec
 

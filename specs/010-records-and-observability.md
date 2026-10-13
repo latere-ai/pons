@@ -235,7 +235,7 @@ kind `mcp`.
 |---|---|
 | `carry.TestACallLeavesOneRecord`, `carry.TestEveryOutcomeIsRecorded`, `carry.TestAStreamIsRecordedWhenItEnds`, `carry.TestARecordFailureNeverFailsTheCall` | held for the forwarding address by `carry.TestForwardedRequestsAreRecorded`, `carry.TestTimeoutsAndCancel`, `carry.TestAnIdleStreamIsCut` and `carry.TestInsufficientScope`; the tests of these names wait for the MCP address |
 | `TestRetentionSweep` | written, over both stores |
-| `TestNoCredentialLeavesButTowardItsConnector`, `TestATrickedSessionObtainsNoCredential` | the first written for the routes that exist, over responses, logs and the store; spans, metrics and the second wait for the carrier |
+| `TestNoCredentialLeavesButTowardItsConnector`, `TestATrickedSessionObtainsNoCredential` | the first written over every route served, responses, logs and the store, a query member and an argument included; spans and metrics wait for them, and the second for the MCP address |
 | `TestMetricLabelsAreBounded`, `TestEachMetricCountsItsEvent` | not written: no metric is recorded yet |
 | `carry.TestACallHasOneSpan` | not written |
 | `TestLogKeysAreTheSet` | not written |

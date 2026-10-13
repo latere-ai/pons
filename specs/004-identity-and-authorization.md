@@ -347,10 +347,10 @@ Remains: the same for the address of kind `mcp`, with the MCP carrier.
 | `access.TestAuthorizerConformance` | written, against the stub authorizer over TLS |
 | `access.TestWhatTheClientRemembers`, `access.TestACreateIsAlwaysAsked`, `access.TestOneRetryOnAConnectionFailure` | written |
 | `carry.TestAnAllowIsRememberedPerTool` | written, against the stub authorizer |
-| `TestADenyDoesNotConfirmAnId` | written for the routes that exist |
+| `TestADenyDoesNotConfirmAnId` | written, the confirm, the reconnect and a use included |
 | `access.TestTheClientFailsClosed`, `authorizer.TestDecodeRefusesWhatItCannotHold` | written |
 | `authorizer.TestTheWireNamesEveryMemberAndNoOther` | written, with seven keys |
-| `TestWhoseACreateIs`, `TestAStoredConnectionKeepsItsOwner` | written; the second for a replaced key, the confirm and the reconnect wait for the sign-in |
+| `TestWhoseACreateIs`, `TestAStoredConnectionKeepsItsOwner` | written, the second for a replaced key, a reconnect and its confirm |
 | `TestEachMemberOfAnAllowChangesTheOutcome`, `carry.TestALimitRefusesBeforeTheCredential` | written, a case per member and the list of members waiting empty |
 | `TestLimitsHoldWithNoAuthorizer` | written |
 | `TestAListIsNarrowedByItsAllowsFilter` | written |

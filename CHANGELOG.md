@@ -17,8 +17,6 @@ here is refused before it is pushed.
   remove a connector; connect one with a key, a client of your own or no
   credential; list, read, rename and disconnect a connection; replace its
   key; read its call records. `GET /v1/openapi.yaml` is the contract.
-  Connecting by signing in to the other service is not offered yet and
-  answers `422 sign_in_unsupported`.
 - Added: every credential is sealed at rest under a data key of its own,
   wrapped by the first key of `PONS_SEALING_KEYS`; prepending a key and
   restarting rewraps every value, and `ponsd check` reports what remains.
@@ -43,3 +41,20 @@ here is refused before it is pushed.
   the connector before it is kept, and a client of `client_credentials`
   is minted for once; a refused one answers `422 credential_refused` and
   nothing is stored.
+- Added: connecting a catalog connector by signing in to the other
+  service. The connect answers the connection, `pending`, with the
+  address to send the person's browser to; the browser comes back to
+  `PONS_RETURN_URLS` with a code, and `POST
+  /v1/connections/{id}/confirm` makes the connection usable. An
+  authorization server is found from the catalog's endpoints, its
+  issuer, or the connector's protected resource metadata, and Pons names
+  itself by the catalog's client, a client metadata document at
+  `/v1/client`, or by registering. `POST /v1/connections/{id}/reconnect`
+  signs in again, and a disconnect revokes where the service offers it.
+  A connector a person adds cannot sign people in yet.
+- Added: a credential is refreshed before it ends by one writer across
+  replicas, a refresh token rotated in the same write, and a refused
+  credential moves its connection to `needs_reconnect`.
+- Added: a connector in GitHub's shape: signed in through a GitHub App,
+  its account read once, a link to choose repositories, and git and the
+  REST API carried through its two addresses.

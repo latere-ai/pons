@@ -34,9 +34,13 @@ found. Specs 013 and 014 were written after that reading: GitHub, the
 first connector, carried as git and its REST API through the forwarding
 and git addresses of 014. Both are `drafted`.
 
-Steps 1 to 4 of the build order are built, and of step 5 the forwarding
-and git addresses of 014 with the carrier's steps of 008. Specs 001 to
-006, 008 to 011 and 014 are `in-progress`: each says under
+Steps 1 to 4 of the build order are built; of step 5 the forwarding and
+git addresses of 014 with the carrier's steps of 008; step 6, the
+sign-in of 007 with GitHub's habits of 013, for catalog connectors; and
+of step 7 the whole path for GitHub against the stubs. What remains is
+the MCP address of 008 and what waits on it, the metrics and spans of
+010, `deploy/` and `docs/` of 011, and the threat model's own tests of
+012. Specs 001 to 014 are `in-progress`: each says under
 Implementation status what is built and which of its criteria wait.
 
 ## Index
@@ -49,13 +53,13 @@ Implementation status what is built and which of its criteria wait.
 | [004](004-identity-and-authorization.md) | Identity and authorization: verifying a caller, the action vocabulary, the question to the authorizer, limits on an allow, the owner policy | medium | in-progress | 001, 003 |
 | [005](005-store-and-sealing.md) | Store and sealing: the tables, the two adapters and their one suite, envelope encryption, key rotation | large | in-progress | 001, 002 |
 | [006](006-catalog.md) | Catalog: the file an operator writes, the members of each way to give access, a connector a person adds, tool marks | medium | in-progress | 002 |
-| [007](007-sign-in.md) | Sign-in: discovery, how Pons identifies itself, the flow and its confirm, the token exchange, refresh by one writer, reconnect | xlarge | drafted | 002, 003, 005, 006, 009 |
+| [007](007-sign-in.md) | Sign-in: discovery, how Pons identifies itself, the flow and its confirm, the token exchange, refresh by one writer, reconnect | xlarge | in-progress | 002, 003, 005, 006, 009 |
 | [008](008-carrying-a-call.md) | Carrying a call: the address, what is forwarded and what is removed, the credential's place, streaming, the tool a request names, failures | xlarge | in-progress | 002, 003, 004, 005, 007, 009 |
 | [009](009-outbound-requests.md) | Outbound requests: the one dialer, public addresses only, redirects, limits, and a credential bound to its hosts | large | in-progress | 001 |
 | [010](010-records-and-observability.md) | Records and observability: the call record and its retention, metrics, traces, logs that hold no content, the probes | medium | in-progress | 002, 008 |
 | [011](011-distribution.md) | Distribution: the repository scaffold, the binary and its images, configuration, the stubs, test tiers, and release | large | in-progress | 001 |
-| [012](012-security-and-threat-model.md) | Security and threat model: what is protected, who attacks, each defense and the test that holds it, and what is not defended | medium | drafted | 001, 005, 007, 008, 009 |
-| [013](013-github-connector.md) | A code host's connector: GitHub through a GitHub App, signed in like any connector, with git and the REST API carried through Pons | medium | drafted | 006, 007, 014 |
+| [012](012-security-and-threat-model.md) | Security and threat model: what is protected, who attacks, each defense and the test that holds it, and what is not defended | medium | in-progress | 001, 005, 007, 008, 009 |
+| [013](013-github-connector.md) | A code host's connector: GitHub through a GitHub App, signed in like any connector, with git and the REST API carried through Pons | medium | in-progress | 006, 007, 014 |
 | [014](014-http-forwarding.md) | Plain HTTP and git through a connection: a forwarding address and a git address, the credential added, a path held to its connector, and a push held to the refs an allow names | large | in-progress | 002, 003, 004, 006, 008, 009 |
 
 ## Build order

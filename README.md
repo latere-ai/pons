@@ -16,9 +16,11 @@ any MCP client can use, and it records every call without recording
 what was said.
 
 > **Status: in development, with no release yet.** The server keeps
-> connectors and connections, seals a pasted key or a client's secret,
-> and verifies and authorizes every request. Carrying a call and signing
-> in to another service come next. Start with
+> connectors and connections, signs people in to another service or
+> takes a key, seals the credential and refreshes it, and carries plain
+> HTTP and git through a connection's addresses, a push held to the
+> branches its caller may update. The address that carries the Model
+> Context Protocol comes next. Start with
 > [`specs/001-architecture.md`](specs/001-architecture.md); the index in
 > [`specs/README.md`](specs/README.md) lists every spec in build order.
 

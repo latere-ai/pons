@@ -253,17 +253,15 @@ the operator client toward the issuer and the authorizer included; the
 owner policy and the authorizer client; invariants 1, 2, 5, 6 and 10 for
 the routes that exist.
 
-The carrier of the forwarding and git addresses, and the sign-in's token
-endpoint, refresh by one writer and minted tokens: invariants 3, 4, 8 and
-9 hold for them.
+The carrier of the forwarding and git addresses and the sign-in with its
+confirm: invariants 3, 4, 7, 8 and 9 hold for them.
 
-Remains: the sign-in's flow and its confirm, so invariant 7 has no code
-path yet, and the MCP carrier.
+Remains: the MCP carrier.
 
 | Criterion | State |
 |---|---|
-| `TestTwoReplicasShareOneConnection` | not written: it needs the carrier and a refresh |
-| `TestNoCredentialLeavesButTowardItsConnector` | written for the routes that exist: a pasted key, a client's secret and a catalog client secret appear in no response, header, log line or database row of either store. The value at its stub waits for the carrier |
+| `TestTwoReplicasShareOneConnection` | held by `TestRefreshHasOneWriter`, which signs in through one replica of one Postgres, calls through both, and sees one refresh; the test of this name is not written |
+| `TestNoCredentialLeavesButTowardItsConnector` | written over every route served: a pasted key, issued tokens, a client's secret and a catalog client secret appear in no response, header, log line or database row of either store, and the key and the tokens are found at the stub API they belong to |
 | `TestOnlyTheDialerDials` | written, over the call sites that build a client, a transport or a dialer, the one package that takes the operator client, and the imports of an exporter |
 | `TestPublicPackagesDialNothing` | written, over call sites and `go list -deps` |
 | `TestStoreSelection` | written |

@@ -1,6 +1,6 @@
 ---
 title: "Sign-in: discovery, how Pons identifies itself, the flow and its confirm, the token exchange, refresh by one writer, reconnect"
-status: drafted
+status: in-progress
 track: core
 depends_on:
   - specs/002-objects.md
@@ -11,7 +11,7 @@ depends_on:
 affects: [internal/signin/, internal/httpapi/, internal/store/]
 effort: xlarge
 created: 2026-10-12
-updated: 2026-10-12
+updated: 2026-10-13
 author: changkun
 ---
 
@@ -30,7 +30,8 @@ part of the Model Context Protocol, revision 2026-07-28, and its RFCs.
 
 ## Current state
 
-Nothing is built. An identity provider in a sibling project carried a
+Built in `internal/signin` for connectors of the catalog; see
+Implementation status. An identity provider in a sibling project carried a
 connector for one code host, and its shape is taken: a `state` bound to
 a stored flow, and a sealed refresh token that never leaves the store.
 What is new is that every endpoint is discovered or read from the
@@ -76,8 +77,10 @@ For `discovery: resource` ([[006-catalog]]) Pons learns the
 authorization server from the connector, as the protocol has a client
 do.
 
-1. **One request with no credential** to `url`, the `tools/list` of
-   the probe of [[008-carrying-a-call]]. A `401` whose
+1. **One request with no credential** to `url`: the `tools/list` of
+   the probe of [[008-carrying-a-call]] for a connector of kind `mcp`, a
+   `GET` of `url` for one of kind `http` ([[014-http-forwarding]]). A
+   `401` whose
    `WWW-Authenticate` carries `resource_metadata` names the protected
    resource metadata (RFC 9728, section 5.1). A `scope` in the same
    challenge is kept for the scope selection.
@@ -106,8 +109,12 @@ do.
 | without one, `https://auth.example.com` | `https://auth.example.com/.well-known/oauth-authorization-server`, `https://auth.example.com/.well-known/openid-configuration` |
 
 A connector or a document that cannot be fetched is `422
-connector_unreachable`. A document that was read and cannot be used is
-`422 sign_in_unsupported`, with `details.reason` naming the step. Every
+connector_unreachable`, and so is a document that names an issuer, an
+authorization server or an endpoint the dialer's rules refuse before
+resolving it, an address that is not https or whose host is not a name,
+with `details.reason` the rule's name ([[009-outbound-requests]]). A
+document that was read and cannot be used is `422 sign_in_unsupported`,
+with `details.reason` naming the step. Every
 fetch goes through the dialer of [[009-outbound-requests]] under its
 limits. Discovery runs when a connector is added ([[003-api]]) and at
 every connect and reconnect, and nothing of it is cached: a flow
@@ -237,7 +244,8 @@ browser to it.
    own token endpoint the code the honest one issued, with its verifier
    (RFC 9700, section 4.4). A connector a person adds is therefore
    accepted only when its server says it sends `iss`
-   ([[006-catalog]]).
+   ([[006-catalog]]). A flow whose connector left the catalog is ended
+   the same way, with `error=sign_in_failed`.
 
    The comparison is of strings (RFC 3986, section 6.2.1), with no case
    folding, port, slash or percent normalization after the form
@@ -254,9 +262,13 @@ browser to it.
    `error=sign_in_failed`. Every token request, here and at a refresh,
    carries `Accept: application/json`, and an answer whose JSON has an
    `error` member is an error whatever its status, since some services
-   answer an error with `200` ([[013-github-connector]]). When the
+   answer an error with `200` ([[013-github-connector]]). A registered
+   client the token endpoint answers `invalid_client` for is deleted
+   here, so the next sign-in at the issuer registers again. When the
    entry gives `auth.account`, the account is read once with the new
-   access token, best effort ([[013-github-connector]]).
+   access token, best effort ([[013-github-connector]]), and kept beside
+   the pending credential until the confirm writes it to the connection,
+   so a connection shows no account before it is confirmed.
 5. **The tokens are sealed with the flow** as its pending credential
    ([[005-store-and-sealing]]), with the access token's expiry and the
    scopes the answer names, or the ones asked. They are not the
@@ -460,6 +472,47 @@ Ending a flow, at the callback or the confirm, sets its time to now: a
 mismatched `iss`, an answer with `error`, a failed exchange and a wrong
 code each do. The next sweep takes it like a flow that ran out, so no
 `pending` connection is left without a live flow.
+
+## Implementation status
+
+Built for connectors of the catalog: discovery by `none`, `issuer` and
+`resource`, the metadata in the protocol's order and validated before
+use, how Pons identifies itself in order with the registration kept per
+issuer, the client metadata documents at `/client` and `/client/{id}`,
+the authorization request with the proof key and `state`, the callback
+with the `iss` rules, the code exchange with GitHub's habits, the account
+read once, the confirm, `return_to` held to `PONS_RETURN_URLS`, refresh by
+one writer, a `client_credentials` token minted at use and a first mint
+at connect, reconnect with the union of scopes and the issuer kept,
+disconnect with revocation, and the sweep every minute on every replica.
+A call past a connection's 16 places in flight is answered `429`, so of
+fifty callers at once the ones past the places come back after their
+`Retry-After`; one of them refreshes.
+
+Remains: a connector a person adds of type `oauth`, whose discovery's
+first request is the MCP probe, and which answers `422
+sign_in_unsupported` with `sign_in_not_available` until the MCP carrier
+is built; and the metrics `pons.refreshes` and `pons.signins`
+([[010-records-and-observability]]).
+
+| Criterion | State |
+|---|---|
+| `signin.TestProtectedResourceDiscovery` | written |
+| `signin.TestAuthorizationServerMetadata` | written, with `signin.TestDocumentsThatCannotBeUsed` |
+| `signin.TestClientSelection` | written; the added connector's own document is held at the plan, its add waits for the MCP probe |
+| `httpapi.TestClientMetadataDocument`, `signin.TestRegistrationIsKeptPerIssuer` | written |
+| `signin.TestAuthorizationRequest`, `signin.TestScopeSelection` | written |
+| `signin.TestIssuerValidation`, `signin.TestCallbackIsOnce` | written |
+| `signin.TestAMixUpWithoutIssIsRefused` | written, with a connector that finds its server through its metadata, which the catalog does not name |
+| `TestALinkSentToSomeoneElseConnectsNothing`, `TestTokensWaitForTheConfirm` | written, in the e2e tier |
+| `TestASenderCannotChooseWhereTheCodeGoes` | written, in the e2e tier |
+| `TestSignInEndToEnd` | written, for `none` in GitHub's manner, `issuer` and `resource` |
+| `TestRefreshHasOneWriter`, `signin.TestRotationIsOneWrite` | written, the first over two replicas of one Postgres and over the memory store, with `signin.TestOneWriterRefreshes` |
+| `signin.TestRefreshFailures` | written |
+| `signin.TestMintedTokenIsNotStored` | written |
+| `signin.TestReconnectAsksForTheUnion`, `TestReconnectKeepsServing`, `signin.TestReconnectKeepsItsIssuer` | written |
+| `TestDeleteRevokesBestEffort`, `signin.TestSweep` | written, with `signin.TestDisconnectRevokes` |
+| `TestNoCredentialLeavesButTowardItsConnector` | written: issued tokens of a sign-in in GitHub's manner hold the canary |
 
 ## Not in this spec
 

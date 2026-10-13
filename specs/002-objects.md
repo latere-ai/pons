@@ -214,16 +214,18 @@ names `git.url`, and the carrier moves a connection whose credential the
 connector refuses, or keeps a pending one's state and gives it the
 reason.
 
-Remains: the moves the sign-in makes (a confirm, a reconnect) and the
-flow's use.
+The sign-in moves a connection by its confirm and its reconnect, keeps a
+flow per connection with its pending credential, and the sweep returns a
+reconnecting connection to the state it left. The account a sign-in read
+is kept in the flow's pending meta until the confirm writes it.
 
 | Criterion | State |
 |---|---|
 | `id.TestPrefixedAndOrdered` | written |
 | `catalog.TestNameRules` | written |
 | `store.TestConnectionStateMachine` | written, over both stores |
-| `TestReconnectKeepsServing` | not written: it needs the sign-in and the carrier |
-| `TestDeleteRemovesTheCredentialFirst`, `TestDeleteRevokesBestEffort` | the first written, over both stores; the second waits for revocation in the sign-in |
+| `TestReconnectKeepsServing` | written |
+| `TestDeleteRemovesTheCredentialFirst`, `TestDeleteRevokesBestEffort` | written |
 | `api.TestObjectShapes` | written |
 | `TestShortCredentialRefused` | written |
 

@@ -352,8 +352,12 @@ The carrier and the sign-in open a credential through one function,
 sealing_unavailable`, is logged with the connection's id, and moves no
 state.
 
-Remains: what the sign-in does with a flow's verifier and pending
-credential.
+The sign-in seals a flow's verifier and pending credential, opens the
+verifier for the code exchange, and moves the pending ciphertext to the
+connection at the confirm without opening it.
+
+Remains: `TestNoTransactionSpansARefresh` and the 100 calls of
+`TestLastUsedIsWrittenOnceAMinute`.
 
 | Criterion | State |
 |---|---|
@@ -366,10 +370,10 @@ credential.
 | `TestOpenIsConfined` | written, over the typed call sites; the store's own suite, which test binaries alone import, opens what it sealed |
 | `store.TestTheKeyList`, `TestAMalformedKeyStopsTheStart` | written |
 | `TestRotationRewrapsEveryValue`, `TestRewrapNeverOverwritesARefresh`, `TestCheckReportsWhatRemains` | written |
-| `TestWithoutASealingKey`, `TestAValueNoKeyOpens` | the first written; the second waits for a caller of `Open` |
+| `TestWithoutASealingKey`, `TestAValueNoKeyOpens` | the first written; the second held by `carry.TestTheStateOfAConnection` and `signin.TestDisconnectRevokes` |
 | `TestAReconnectWinsOverARefresh` | written, at the store |
-| `TestNoTransactionSpansARefresh` | not written: it needs the refresh of the sign-in |
-| `TestLastUsedIsWrittenOnceAMinute` | `Touch` is held by the suite; the 100 calls wait for the carrier |
+| `TestNoTransactionSpansARefresh` | not written; the refresh holds no transaction across its request, which `signin.TestOneWriterRefreshes` shows only on the memory store |
+| `TestLastUsedIsWrittenOnceAMinute` | `Touch` is held by the suite, and the carrier writes it once a minute per replica; the test of 100 calls is not written |
 | `store.TestIdempotencyKeyRace` | written |
 | `TestSchemaGuards`, `TestDriverIsConfined` | written |
 | `TestStoreSelection` | written |

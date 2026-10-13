@@ -370,7 +370,7 @@ Remains: the stub connector;
 | `stubs.TestAuthorizationServerRunsASignIn`, `stubs.TestAuthorizerRecordsEveryQuestion` | written, with `stubs.TestEachAuthSwitchChangesOneAnswer`, `stubs.TestAPIServesACodeHostsRoutes` and `stubs.TestGitHostServesGit` |
 | `TestMemoryStore`, `TestPostgresStore`, `TestPostgresStoreThroughAPooler` | written |
 | `TestEveryRouteIsExercised` | written, over the routes served |
-| `TestNoCredentialLeavesButTowardItsConnector` | written for a key and a client secret; issued tokens wait for the stub authorization server |
+| `TestNoCredentialLeavesButTowardItsConnector` | written for a key, issued tokens and a client secret |
 | the `image` job | in `verify` |
 | `TestEveryContainerIsConfined`, `TestDeployVariablesAreInTheTable`, `TestExampleRenders`, `TestExampleDeniesPrivateEgress` | not written: `deploy/` is not built |
 | `TestReleaseWorkflowShape` | not written: no release workflow yet |

@@ -396,16 +396,16 @@ stored without a probe ([[003-api]]).
 |---|---|
 | `carry.TestRequestHeaders`, `carry.TestAnswerPassesUnchanged`, `carry.TestResponseHeaders`, `carry.TestStreamIsFlushedPerEvent`, `carry.TestParseOnlyTheMethodAndTool`, `carry.FuzzParse`, `carry.TestProbe` | not written: the MCP address |
 | `TestCarrierFollowsNoRedirect` | for the forwarding address, `carry.TestARedirectStaysOnItsConnector`; the MCP address waits |
-| `carry.TestNothingTellsAnIdBeforeTheQuestion`, `TestADenyDoesNotConfirmAnId` | the second written for a use of the forwarding address |
+| `carry.TestNothingTellsAnIdBeforeTheQuestion`, `TestADenyDoesNotConfirmAnId` | the second written for a use of both addresses |
 | `carry.TestLimitsOfAnAllow`, `carry.TestALimitRefusesBeforeTheCredential`, `TestAConnectionsConcurrencyIsBounded` | the second written, with the connection's places; the others wait for the MCP address |
 | `TestACallersConcurrencyIsBounded` | the places are held by `carry.TestALimitRefusesBeforeTheCredential`; the e2e case waits |
-| `TestReconnectKeepsServing`, `TestRemovedConnectorKeepsItsConnections` | the first with the sign-in; the second written, the `409` through `carry.TestTheStateOfAConnection` |
+| `TestReconnectKeepsServing`, `TestRemovedConnectorKeepsItsConnections` | written, the `409` of the second through `carry.TestTheStateOfAConnection` |
 | `carry.TestConnectorRefusesTheCredential`, `carry.TestInsufficientScope` | the first as `carry.TestARefusedForwardedRequest`; the second written |
 | `carry.TestOriginIsChecked` | held by `carry.TestForwardedHeaders` |
 | `TestAnyReplicaServesASession` | not written: sessions are the MCP address's |
 | `carry.TestTimeoutsAndCancel` | written for the forwarding address, with `carry.TestAnIdleStreamIsCut` |
 | `TestEveryCallIsRecorded`, `TestDeniedCallsAreRecordedOncePerMinute` | held by `carry.TestForwardedRequestsAreRecorded` and `carry.TestAPushIsHeldToItsRefs` |
-| `TestCallThatNeedsARefresh` | with the sign-in |
+| `TestCallThatNeedsARefresh` | written, through the forwarding address |
 | `TestNoCredentialLeavesButTowardItsConnector` | the forwarding and git addresses exercised with a canary key |
 
 ## Not in this spec
