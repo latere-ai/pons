@@ -77,6 +77,7 @@ connectors:
     auth:
       type: oauth
       discovery: none
+      issuer: https://github.com/login/oauth
       authorize_url: https://github.com/login/oauth/authorize
       token_url: https://github.com/login/oauth/access_token
       client: {id: Iv23exampleclientid, secret: {env: GITHUB_APP_CLIENT_SECRET}}
@@ -88,10 +89,13 @@ connectors:
 
 - **`discovery: none`.** GitHub publishes no authorization server
   metadata for a GitHub App's client, so the entry gives the two
-  endpoints. GitHub sends no `iss` in its answer. The rule of
-  [[007-sign-in]] accepts an answer without `iss` because the catalog
-  names this server by its endpoints, and only the operator writes the
-  catalog.
+  endpoints, and names the issuer GitHub's OpenID configuration at
+  `https://github.com/login/oauth/.well-known/openid-configuration`
+  states. An `iss` in GitHub's answer is compared with it, and an answer
+  without one is accepted because the catalog names this server by its
+  endpoints, under the rule of [[007-sign-in]]. Without `issuer`, an
+  answer carrying `iss` is refused: the first sign-in against the real
+  GitHub, on 2026-10-13, failed that way.
 - **No revocation.** GitHub's way to revoke a user's token needs the
   App's client secret as Basic credentials on its API, not the form of
   RFC 7009, so the entry gives no `revoke_url`. A disconnect deletes
