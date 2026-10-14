@@ -186,7 +186,7 @@ a connection that needed reconnecting back to `connected`, and answers
 | `GET /connections` | the connections the caller may see; `owner`, `connector`, `state`, `limit`, `cursor` | `connection.list` |
 | `GET /connections/{id}` | one connection | `connection.read` |
 | `PATCH /connections/{id}` | rename, with `{"name": "..."}` | `connection.update` |
-| `DELETE /connections/{id}` | disconnect: the connection and its credential go in one transaction, and the credential is revoked where it recorded a revocation endpoint, from the entry or the server's metadata. `204` | `connection.delete` |
+| `DELETE /connections/{id}` | disconnect: the connection and its credential go in one transaction, and the credential is revoked where it recorded a revocation endpoint, from the entry or the server's metadata, once no other connection holds the same grant: the same authorization server, client and account, of any owner, a sign-in waiting for its confirm included. A service may end every token of a grant at one revocation, so the last of those connections revokes. `204` | `connection.delete` |
 | `GET /connections/{id}/calls` | the connection's call records | `connection.read` |
 
 `owner` narrows a list to one owner the caller may see, and never widens
