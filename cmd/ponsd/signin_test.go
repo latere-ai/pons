@@ -386,6 +386,105 @@ func TestDeleteRevokesBestEffort(t *testing.T) {
 	}
 }
 
+// sharedEntries are two entries of one issuer and one client, each reading
+// the account it acts as, as Google's three are: a person who connects
+// both holds one grant at the stub.
+func sharedEntries(t testing.TB) string {
+	u := upstreamOf(t)
+	var b strings.Builder
+	for _, name := range []string{"mail", "calendar"} {
+		b.WriteString(`
+  - name: ` + name + `
+    title: Example ` + name + `
+    kind: http
+    url: ` + u.api.URL() + `
+    hosts: ["api.example.com"]
+    auth:
+      type: oauth
+      discovery: none
+      issuer: ` + u.auth.Issuer() + `
+      authorize_url: ` + u.auth.AuthorizeURL() + `
+      token_url: ` + u.auth.TokenURL() + `
+      revoke_url: ` + u.auth.RevokeURL() + `
+      client: {id: ` + githubClient + `, secret: {env: GITHUB_APP_CLIENT_SECRET}}
+      resource: false
+      account: {url: "` + u.api.URL() + `/user", field: login}
+`)
+	}
+	return b.String()
+}
+
+// A delete revokes only when no other connection holds the grant: of two
+// owners who connected one account through two entries of one client, the
+// first delete revokes nothing and the other connection still answers, and
+// the second revokes; another account's connection holds another grant.
+// Of the last two connections of a grant deleted at once, on two replicas
+// of one Postgres, at least one revokes.
+func TestOnlyTheLastConnectionOfAGrantRevokes(t *testing.T) {
+	for name, over := range map[string]func(*testing.T) map[string]string{
+		"memory":   func(*testing.T) map[string]string { return map[string]string{} },
+		"postgres": func(t *testing.T) map[string]string { return database(t) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			iss := stubs.NewIssuer(t)
+			env := over(t)
+			env["PONS_CATALOG_FILE"] = catalogFile(t, sharedEntries(t))
+			up := upstreamOf(t)
+			one := startStack(t, iss, env)
+			other := one
+			if name == "postgres" {
+				other = startStack(t, iss, env)
+			}
+			del := func(s *stack, sub, id string) {
+				t.Helper()
+				if a := s.do(http.MethodDelete, "/v1/connections/"+id, sub, nil); a.status != http.StatusNoContent {
+					t.Errorf("a delete: %d %s", a.status, a.body)
+				}
+			}
+			revoked := func(want int) {
+				t.Helper()
+				if got := len(up.auth.Revoked()); got != want {
+					t.Fatalf("%d revocations, want %d", got, want)
+				}
+			}
+			mail := one.signIn(t, "alice", "mail")["id"].(string)
+			calendar := one.signIn(t, "bob", "calendar")["id"].(string)
+			del(one, "alice", mail)
+			revoked(0)
+			if a := one.do(http.MethodGet, "/v1/connections/"+calendar+"/http/user", "bob", nil); a.status != http.StatusOK {
+				t.Fatalf("the connection left holding the grant: %d %s", a.status, a.body)
+			}
+			if !strings.Contains(one.logs.String(), `"reason":"grant_held"`) || strings.Contains(one.logs.String(), "octo-person") {
+				t.Fatalf("the skipped revocation's log:\n%s", one.logs)
+			}
+			del(one, "bob", calendar)
+			revoked(1)
+
+			up.api.SetLogin("someone-else")
+			elsewhere := one.signIn(t, "carol", "mail")["id"].(string)
+			up.api.SetLogin("octo-person")
+			kept := one.signIn(t, "dave", "calendar")["id"].(string)
+			del(one, "carol", elsewhere)
+			revoked(2)
+			del(one, "dave", kept)
+			revoked(3)
+
+			for round := range 5 {
+				x := one.signIn(t, "erin", "mail")["id"].(string)
+				y := one.signIn(t, "frank", "calendar")["id"].(string)
+				before := len(up.auth.Revoked())
+				var wg sync.WaitGroup
+				wg.Go(func() { del(one, "erin", x) })
+				wg.Go(func() { del(other, "frank", y) })
+				wg.Wait()
+				if len(up.auth.Revoked()) == before {
+					t.Fatalf("round %d: both deletes skipped the revocation", round)
+				}
+			}
+		})
+	}
+}
+
 // The connection carries links.manage from its connector, and a disconnect
 // of a connector with no revocation endpoint deletes the credential with no
 // revocation request.
