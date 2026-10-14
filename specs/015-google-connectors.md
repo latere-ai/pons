@@ -103,7 +103,7 @@ connectors:
     description: Find and read your files, and save new files to your Drive.
     icon: https://www.gstatic.com/images/branding/product/2x/drive_2020q4_48dp.png
     kind: http
-    url: https://www.googleapis.com/drive/v3
+    url: https://www.googleapis.com
     hosts: ["www.googleapis.com", "openidconnect.googleapis.com"]
     auth:
       type: oauth
@@ -121,23 +121,29 @@ connectors:
       account: {url: https://openidconnect.googleapis.com/v1/userinfo, field: email}
 ```
 
-- **`url` is the product's API base, its version included**:
-  `https://gmail.googleapis.com/gmail/v1`,
-  `https://www.googleapis.com/calendar/v3` and
-  `https://www.googleapis.com/drive/v3`, the base Google's own client
-  libraries call, so a caller writes `/users/me/messages`,
-  `/calendars/primary/events` or `/files` after the forwarding address.
-  The first entries named the host alone and wanted Google's whole path
-  after the address; a smaller model, in every run checked on
-  2026-10-13, left out the `/gmail/v1` even with an example that showed
-  it, and took the base to be the product's. A connection reaches only
-  its own product's API this way, and nothing of the host's other
-  APIs. Google's upload addresses, `/upload/gmail/v1/...` and
-  `/upload/drive/v3/...`, sit outside the base and are not reached: a
-  draft carries its message in its JSON body, which needs no upload,
-  and a Drive file is created from its metadata alone, its content
-  written later by a change, so uploading a file's bytes waits for a
-  need.
+- **`url` is the product's API base, its version included**, for
+  Gmail and Calendar: `https://gmail.googleapis.com/gmail/v1` and
+  `https://www.googleapis.com/calendar/v3`, the base Google's own client
+  libraries call, so a caller writes `/users/me/messages` or
+  `/calendars/primary/events` after the forwarding address. The first
+  entries named the host alone and wanted Google's whole path after the
+  address; a smaller model, in every run checked on 2026-10-13, left out
+  the `/gmail/v1` even with an example that showed it, and took the base
+  to be the product's. A connection reaches only its own product's API
+  this way, and nothing of the host's other APIs. Gmail's upload
+  address, `/upload/gmail/v1/...`, sits outside the base and is not
+  reached: a draft carries its message in its JSON body, which needs no
+  upload.
+- **Drive's `url` is its host, `https://www.googleapis.com`**, since a
+  file's content is written at `/upload/drive/v3/...`, beside the API
+  base `/drive/v3` rather than below it, and a file saved with its
+  content needs both. The installation then gives its callers the
+  forwarding address with `/drive/v3` after it, so a caller still writes
+  `/files` below a versioned base, and its authorizer's `requests` limit
+  holds the connection to Drive's two bases: reads below `/drive/v3/`,
+  and the writes it names below `/drive/v3/files` and
+  `/upload/drive/v3/files`, so nothing of the host's other APIs is
+  reached.
 - **`discovery: none`.** Google publishes OpenID Connect metadata, but
   the two members below go on the authorization request, and only an
   entry that gives its endpoints gives `authorize_url`. The `issuer` is

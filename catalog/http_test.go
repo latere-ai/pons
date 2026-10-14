@@ -80,8 +80,9 @@ func TestTheGitHubEntry(t *testing.T) {
 
 // The Google entries of spec 015 validate: kind http with no resource
 // member, the account read from a host under hosts, no revocation, the
-// authorization request's members in authorize_url's query, and Calendar's
-// free time query reading while a draft writes.
+// authorization request's members in authorize_url's query, each url as
+// spec 015 names it, and Calendar's free time query reading while a draft
+// writes.
 func TestTheGoogleEntries(t *testing.T) {
 	c, err := catalog.Parse([]byte(specYAML(t, "015-google-connectors.md", "### The entries")), catalog.Options{LookupEnv: func(name string) (string, bool) {
 		return "a-client-secret-of-the-test", name == "GOOGLE_CLIENT_SECRET"
@@ -113,11 +114,14 @@ func TestTheGoogleEntries(t *testing.T) {
 			t.Fatalf("%s authorize_url %q", name, a.AuthorizeURL)
 		}
 	}
+	// Gmail's and Calendar's url is the product's versioned base; Drive's
+	// is Google's host, since a file's content goes to the upload address
+	// beside Drive's base (spec 015).
 	for name, base := range map[string]string{
-		"gmail": "https://gmail.googleapis.com/gmail/v1", "google-calendar": "https://www.googleapis.com/calendar/v3", "google-drive": "https://www.googleapis.com/drive/v3",
+		"gmail": "https://gmail.googleapis.com/gmail/v1", "google-calendar": "https://www.googleapis.com/calendar/v3", "google-drive": "https://www.googleapis.com",
 	} {
 		if g, _ := c.Get(name); g.URL != base {
-			t.Errorf("%s's url is %q, want its product's versioned base %q", name, g.URL, base)
+			t.Errorf("%s's url is %q, want %q", name, g.URL, base)
 		}
 	}
 	cal, _ := c.Get("google-calendar")
