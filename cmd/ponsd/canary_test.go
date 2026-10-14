@@ -63,8 +63,20 @@ func exercise(t *testing.T, s *stack, canary string) {
 		"name": "wiki", "title": "Wiki", "kind": "mcp", "url": "https://wiki.example.com/mcp", "auth": map[string]any{"type": "token"},
 	}).id(t)
 	keyed := call(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": "search", "credential": map[string]any{"value": canary + "-key"}}).id(t)
+	// The MCP address of the connection of kind mcp, whose key holds the
+	// canary: a list, a call whose argument holds a marker the stub
+	// connector answers back, a streamed call, and the earlier revisions'
+	// GET and DELETE, which the stub of the current revision answers 405.
+	mcp := "/v1/connections/" + keyed + "/mcp"
+	call(http.MethodPost, mcp, "alice", mcpMessage("tools/list", nil), mcpHeaders("tools/list", "")...)
+	call(http.MethodPost, mcp, "alice", toolCall("search_notes", map[string]any{"query": argumentOf(canary)}), mcpHeaders("tools/call", "search_notes")...)
+	call(http.MethodPost, mcp, "alice", toolCall("count", nil), mcpHeaders("tools/call", "count")...)
+	call(http.MethodGet, mcp, "alice", nil)
+	call(http.MethodDelete, mcp, "alice", nil)
 	call(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": "warehouse", "credential": map[string]any{"client_id": "wh", "client_secret": canary + "-secret"}})
-	added := call(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": ctr, "credential": map[string]any{"value": canary + "-added"}}).id(t)
+	// A key of an added connector is probed at its url, on port 443, where
+	// no stub listens: the connect is refused and the key kept nowhere.
+	call(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": ctr, "credential": map[string]any{"value": canary + "-added"}})
 	// Every refusal a credential can meet, with the canary in the request.
 	call(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": "search", "name": "search", "credential": map[string]any{"value": canary + "-taken"}})
 	call(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": "weather", "credential": map[string]any{"value": canary + "-wrong"}})
@@ -108,9 +120,13 @@ func exercise(t *testing.T, s *stack, canary string) {
 	call(http.MethodGet, "/v1/client", "", nil)
 	call(http.MethodGet, "/v1/client/"+ctr, "", nil)
 	call(http.MethodDelete, "/v1/connections/"+signed, "alice", nil)
-	call(http.MethodDelete, "/v1/connections/"+added, "alice", nil)
 	call(http.MethodDelete, "/v1/connectors/"+ctr, "alice", nil)
 }
+
+// argumentOf is the marker a test plants in a tool's argument: the canary
+// in capitals, so the stub connector's answer, which holds the argument,
+// does not hold the canary, and the marker is searched for apart.
+func argumentOf(canary string) string { return "argument-" + strings.ToUpper(canary) }
 
 // encodings are the forms a value can be found in at rest or in a log.
 func encodings(v string) []string {
@@ -158,6 +174,22 @@ func TestNoCredentialLeavesButTowardItsConnector(t *testing.T) {
 			}
 			if !slices.ContainsFunc(creds, func(c string) bool { return strings.HasPrefix(c, "Bearer "+canary+"-issued-") }) {
 				t.Fatalf("an issued token never reached its connector: %v", creds)
+			}
+			// The key of kind mcp reaches the stub connector in the header
+			// its entry injects it in, on the calls through the address.
+			carried := 0
+			for _, q := range upstreamOf(t).mcp.Requests() {
+				if q.RPC == "tools/call" && q.Header.Get("X-Api-Key") == canary+"-key" && q.Credential == "" {
+					carried++
+				}
+			}
+			if carried != 2 {
+				t.Fatalf("the key of kind mcp reached its connector on %d calls", carried)
+			}
+			// A tool's argument passes to the connector and back in its
+			// answer, and into no log line and no row.
+			if marker := argumentOf(canary); !strings.Contains(s.everything(), marker) || strings.Contains(s.logs.String()+s.dump(), marker) {
+				t.Fatal("an argument was not carried, or was kept")
 			}
 			for _, value := range []string{canary, catalogSecret} {
 				for _, form := range encodings(value) {

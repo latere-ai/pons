@@ -588,4 +588,18 @@ func TestCallThatNeedsARefresh(t *testing.T) {
 	if creds := up.api.Credentials(); creds[len(creds)-1] != "Bearer "+access[len(access)-1] || len(access) < 2 {
 		t.Fatalf("the stream did not carry the refreshed token: %v", creds)
 	}
+	// The same through the MCP address: a connection of kind mcp whose
+	// token is due refreshes once and streams count through the stub
+	// connector.
+	jotter := s.signIn(t, "alice", "jotter")["id"].(string)
+	issued := len(access) + 1
+	a = s.callTool("alice", jotter, "count", nil)
+	if a.status != http.StatusOK || strings.Count(string(a.body), "event: message") != 4 || a.header.Get("Content-Type") != "text/event-stream" {
+		t.Fatalf("%d %v %s", a.status, a.header, a.body)
+	}
+	access, _ = up.auth.Issued()
+	creds := up.mcp.Credentials()
+	if len(access) != issued+1 || creds[len(creds)-1] != "Bearer "+access[len(access)-1] {
+		t.Fatalf("the stream did not carry the refreshed token: %d issued, %v", len(access)-issued, creds)
+	}
 }

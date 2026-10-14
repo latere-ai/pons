@@ -187,6 +187,9 @@ func TestADenyDoesNotConfirmAnId(t *testing.T) {
 		{http.MethodPost, "/reconnect", map[string]any{"return_to": returnURL}},
 		{http.MethodGet, "/http/user", nil},
 		{http.MethodGet, "/git/acme/app.git/info/refs?service=git-upload-pack", nil},
+		{http.MethodPost, "/mcp", toolCall("get_note", nil)},
+		{http.MethodGet, "/mcp", nil},
+		{http.MethodDelete, "/mcp", nil},
 	}
 	for _, r := range requests {
 		denied := s.do(r.method, "/v1/connections/"+con+r.suffix, "bob", r.body)
@@ -472,7 +475,7 @@ func TestAListIsNarrowedByItsAllowsFilter(t *testing.T) {
 		t.Fatalf("widened by owner: %v", got)
 	}
 	catalogItems := s.do(http.MethodGet, "/v1/connectors", "carol", nil).json(t)["items"].([]any)
-	if len(catalogItems) != 6 {
+	if len(catalogItems) != 8 {
 		t.Fatalf("the catalog under an empty filter: %d items", len(catalogItems))
 	}
 }
@@ -563,6 +566,15 @@ func reachesNothing(t *testing.T, s *stack) {
 	}
 	if snapshot(s) != before {
 		t.Error("bob's requests changed what alice holds")
+	}
+	// A use through the MCP address answers as for a missing connection and
+	// reaches no connector.
+	asked := len(upstreamOf(t).mcp.Requests())
+	if a := s.callTool("bob", con, "get_note", nil); a.status != http.StatusNotFound || a.code() != "connection_not_found" {
+		t.Errorf("bob calls a tool of alice's: %d %s", a.status, a.body)
+	}
+	if len(upstreamOf(t).mcp.Requests()) != asked {
+		t.Error("bob's call reached the connector")
 	}
 }
 

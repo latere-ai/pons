@@ -61,12 +61,13 @@ func (s *syncBuffer) String() string {
 func key(b byte) string { return base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{b}, 32)) }
 
 // upstream are the stubs a test's servers reach: the API, the
-// authorization server, and the git host where git is installed. A test
-// has one set, made on first use.
+// authorization server, the connector, and the git host where git is
+// installed. A test has one set, made on first use.
 type upstream struct {
 	api  *stubs.API
 	auth *stubs.AuthServer
 	git  *stubs.GitHost
+	mcp  *stubs.Connector
 }
 
 var upstreams sync.Map // testing.TB to *upstream
@@ -78,7 +79,7 @@ func upstreamOf(t testing.TB) *upstream {
 	if u, ok := upstreams.Load(t); ok {
 		return u.(*upstream)
 	}
-	u := &upstream{api: stubs.NewAPI(t), auth: stubs.NewAuthServer(t)}
+	u := &upstream{api: stubs.NewAPI(t), auth: stubs.NewAuthServer(t), mcp: stubs.NewConnector(t)}
 	u.auth.AddClient("wh", "")
 	u.auth.AddClient("wh-client", "")
 	u.auth.AddClient(githubClient, githubSecret)
@@ -97,7 +98,7 @@ func upstreamOf(t testing.TB) *upstream {
 
 // ports are the stubs' listeners.
 func (u *upstream) ports() []int {
-	ports := []int{u.api.Port(), u.auth.Port()}
+	ports := []int{u.api.Port(), u.auth.Port(), u.mcp.Port()}
 	if u.git != nil {
 		ports = append(ports, u.git.Port())
 	}
@@ -124,13 +125,19 @@ const (
 const returnURL = "https://app.example.com/connections/done"
 
 // catalogFile writes the example catalog, its warehouse minting at the
-// stub, with an entry of kind http at the stub API and git host, "forge",
-// which takes a key, one in GitHub's shape, "github", which signs people in
-// at the stub authorization server, and the entries given beside them.
+// stub and its search at the stub connector, with an entry of kind http at
+// the stub API and git host, "forge", which takes a key, one in GitHub's
+// shape, "github", which signs people in at the stub authorization server,
+// two of kind mcp at the stub connector, "notes", which takes a key and
+// marks its tools, and "jotter", which signs people in at the stub
+// authorization server, and the entries given beside them.
 func catalogFile(t testing.TB, extra string) string {
 	t.Helper()
 	u := upstreamOf(t)
-	example := strings.Replace(string(catalog.Example), "https://login.warehouse.example.org/oauth/token", u.auth.TokenURL(), 1)
+	example := strings.NewReplacer(
+		"https://login.warehouse.example.org/oauth/token", u.auth.TokenURL(),
+		"https://api.search.example.net/mcp", u.mcp.URL(),
+	).Replace(string(catalog.Example))
 	forge := `
   - name: forge
     title: Example Forge
@@ -162,6 +169,23 @@ func catalogFile(t testing.TB, extra string) string {
       account: {url: "` + u.api.URL() + `/user", field: login}
     links:
       manage: https://github.com/apps/pons-example/installations/new
+  - name: notes
+    title: Example Notes
+    kind: mcp
+    url: ` + u.mcp.URL() + `
+    auth: {type: token}
+    tools: {read_only: ["search_*", "get_*", "count"], hidden: ["delete_notebook"]}
+  - name: jotter
+    title: Example Jotter
+    kind: mcp
+    url: ` + u.mcp.URL() + `
+    auth:
+      type: oauth
+      discovery: none
+      authorize_url: ` + u.auth.AuthorizeURL() + `
+      token_url: ` + u.auth.TokenURL() + `
+      client: {id: ` + githubClient + `, secret: {env: GITHUB_APP_CLIENT_SECRET}}
+    tools: {read_only: ["search_*", "get_*", "count"]}
 `
 	path := filepath.Join(t.TempDir(), "catalog.yaml")
 	if err := os.WriteFile(path, []byte(example+forge+extra), 0o600); err != nil {
@@ -308,6 +332,16 @@ func startStack(t testing.TB, iss *stubs.Issuer, over map[string]string, times .
 // none for "".
 func (s *stack) do(method, path, sub string, body any, headers ...string) answer {
 	s.t.Helper()
+	bearer := ""
+	if sub != "" {
+		bearer = s.iss.Token(sub, nil)
+	}
+	return s.doBearer(method, path, bearer, body, headers...)
+}
+
+// doBearer sends one request with the bearer given, or none for "".
+func (s *stack) doBearer(method, path, bearer string, body any, headers ...string) answer {
+	s.t.Helper()
 	var rd io.Reader
 	switch b := body.(type) {
 	case nil:
@@ -324,8 +358,8 @@ func (s *stack) do(method, path, sub string, body any, headers ...string) answer
 	if err != nil {
 		s.t.Fatal(err)
 	}
-	if sub != "" {
-		req.Header.Set("Authorization", "Bearer "+s.iss.Token(sub, nil))
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
 	for i := 0; i+1 < len(headers); i += 2 {
 		req.Header.Set(headers[i], headers[i+1])
