@@ -68,7 +68,8 @@ func TestDocumentsThatCannotBeUsed(t *testing.T) {
 		reason  string
 	}{
 		{"resource metadata that is not JSON", map[string]string{"/": "401", "/meta": "{"}, found, "resource_metadata"},
-		{"an authorization server that is not https", map[string]string{"/": "401", "/meta": `{"resource":"BASE","authorization_servers":["http://x.example.com"]}`}, found, "authorization_servers"},
+		{"an authorization server that is not https", map[string]string{"/": "401", "/meta": `{"resource":"BASE","authorization_servers":["http://x.example.com"]}`}, found, "scheme_not_https"},
+		{"an authorization server at an address", map[string]string{"/": "401", "/meta": `{"resource":"BASE","authorization_servers":["https://127.0.0.1"]}`}, found, "host_not_a_name"},
 		{"no authorization server", map[string]string{"/": "401", "/meta": `{"resource":"BASE","authorization_servers":[]}`}, found, "no_authorization_server"},
 		{"metadata that is not JSON", map[string]string{"/.well-known/oauth-authorization-server": "{"}, issued, "metadata"},
 		{"metadata with no endpoints", map[string]string{"/.well-known/oauth-authorization-server": `{"issuer":"BASE"}`}, issued, "endpoints"},

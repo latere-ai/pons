@@ -175,9 +175,12 @@ func (s *Signin) resourceMetadata(ctx context.Context, conn Connector) (resource
 		if !sameResource(doc.Resource, u) {
 			return resourceDocument{}, nil, unsupported("resource_mismatch")
 		}
+		// An authorization server the dialer's rules refuse before
+		// resolving it is an address that cannot be reached, named by the
+		// rule, as an issuer or an endpoint of the metadata is.
 		for _, as := range doc.AuthorizationServers {
 			if why := checkEndpoint(as); why != "" {
-				return resourceDocument{}, nil, unsupported("authorization_servers")
+				return resourceDocument{}, nil, apierr.Fail(apierr.CodeConnectorUnreachable, why)
 			}
 		}
 		return doc, scopes, nil

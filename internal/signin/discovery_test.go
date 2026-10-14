@@ -80,10 +80,18 @@ func TestProtectedResourceDiscovery(t *testing.T) {
 			t.Errorf("%s", resource)
 		}
 	}
-	// An authorization server the document names that is not https.
-	r.api.Protect([]string{"repo"}, "http://auth.example.com")
-	if _, err := r.s.Discover(ctx, r.conns["found"], nil); apierr.Classify(err).Reason != "authorization_servers" {
-		t.Fatalf("an http authorization server: %v", err)
+	// An authorization server the document names that the dialer's rules
+	// refuse before resolving it is unreachable, named by the rule, as the
+	// general rule of discovery has it.
+	for server, rule := range map[string]string{
+		"http://auth.example.com": dial.SchemeNotHTTPS,
+		"https://10.0.0.1":        dial.HostNotAName,
+	} {
+		r.api.Protect([]string{"repo"}, server)
+		_, err := r.s.Discover(ctx, r.conns["found"], nil)
+		if e := apierr.Classify(err); e.Code != apierr.CodeConnectorUnreachable || e.Reason != rule {
+			t.Fatalf("the authorization server %s: %s %s", server, e.Code, e.Reason)
+		}
 	}
 	// A connector that cannot be reached.
 	gone := r.conns["found"]
