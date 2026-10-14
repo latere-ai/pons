@@ -331,7 +331,7 @@ func (c *Connector) legacy(w http.ResponseWriter, r *http.Request, m rpc, body [
 		c.mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 	case r.Method == http.MethodGet:
-		c.listen(w, r, sw)
+		c.listen(w, r)
 	case r.Method != http.MethodPost:
 		http.Error(w, "not a method of the protocol", http.StatusMethodNotAllowed)
 	case json.Unmarshal(body, &m) != nil:
@@ -345,7 +345,7 @@ func (c *Connector) legacy(w http.ResponseWriter, r *http.Request, m rpc, body [
 // listen is the stream a GET opens in a session of the earlier revision:
 // one notification that the tools changed, then nothing until the caller
 // goes away.
-func (c *Connector) listen(w http.ResponseWriter, r *http.Request, sw ConnectorSwitches) {
+func (c *Connector) listen(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
