@@ -61,15 +61,21 @@ held to the tool marks and the allow, a key of kind `mcp` probed by
 `tools/list`, discovery's first request for kind `mcp` made the same
 way, and the stub connector of 011 it is tested against, with the
 earlier revision's sessions. Google's own MCP servers wait for Google.
+Main also carries, since 2026-10-14, revocation by the last holder of a
+grant (007): a disconnect or a sweep revokes only when no other
+credential records the same issuer, client id and account, which let
+015's Google entries give Google's revocation endpoint; and discovery's
+refusal of an authorization server at an address the outbound rules
+refuse answered as row 3 of 012 says, `connector_unreachable` with the
+rule's name.
 
 What remains is a connector a person adds that signs people in, whose
 add and connect are not built (003, 006, 007); the count of denied calls
 and the other metrics and spans of 010; a check of the MCP address
 against a real MCP server (008); `deploy/`, the generated configuration
 reference and the release workflow's test of 011; the threat model's own
-tests of 012 and its metadata test, which waits for discovery's refusal
-of an authorization server to be made one with row 3; and 015's check
-against the real Google.
+tests of 012 and its metadata test; and 015's check against the real
+Google.
 
 Specs 013 and 014 are `complete` and archived: every criterion has its
 test, and the check against the real GitHub passed. Specs 002 and 008
