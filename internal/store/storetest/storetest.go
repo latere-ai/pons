@@ -634,7 +634,7 @@ func testGrants(t *testing.T, e env) {
 	holding := func(owner, name string, state store.State, m store.Meta) store.Connection {
 		t.Helper()
 		c := Connection(owner, name, state)
-		Create(t, e.st, c)
+		ok(t, e.st.Connections().Create(ctx, c, 0))
 		_, err := e.st.Credentials().Put(ctx, c.ID, CredentialWith(t, s, c, store.Secrets{AccessToken: "access-token-" + c.ID}, m))
 		ok(t, err)
 		return c
