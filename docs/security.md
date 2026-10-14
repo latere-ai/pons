@@ -36,6 +36,15 @@ done.
 
 **The caller's own token stays with Pons.** It is removed before a
 request leaves for the service, with every header Pons does not pass.
+The service's own sign-in challenge, its cookies and its redirects never
+reach the caller, so a client is never sent to sign in at the service
+around Pons.
+
+**A tool call is held to what the allow names.** On an MCP address,
+Pons reads the tool a call names and refuses one outside the allow's
+`tools`, a tool the catalog does not mark as only reading under a
+read-only allow, and a tool the catalog hides, before the credential is
+opened.
 
 **Pons reaches public addresses only.** Toward a service and its
 sign-in, Pons connects over `https` to names that resolve to public
@@ -50,8 +59,8 @@ branches a push may update, a push to any other is refused before any of
 it reaches the service.
 
 **A record says a call happened, not what it said.** A call record holds
-who called, when, the method, the path or git service, and the outcome,
-never an argument, a result, a header or a query string.
+who called, when, the method, the tool, the path or the git service, and
+the outcome, never an argument, a result, a header or a query string.
 
 ## What Pons does not defend
 

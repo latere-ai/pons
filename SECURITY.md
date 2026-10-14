@@ -43,6 +43,9 @@ code.
 | an address that aims at the installation's own network | an address a person adds is refused when it names an address, a private name or a port other than 443, and every request Pons makes to a service connects only to public addresses, checked on the address it connects to |
 | a caller of a connection's address | a path cannot climb out of the service's address, a redirect elsewhere is not followed, the caller's own `Authorization` and every header not listed are removed |
 | a caller allowed to push to some branches | a push naming a ref outside the allow's `refs` is refused before any of its pack is sent to the service, and git prints the rule as the reason |
+| an agent's session tricked by what it read | it never obtains a credential, whatever tool it calls with whatever arguments; a tool call outside the allow's `tools`, a writing tool under `read_only` and a tool the catalog hides are refused before the credential is opened; every call is recorded with its session, its tool and its effect |
+| a service that answers with hostile intent | its sign-in challenge never reaches the caller, and the caller's token never reaches it; its redirect is not followed and its cookie is neither kept nor passed on; headers past 64 KiB end the call, an answer streams and is never held whole, and a stream that goes silent ends at its idle time |
+| a caller that tries to exhaust Pons | a request ends at its size bound and a slow service at its timeouts; requests in flight are bounded per connection, per caller and per process, so a slow service holds its own connection's places and no other's; a refused caller is recorded at most once a minute |
 
 ## What is not defended
 
