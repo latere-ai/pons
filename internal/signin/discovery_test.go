@@ -5,12 +5,15 @@ package signin
 
 import (
 	"context"
+	"net/http"
 	"net/url"
 	"slices"
 	"strings"
 	"testing"
 
+	"latere.ai/x/pons/catalog"
 	"latere.ai/x/pons/internal/apierr"
+	"latere.ai/x/pons/internal/dial"
 	"latere.ai/x/pons/internal/store"
 	"latere.ai/x/pons/test/stubs"
 )
@@ -298,4 +301,31 @@ func registered(r *rig) string {
 		}
 	}
 	return body
+}
+
+// Discovery of a connector of kind mcp begins with the probe's tools/list,
+// with no credential: a POST of the current revision whose challenge names
+// the resource metadata, and the plan is found through it.
+func TestAnMCPConnectorIsFoundThroughItsProbe(t *testing.T) {
+	r := newRig(t)
+	stub := stubs.NewConnector(t)
+	stub.Set(func(sw *stubs.ConnectorSwitches) {
+		sw.Servers, sw.Scopes = []string{r.auth.Issuer()}, []string{"notes"}
+	})
+	r.s.Dial = dial.New(dial.Options{Resolver: stubs.Resolver(), Roots: stubs.Roots(), Permit: stubs.Permit(r.auth.Port(), stub.Port())})
+	conn := Connector{
+		Name: "notes", Title: "Notes", Kind: catalog.KindMCP, URL: stub.URL(),
+		Auth: catalog.Auth{Type: catalog.AuthOAuth, Discovery: catalog.DiscoveryResource, Resource: new(true)}, Ref: "notes"}
+	p, err := r.s.Discover(t.Context(), conn, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Issuer != r.auth.Issuer() || p.Resource != stub.URL() || !slices.Contains(p.Scopes, "notes") {
+		t.Fatalf("the plan %+v", p)
+	}
+	got := stub.Requests()
+	if len(got) != 2 || got[0].Method != http.MethodPost || got[0].RPC != "tools/list" || got[0].Credential != "" ||
+		got[0].Header.Get("MCP-Protocol-Version") != "2026-07-28" || got[0].Header.Get("Mcp-Method") != "tools/list" {
+		t.Fatalf("the first request %+v", got)
+	}
 }

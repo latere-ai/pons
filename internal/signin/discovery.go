@@ -16,6 +16,7 @@ import (
 	"latere.ai/x/pons/catalog"
 	"latere.ai/x/pons/internal/apierr"
 	"latere.ai/x/pons/internal/dial"
+	"latere.ai/x/pons/internal/mcp"
 )
 
 // Plan is what one sign-in uses, found before the person is sent away and
@@ -185,14 +186,23 @@ func (s *Signin) resourceMetadata(ctx context.Context, conn Connector) (resource
 }
 
 // challenge makes the one request of discovery with no credential: for a
-// connector of kind http, a GET of its url. It answers the challenge of a
-// 401 that names its resource metadata, and ok false for any other answer.
+// connector of kind mcp, the tools/list of the probe of
+// specs/008-carrying-a-call.md, and for one of kind http, a GET of its url.
+// It answers the challenge of a 401 that names its resource metadata, and
+// ok false for any other answer.
 func (s *Signin) challenge(ctx context.Context, conn Connector) (string, bool, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, conn.URL, nil)
+	var (
+		req *http.Request
+		err error
+	)
+	if conn.Kind == catalog.KindMCP {
+		req, err = mcp.ListTools(ctx, conn.URL)
+	} else if req, err = http.NewRequestWithContext(ctx, http.MethodGet, conn.URL, nil); err == nil {
+		req.Header.Set("Accept", "application/json")
+	}
 	if err != nil {
 		return "", false, unsupported("url")
 	}
-	req.Header.Set("Accept", "application/json")
 	resp, err := s.Dial.Do(ctx, dial.Request{HTTP: req, Ports: conn.Ports(), Timeout: tokenTimeout, MaxBody: maxTokenAnswer})
 	if err != nil {
 		return "", false, unreachable(err)
