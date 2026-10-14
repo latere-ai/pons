@@ -8,7 +8,7 @@ depends_on:
 affects: [internal/carry/, internal/store/, internal/httpapi/, internal/dial/, cmd/ponsd/]
 effort: medium
 created: 2026-10-12
-updated: 2026-10-13
+updated: 2026-10-14
 author: changkun
 ---
 
@@ -227,13 +227,17 @@ minute per subject and connection on a replica; a failure of Pons's own
 leaves none; a write that fails is logged. One line is logged per call
 when it ends.
 
-Remains: the metrics, the spans of a call and of an outbound request, the
-test over the keys of every log call, and the records of the address of
-kind `mcp`.
+The same for a call to the MCP address, its `method` the protocol
+method and its `tool` and `effect` those of a `tools/call`
+([[008-carrying-a-call]]).
+
+Remains: the metrics, the spans of a call and of an outbound request,
+and the test over the keys of every log call.
 
 | Criterion | State |
 |---|---|
-| `carry.TestACallLeavesOneRecord`, `carry.TestEveryOutcomeIsRecorded`, `carry.TestAStreamIsRecordedWhenItEnds`, `carry.TestARecordFailureNeverFailsTheCall` | held for the forwarding address by `carry.TestForwardedRequestsAreRecorded`, `carry.TestTimeoutsAndCancel`, `carry.TestAnIdleStreamIsCut` and `carry.TestInsufficientScope`; the tests of these names wait for the MCP address |
+| `carry.TestACallLeavesOneRecord`, `carry.TestEveryOutcomeIsRecorded`, `carry.TestAStreamIsRecordedWhenItEnds` | written, through the stub connector |
+| `carry.TestARecordFailureNeverFailsTheCall` | written: the answer is whole and the warning holds no content; the count of write failures waits for the metrics |
 | `TestRetentionSweep` | written, over both stores |
 | `TestNoCredentialLeavesButTowardItsConnector`, `TestATrickedSessionObtainsNoCredential` | the first written over every route served, responses, logs and the store, a query member and an argument included; spans and metrics wait for them, and the second for the MCP address |
 | `TestMetricLabelsAreBounded`, `TestEachMetricCountsItsEvent` | not written: no metric is recorded yet |

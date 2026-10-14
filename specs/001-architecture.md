@@ -6,7 +6,7 @@ depends_on: []
 affects: [cmd/ponsd/, internal/, authorizer/, api/]
 effort: large
 created: 2026-10-12
-updated: 2026-10-13
+updated: 2026-10-14
 author: changkun
 ---
 
@@ -32,7 +32,7 @@ invariants every other spec assumes.
 
 ## Current state
 
-Built but the MCP carrier; see Implementation status.
+Built; see Implementation status.
 
 Three designs in sibling projects are the precedent, and each spec says
 under this heading what it takes from them. A model gateway seals each
@@ -253,10 +253,8 @@ the operator client toward the issuer and the authorizer included; the
 owner policy and the authorizer client; invariants 1, 2, 5, 6 and 10 for
 the routes that exist.
 
-The carrier of the forwarding and git addresses and the sign-in with its
-confirm: invariants 3, 4, 7, 8 and 9 hold for them.
-
-Remains: the MCP carrier.
+The carrier of the MCP, forwarding and git addresses and the sign-in
+with its confirm: invariants 3, 4, 7, 8 and 9 hold for them.
 
 | Criterion | State |
 |---|---|

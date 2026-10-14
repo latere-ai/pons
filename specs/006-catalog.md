@@ -7,7 +7,7 @@ depends_on:
 affects: [catalog/, internal/config/, internal/httpapi/, internal/store/]
 effort: medium
 created: 2026-10-12
-updated: 2026-10-13
+updated: 2026-10-14
 author: changkun
 ---
 
@@ -291,9 +291,14 @@ kind, with the git host held to `hosts` and its port among the entry's
 ports; the GitHub entry of [[013-github-connector]] loads as that spec
 writes it.
 
+The tool marks hold a call at the MCP address: the effect a
+`tools/call` is asked and recorded with, and a call of a hidden tool
+refused ([[008-carrying-a-call]]).
+
 Remains: a connector a person adds of type `oauth`, which answers `422
-sign_in_unsupported` until its discovery, through the MCP probe, is built
-([[003-api]]).
+sign_in_unsupported` until its add checks its server's metadata and its
+connect signs in ([[003-api]]); the first request of its discovery, the
+MCP probe, is built.
 
 | Criterion | State |
 |---|---|
@@ -304,7 +309,7 @@ sign_in_unsupported` until its discovery, through the MCP probe, is built
 | `catalog.TestHostRule`, `catalog.TestHostsCoverTheURL` | written |
 | `catalog.TestEffect`, `catalog.FuzzGlob` | written |
 | `httpapi.TestAddedConnectorRules`, `TestAnAddedConnectorIsItsOwnersAlone` | written; the check of a server's metadata waits for discovery |
-| `TestRemovedConnectorKeepsItsConnections` | written: the connection is kept and reads with empty marks, and they return with the entry; the `409` of a call waits for the carrier |
+| `TestRemovedConnectorKeepsItsConnections` | written: the connection is kept and reads with empty marks, and they return with the entry; the `409` of a call through `carry.TestTheStateOfAConnection` |
 | `TestPublicPackagesDialNothing` | written |
 
 ## Acceptance criteria

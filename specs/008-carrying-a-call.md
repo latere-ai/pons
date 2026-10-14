@@ -1,6 +1,6 @@
 ---
 title: "Carrying a call: the address, what is forwarded and what is removed, the credential's place, streaming, the tool a request names, failures"
-status: in-progress
+status: testing
 track: core
 depends_on:
   - specs/002-objects.md
@@ -12,7 +12,7 @@ depends_on:
 affects: [internal/carry/, internal/httpapi/]
 effort: xlarge
 created: 2026-10-12
-updated: 2026-10-13
+updated: 2026-10-14
 author: changkun
 ---
 
@@ -35,10 +35,9 @@ gives a client.
 
 ## Current state
 
-The steps are built for the forwarding and git addresses of
-[[014-http-forwarding]]; the address of kind `mcp` is not. See
-Implementation status. Two designs in sibling projects are the
-precedent. A
+The steps are built for the MCP address, and for the forwarding and git
+addresses of [[014-http-forwarding]]. See Implementation status. Two
+designs in sibling projects are the precedent. A
 model gateway seals each provider's credential and opens it only to
 forward one call, which is the custody here. A sandbox control plane's
 egress gateway places a secret in the header its owner named, toward
@@ -64,7 +63,10 @@ open a stream, and `DELETE`, to end a session. The address takes all
 three ([[003-api]]) and forwards each unchanged, so a caller and a
 connector of either revision meet through it. A connector that speaks
 only the current revision answers `GET` and `DELETE` with `405`, and
-that status passes on as the connector's.
+that status passes on as the connector's. Any other method is `400
+invalid_request` with the reason `method`, after the caller and before
+the connection is loaded, and asks nothing. A path below the address is
+not the address: the router answers it as a route it does not serve.
 
 ### One request
 
@@ -95,7 +97,8 @@ In order. The first failing step answers, and nothing after it runs.
 8. **The allow's limits** ([[004-identity-and-authorization]]). A
    `tools/call` whose effect is `write` under `ReadOnly`, of a tool
    outside `Tools`, or of a tool the connector marks hidden is `403
-   forbidden` with `details.field` `tool`. A caller past its
+   forbidden` with `details.field` `tool` and `details.reason`
+   `read_only`, `tools` or `hidden`. A caller past its
    `CallsPerMinute`, or a connection at its limit of requests in
    flight, is `429 rate_limited`.
 9. **The state.** A connection `connected`, or `pending` with the
@@ -177,8 +180,10 @@ Everything else is removed, and these by name: the caller's
 `Transfer-Encoding`, `Upgrade`); and a header of the name the
 connector takes its credential in, so a caller cannot supply one.
 
-Pons adds `User-Agent: pons/<version>`. The carrier never writes the
-credential into the request itself: it hands it to the dialer as a
+Pons adds `User-Agent: pons/<version>`, and `Accept-Encoding: identity`,
+so the connector applies no content coding that the transport would
+undo on the way and the answer passes as the connector wrote it. The
+carrier never writes the credential into the request itself: it hands it to the dialer as a
 `dial.Secret` with its place and a matcher of the connector's `hosts`,
 and the dialer writes it in last, toward a matching host only
 ([[009-outbound-requests]]).
@@ -203,9 +208,9 @@ proxy between does not hold the stream. Only `Content-Type`,
 try to sign in at the connector itself, around Pons, for a credential
 it is never to hold.
 
-A `3xx` is `502 connector_unavailable`. The carrier follows no
-redirect, since the address a connector names is not one the catalog
-named.
+A `3xx` is `502 connector_unavailable` with `details.reason`
+`redirect_refused`, not retryable. The carrier follows no redirect,
+since the address a connector names is not one the catalog named.
 
 What the server sends passes through unread: notifications, a result
 that asks the client for input, and, in the earlier revisions, requests
@@ -305,16 +310,21 @@ request of discovery, with no credential ([[007-sign-in]]).
    tools/list`, and a body whose `_meta` carries the protocol version,
    a `clientInfo` of `pons` and its version, and empty client
    capabilities.
-2. A `400` whose body is not a JSON-RPC error of the current revision
-   marks a connector of an earlier revision, as the transport's
-   backward compatibility describes; a `404` or a `405` does not. The
-   probe then makes
-   that revision's `initialize` handshake, lists the tools in the
-   session it opens, and ends the session with `DELETE`.
-3. The outcome is read from the status: `2xx` accepts the key, `401` or
-   `403` refuses it, and anything else, or no answer, is a connector
-   that cannot be reached. Discovery reads the `401` and its challenge.
-   The list of tools is not read.
+2. A `400` whose body is not a JSON-RPC error of the current revision,
+   one whose code the revision defines, from -32099 to -32020, marks a
+   connector of an earlier revision, as the transport's backward
+   compatibility describes; a `404` or a `405` does not. The probe then
+   makes that revision's handshake, `initialize` of revision 2025-11-25
+   and `notifications/initialized` at the version it negotiated, lists
+   the tools in the session it opens, and ends the session with
+   `DELETE`, whatever the list answered.
+3. The outcome is read from the status of the last list, or of the
+   handshake's step that failed: `2xx` accepts the key, `401` or `403`
+   refuses it, and anything else, or no answer, is a connector that
+   cannot be reached. Discovery reads the `401` and its challenge. The
+   list of tools is not read, and an answer's body is read only as far
+   as the probe needs: a `400`'s, and an `initialize`'s for the version
+   it negotiated. The whole probe ends within 15 seconds.
 
 The probe's answers reach no caller and are kept nowhere.
 
@@ -375,39 +385,55 @@ sequenceDiagram
 
 ## Implementation status
 
-Built in `internal/carry` for the forwarding and git addresses of
-[[014-http-forwarding]], in the order of One request: the origin, the
-caller and its places in flight, the body's bound, the connection, the
-effect, the question, the kind, the limits of the allow (`ReadOnly`,
-`Tools`, `Refs`, `CallsPerMinute` and the connection's 16 places), the
-state, the credential opened and refreshed by one writer or minted, the
-dialer with the credential bound to the connector's hosts, the answer
-streamed and flushed per read with the idle bound, the refusal of a
-credential and the scope challenge, and the record, denied calls once a
-minute per subject and connection.
+Built in `internal/carry` for the MCP address and for the forwarding and
+git addresses of [[014-http-forwarding]], in the order of One request:
+the origin, the caller and its places in flight, the body's bound, the
+connection, the effect, the question, the kind, the limits of the allow
+(`ReadOnly`, `Tools`, the hidden mark, `Refs`, `CallsPerMinute` and the
+connection's 16 places), the state, the credential opened and refreshed
+by one writer or minted, the dialer with the credential bound to the
+connector's hosts, the answer streamed and flushed per read with the
+idle bound, the refusal of a credential and the scope challenge, and the
+record, denied calls once a minute per subject and connection.
 
-Remains: the address of kind `mcp`, which no route serves yet, so the
-router answers it with a plain-text `404` and not an error of
-[[003-api]]'s shape, and what is read from its body: the method and the tool, the
-mirrored headers, the earlier revisions' `GET`, `DELETE` and sessions,
-and the probe of a key by `tools/list`. Until then a key of kind `mcp` is
-stored without a probe ([[003-api]]).
+The MCP address serves `POST`, `GET` and `DELETE` at
+`{base}/connections/{id}/mcp` and refuses any other method before the
+connection is loaded. A `POST`'s body is read whole up to
+`PONS_MAX_REQUEST_BYTES` and parsed in `carry.parseMessage` for its
+method and, for `tools/call`, its tool, with the duplicate and case
+rules and the mirrored headers compared after their base64 form is
+decoded (`internal/mcp`). The probe of a key of kind `mcp` is the
+`tools/list` above, with the earlier revision's handshake, list and
+`DELETE` for a connector that answers it `400` with no error of the
+current revision, and discovery's first request for kind `mcp` is the
+same `tools/list` with no credential ([[007-sign-in]]). The stub
+connector of [[011-distribution]] serves both revisions.
+
+Remains: the count of every denied call in `pons.calls`, which waits for
+the metrics of [[010-records-and-observability]], and a check against a
+real MCP server, as [[013-github-connector]] had against the real
+GitHub.
 
 | Criterion | State |
 |---|---|
-| `carry.TestRequestHeaders`, `carry.TestAnswerPassesUnchanged`, `carry.TestResponseHeaders`, `carry.TestStreamIsFlushedPerEvent`, `carry.TestParseOnlyTheMethodAndTool`, `carry.FuzzParse`, `carry.TestProbe` | not written: the MCP address |
-| `TestCarrierFollowsNoRedirect` | for the forwarding address, `carry.TestARedirectStaysOnItsConnector`; the MCP address waits |
-| `carry.TestNothingTellsAnIdBeforeTheQuestion`, `TestADenyDoesNotConfirmAnId` | the second written for a use of both addresses |
-| `carry.TestLimitsOfAnAllow`, `carry.TestALimitRefusesBeforeTheCredential`, `TestAConnectionsConcurrencyIsBounded` | the second written, with the connection's places; the others wait for the MCP address |
-| `TestACallersConcurrencyIsBounded` | the places are held by `carry.TestALimitRefusesBeforeTheCredential`; the e2e case waits |
+| `carry.TestRequestHeaders` | written, one case per `auth` |
+| `carry.TestAnswerPassesUnchanged`, `carry.TestResponseHeaders` | written |
+| `carry.TestStreamIsFlushedPerEvent` | written, against a stream the stub sends an event of only once the one before was read |
+| `TestCarrierFollowsNoRedirect` | written for the MCP address; `carry.TestARedirectStaysOnItsConnector` for the forwarding address |
+| `carry.TestParseOnlyTheMethodAndTool`, `carry.FuzzParse` | written |
+| `carry.TestNothingTellsAnIdBeforeTheQuestion`, `TestADenyDoesNotConfirmAnId` | written, the second for a use of every address |
+| `carry.TestLimitsOfAnAllow`, `carry.TestALimitRefusesBeforeTheCredential`, `TestAConnectionsConcurrencyIsBounded` | written |
+| `TestACallersConcurrencyIsBounded` | written, with no authorizer and under an allow that names no limit |
 | `TestReconnectKeepsServing`, `TestRemovedConnectorKeepsItsConnections` | written, the `409` of the second through `carry.TestTheStateOfAConnection` |
-| `carry.TestConnectorRefusesTheCredential`, `carry.TestInsufficientScope` | the first as `carry.TestARefusedForwardedRequest`; the second written |
-| `carry.TestOriginIsChecked` | held by `carry.TestForwardedHeaders` |
-| `TestAnyReplicaServesASession` | not written: sessions are the MCP address's |
-| `carry.TestTimeoutsAndCancel` | written for the forwarding address, with `carry.TestAnIdleStreamIsCut` |
-| `TestEveryCallIsRecorded`, `TestDeniedCallsAreRecordedOncePerMinute` | held by `carry.TestForwardedRequestsAreRecorded` and `carry.TestAPushIsHeldToItsRefs` |
-| `TestCallThatNeedsARefresh` | written, through the forwarding address |
-| `TestNoCredentialLeavesButTowardItsConnector` | the forwarding and git addresses exercised with a canary key |
+| `carry.TestConnectorRefusesTheCredential`, `carry.TestInsufficientScope` | written for the MCP address; `carry.TestARefusedForwardedRequest` for the forwarding address |
+| `carry.TestOriginIsChecked` | written; `carry.TestForwardedHeaders` holds it for the forwarding address |
+| `TestAnyReplicaServesASession` | written, over two servers of one Postgres and the stub of the earlier revision |
+| `carry.TestTimeoutsAndCancel` | written for both addresses, with `carry.TestAnIdleStreamIsCut` |
+| `carry.TestProbe` | written; `carry.TestProbeOfAKey` for kind `http` |
+| `TestEveryCallIsRecorded` | written; a `503` of Pons's own leaves no record, and a `500` takes the same path |
+| `TestDeniedCallsAreRecordedOncePerMinute` | written for the one record; the count waits for the metrics |
+| `TestCallThatNeedsARefresh` | written, through the forwarding address and through the MCP address with a streamed answer |
+| `TestNoCredentialLeavesButTowardItsConnector` | written: the MCP, forwarding and git addresses exercised with a canary key, and an argument carried and kept nowhere |
 
 ## Not in this spec
 

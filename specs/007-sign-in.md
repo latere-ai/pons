@@ -11,7 +11,7 @@ depends_on:
 affects: [internal/signin/, internal/httpapi/, internal/store/]
 effort: xlarge
 created: 2026-10-12
-updated: 2026-10-13
+updated: 2026-10-14
 author: changkun
 ---
 
@@ -489,17 +489,22 @@ A call past a connection's 16 places in flight is answered `429`, so of
 fifty callers at once the ones past the places come back after their
 `Retry-After`; one of them refreshes.
 
-Remains: a connector a person adds of type `oauth`, whose discovery's
-first request is the MCP probe, and which answers `422
-sign_in_unsupported` with `sign_in_not_available` until the MCP carrier
-is built; and the metrics `pons.refreshes` and `pons.signins`
-([[010-records-and-observability]]).
+The first request of discovery for a connector of kind `mcp` is the
+probe's `tools/list` of [[008-carrying-a-call]], a `POST` with no
+credential, and its challenge names the protected resource metadata
+(`signin.TestAnMCPConnectorIsFoundThroughItsProbe`).
+
+Remains: a connector a person adds of type `oauth`, which answers `422
+sign_in_unsupported` with `sign_in_not_available` until its add checks
+that its server takes a client metadata document and says it sends
+`iss`, and its connect and reconnect run the sign-in; and the metrics
+`pons.refreshes` and `pons.signins` ([[010-records-and-observability]]).
 
 | Criterion | State |
 |---|---|
-| `signin.TestProtectedResourceDiscovery` | written |
+| `signin.TestProtectedResourceDiscovery` | written, with `signin.TestAnMCPConnectorIsFoundThroughItsProbe` for kind `mcp` |
 | `signin.TestAuthorizationServerMetadata` | written, with `signin.TestDocumentsThatCannotBeUsed` |
-| `signin.TestClientSelection` | written; the added connector's own document is held at the plan, its add waits for the MCP probe |
+| `signin.TestClientSelection` | written; the added connector's own document is held at the plan, and its add and connect wait |
 | `httpapi.TestClientMetadataDocument`, `signin.TestRegistrationIsKeptPerIssuer` | written |
 | `signin.TestAuthorizationRequest`, `signin.TestScopeSelection` | written |
 | `signin.TestIssuerValidation`, `signin.TestCallbackIsOnce` | written |

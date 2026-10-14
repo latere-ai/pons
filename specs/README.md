@@ -37,33 +37,46 @@ REST APIs.
 
 v0.1.1, of 2026-10-13, is the first release with an image; v0.1.0
 published nothing. Steps 1 to 4 of the build order are built; of step 5
-the forwarding and git addresses of 014 with the carrier's steps of 008;
+the forwarding and git addresses of 014 with the carrier's steps of 008,
+and since 2026-10-14 the MCP address of 008 against the stub connector;
 step 6, the sign-in of 007 with GitHub's habits of 013, for catalog
 connectors; and step 7 for GitHub, the whole path against the stubs and,
 on 2026-10-13, against the real GitHub, as 013's Outcome records. The
 release workflow of 011 is built, and the repository is public since
 that check.
 
-Main carries, after v0.1.1 and for the next release: a connection's
-kind and a connector's sent to the authorizer as `connection_kind` and
-`connector_kind`; a refused push answered in git's protocol, so git
-prints the rule; git's probe before a push larger than its post buffer
-forwarded; the forwarding address held to an API's methods; the limit
-`requests`, with which an authorizer holds a forwarding request to
-method and path patterns and a request outside them is answered `403`
-naming the limit (004); an `authorize_url` that may carry a query; the
-Google entries of 015; and the documentation in `docs/`. What remains is the MCP address of 008
-and what waits on it, such as a connector a person adds that signs
-people in; the metrics and spans of 010; `deploy/`, the generated
-configuration reference, the stub connector and the release workflow's
-test of 011; the threat model's own tests of 012; and 015's check
+v0.1.2, of 2026-10-13, carries: a connection's kind and a connector's
+sent to the authorizer as `connection_kind` and `connector_kind`; a
+refused push answered in git's protocol, so git prints the rule; git's
+probe before a push larger than its post buffer forwarded; the
+forwarding address held to an API's methods; the limit `requests`, with
+which an authorizer holds a forwarding request to method and path
+patterns and a request outside them is answered `403` naming the limit
+(004); an `authorize_url` that may carry a query; the Google entries of
+015; and the documentation in `docs/`. Main carries, for the next
+release, the MCP address of 008, built on 2026-10-14 for MCP servers in
+general: a connection of kind `mcp` used as a Model Context Protocol
+server over streamable HTTP, each tool call asked about by its tool and
+held to the tool marks and the allow, a key of kind `mcp` probed by
+`tools/list`, discovery's first request for kind `mcp` made the same
+way, and the stub connector of 011 it is tested against, with the
+earlier revision's sessions. Google's own MCP servers wait for Google.
+
+What remains is a connector a person adds that signs people in, whose
+add and connect are not built (003, 006, 007); the count of denied calls
+and the other metrics and spans of 010; a check of the MCP address
+against a real MCP server (008); `deploy/`, the generated configuration
+reference and the release workflow's test of 011; the threat model's own
+tests of 012 and its metadata test, which waits for discovery's refusal
+of an authorization server to be made one with row 3; and 015's check
 against the real Google.
 
 Specs 013 and 014 are `complete` and archived: every criterion has its
-test, and the check against the real GitHub passed. Spec 002 is
-`testing`: built, and every one of its criteria has its test. The other
-specs are `in-progress`: each says under Implementation status what is
-built and which of its criteria wait.
+test, and the check against the real GitHub passed. Specs 002 and 008
+are `testing`: built, and every one of their criteria has its test; 008
+waits for the count of 010's metrics and a check against a real MCP
+server. The other specs are `in-progress`: each says under
+Implementation status what is built and which of its criteria wait.
 
 ## Index
 
@@ -76,7 +89,7 @@ built and which of its criteria wait.
 | [005](005-store-and-sealing.md) | Store and sealing: the tables, the two adapters and their one suite, envelope encryption, key rotation | large | in-progress | 001, 002 |
 | [006](006-catalog.md) | Catalog: the file an operator writes, the members of each way to give access, a connector a person adds, tool marks | medium | in-progress | 002 |
 | [007](007-sign-in.md) | Sign-in: discovery, how Pons identifies itself, the flow and its confirm, the token exchange, refresh by one writer, reconnect | xlarge | in-progress | 002, 003, 005, 006, 009 |
-| [008](008-carrying-a-call.md) | Carrying a call: the address, what is forwarded and what is removed, the credential's place, streaming, the tool a request names, failures | xlarge | in-progress | 002, 003, 004, 005, 007, 009 |
+| [008](008-carrying-a-call.md) | Carrying a call: the address, what is forwarded and what is removed, the credential's place, streaming, the tool a request names, failures | xlarge | testing | 002, 003, 004, 005, 007, 009 |
 | [009](009-outbound-requests.md) | Outbound requests: the one dialer, public addresses only, redirects, limits, and a credential bound to its hosts | large | in-progress | 001 |
 | [010](010-records-and-observability.md) | Records and observability: the call record and its retention, metrics, traces, logs that hold no content, the probes | medium | in-progress | 002, 008 |
 | [011](011-distribution.md) | Distribution: the repository scaffold, the binary and its images, configuration, the stubs, test tiers, and release | large | in-progress | 001 |

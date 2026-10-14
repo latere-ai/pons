@@ -7,7 +7,7 @@ depends_on:
 affects: [cmd/ponsd/, internal/config/, internal/version/, test/stubs/, deploy/, docs/, Makefile, Dockerfile, .lateregate.yaml, .githooks/, .github/, CHANGELOG.md, SECURITY.md]
 effort: large
 created: 2026-10-12
-updated: 2026-10-13
+updated: 2026-10-14
 author: changkun
 ---
 
@@ -371,8 +371,13 @@ higher plan: v0.1.0 published nothing for that reason, and v0.1.1, of
 2026-10-13, is the first release with an image. With no `deploy/`, a
 release archives no manifests.
 
-Remains: the stub connector;
-`deploy/`, and `docs/configuration.md` generated from the table, so the
+The stub connector is built beside them: a Model Context Protocol
+server over streamable HTTP at `mcp.example.com`, of the current
+revision, with five tools, a streamed answer, and a switch for each
+answer of the table, the earlier revision's sessions, `GET` and
+`DELETE` included, and a stream that waits for the test between events.
+
+Remains: `deploy/`, and `docs/configuration.md` generated from the table, so the
 `deploy` job of `verify` is not there yet; `TestReleaseWorkflowShape`.
 
 | Criterion | State |
@@ -383,7 +388,7 @@ Remains: the stub connector;
 | `TestStartRefusals` | written |
 | `TestCheckReports`, `TestCheckReportsWhatRemains` | written |
 | `TestVersionIsStamped` | written |
-| `stubs.TestConnectorSpeaksStreamableHTTP`, `stubs.TestEachSwitchChangesOneAnswer` | not written: the stub connector comes with the carrier |
+| `stubs.TestConnectorSpeaksStreamableHTTP`, `stubs.TestEachSwitchChangesOneAnswer` | written |
 | `stubs.TestAuthorizationServerRunsASignIn`, `stubs.TestAuthorizerRecordsEveryQuestion` | written, with `stubs.TestEachAuthSwitchChangesOneAnswer`, `stubs.TestAPIServesACodeHostsRoutes` and `stubs.TestGitHostServesGit` |
 | `TestMemoryStore`, `TestPostgresStore`, `TestPostgresStoreThroughAPooler` | written |
 | `TestEveryRouteIsExercised` | written, over the routes served |

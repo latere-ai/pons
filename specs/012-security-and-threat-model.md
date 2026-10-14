@@ -11,7 +11,7 @@ depends_on:
 affects: [cmd/ponsd/, internal/, test/stubs/, SECURITY.md]
 effort: medium
 created: 2026-10-12
-updated: 2026-10-13
+updated: 2026-10-14
 author: changkun
 ---
 
@@ -182,13 +182,19 @@ both files and holds each commitment to a row.
 
 ## Implementation status
 
-The tests the table names exist for rows 1, 5, 6, 8, 9, 10, 12 and 13;
-for row 2 but `TestATrickedSessionObtainsNoCredential`; for row 4
+The tests the table names exist for rows 1, 2, 5, 6, 8, 9, 10, 11, 12
+and 13; for row 3 all but `TestMetadataCannotPointInside`, the others
+run against the stub connector through the MCP address; for row 4
 `dial.TestConnectsToTheAddressItChecked`; for row 7 all but
-`TestATokenStaysWithItsAuthorizationServer`; for row 11
-`TestLimitsHoldWithNoAuthorizer`, `TestEachMemberOfAnAllowChangesTheOutcome`
-and `dial.TestLimits`. Row 3 waits for the MCP address, whose stub
-connector its tests run against.
+`TestATokenStaysWithItsAuthorizationServer`. `SECURITY.md` lists rows 2,
+3 and 11 since their tests exist, row 3 without the metadata.
+
+Discovery refuses an authorization server that the protected resource
+metadata names at an address that is not https, or whose host is an
+address, with `422 sign_in_unsupported` and the reason
+`authorization_servers` ([[007-sign-in]]), where row 3 and the criterion
+of `TestMetadataCannotPointInside` say `connector_unreachable` with the
+rule's name. That test waits for the two to be made one.
 
 Remains: `TestThreatModelTestsExist` and `TestSecurityPolicyMatchesTheModel`,
 which hold this table and `SECURITY.md` to the tree, and the tests of the

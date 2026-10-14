@@ -8,7 +8,7 @@ depends_on:
 affects: [authorizer/, internal/access/, internal/httpapi/, internal/carry/]
 effort: medium
 created: 2026-10-12
-updated: 2026-10-13
+updated: 2026-10-14
 author: changkun
 ---
 
@@ -29,7 +29,7 @@ a caller's reach over a connection can be narrowed to single tools.
 
 ## Current state
 
-Built but the question and the limits at the address of kind `mcp`; see Implementation status.
+Built; see Implementation status.
 
 The verifier and the authorizer contract are shared packages. A
 document parsing service in a sibling project is the precedent for the
@@ -360,9 +360,12 @@ so the key list above and its criterion name seven.
 A use of the forwarding and git addresses asks `connection.use` with
 `method`, `tool`, `effect` and a push's `refs`, and holds `read_only`,
 `tools`, `refs`, `calls_per_minute` and the counts in flight; the
-`session` claim is copied into the record ([[014-http-forwarding]]).
-
-Remains: the same for the address of kind `mcp`, with the MCP carrier.
+`session` claim is copied into the record ([[014-http-forwarding]]). A
+use of the MCP address asks with the protocol method, and for a
+`tools/call` the tool and its effect, and holds `read_only` and `tools`
+to `tools/call` alone, beside the tool marks' `hidden`, the rate and
+the counts in flight ([[008-carrying-a-call]]). No question or field of
+the contract changed for it.
 
 | Criterion | State |
 |---|---|
@@ -372,7 +375,7 @@ Remains: the same for the address of kind `mcp`, with the MCP carrier.
 | `authorizer.TestTheVocabularyIsTheSpecs`, `access.TestTheRowsAreTheSpecs` | written |
 | `authorizer.TestNoFieldTakesANameTheEnvelopeKeeps`, `authorizer.TestEveryFieldSurvivesTheWire`, `access.TestEveryMemberReachesTheAuthorizer` | written, the last against the stub authorizer |
 | `httpapi.TestEveryRouteAsksItsAction`, `httpapi.TestADenyAndAnOutageAnswerBeforeAnythingIsDone` | written, over both stores |
-| `access.TestTheEnvelopeCarriesTheCallerAndTheQuestion`, `carry.TestAUseAsksWithItsTool` | written |
+| `access.TestTheEnvelopeCarriesTheCallerAndTheQuestion`, `carry.TestAUseAsksWithItsTool` | written, the second at every address |
 | `access.TestAuthorizerConformance` | written, against the stub authorizer over TLS |
 | `access.TestWhatTheClientRemembers`, `access.TestACreateIsAlwaysAsked`, `access.TestOneRetryOnAConnectionFailure` | written |
 | `carry.TestAnAllowIsRememberedPerTool` | written, against the stub authorizer |
@@ -381,7 +384,7 @@ Remains: the same for the address of kind `mcp`, with the MCP carrier.
 | `authorizer.TestWhatRequestsAdmit`, `carry.TestARequestOutsideRequestsIsForbidden` | written |
 | `authorizer.TestTheWireNamesEveryMemberAndNoOther` | written, with seven keys |
 | `TestWhoseACreateIs`, `TestAStoredConnectionKeepsItsOwner` | written, the second for a replaced key, a reconnect and its confirm |
-| `TestEachMemberOfAnAllowChangesTheOutcome`, `carry.TestALimitRefusesBeforeTheCredential` | written, a case per member and the list of members waiting empty |
+| `TestEachMemberOfAnAllowChangesTheOutcome`, `carry.TestALimitRefusesBeforeTheCredential` | written, a case per member and the list of members waiting empty; `carry.TestLimitsOfAnAllow` holds `read_only` and `tools` at the MCP address |
 | `TestLimitsHoldWithNoAuthorizer` | written |
 | `TestAListIsNarrowedByItsAllowsFilter` | written |
 | `TestAServiceListsTheOwnerItNames`, `access.TestAListNamesItsOwner` | written |
