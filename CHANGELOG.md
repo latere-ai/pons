@@ -6,6 +6,47 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+- Added: the MCP address. A connection of kind `mcp` is used at its
+  `address`, `/v1/connections/{id}/mcp`, as a Model Context Protocol
+  server over streamable HTTP: a client sends one JSON-RPC message per
+  `POST` with its own token, and Pons forwards it to the connector's
+  `url` with the connection's credential added, streaming the answer
+  back event by event. `GET` and `DELETE` reach a server of a revision
+  from 2025-03-26 to 2025-11-25, whose `Mcp-Session-Id` passes both
+  ways, so any replica serves a session. Pons reads only the message's
+  `method` and, for `tools/call`, `params.name`; a body that is not one
+  JSON object, a duplicate or differently cased `method`, `params` or
+  `params.name`, or an `Mcp-Method` or `Mcp-Name` header that differs
+  from the body is `400 invalid_request`. `WWW-Authenticate`,
+  `Set-Cookie` and `Location` never pass back, and a redirect is
+  `502 connector_unavailable` with the reason `redirect_refused`.
+
+- Added: for your authorizer, `connection.use` at the MCP address sends
+  `connection_kind` `mcp`, `method` the protocol method (`GET` or
+  `DELETE` for an earlier revision's request, none for a reply), and for
+  `tools/call` the `tool` and its `effect`, `read` when a
+  `tools.read_only` glob of the entry matches it. `read_only` and
+  `tools` hold `tools/call` alone, so a list of tools passes, and a call
+  of a tool the entry marks `hidden` is refused with `403 forbidden` on
+  `tool`. An authorizer that allows `connection.use` today without
+  looking at the kind allows these calls too, every tool included, so
+  answer them with the limits you want before rolling this Pons.
+
+- Changed: a key for a connector of kind `mcp` is tried before it is
+  kept, by listing the server's tools, and for a server of an earlier
+  revision by its handshake, a list in its session and the end of that
+  session; a key the server refuses is `422 credential_refused`, and a
+  server that does not answer the list with a `2xx` is
+  `422 connector_unreachable`. Before, such a key was stored untried.
+
+- Changed: the first request of discovery for a connector of kind `mcp`
+  that signs people in is the current revision's `tools/list` with no
+  credential, as the protocol has a client make it, in place of a `GET`.
+
+- Changed: `PONS_MAX_REQUEST_BYTES`, 4 MiB by default, bounds the
+  message a caller sends to an MCP address; a larger one is
+  `413 request_too_large`, whether the connection exists or not.
+
 ## v0.1.2 - 2026-10-13
 
 - Added: the limit `requests`, with which an authorizer holds a caller
