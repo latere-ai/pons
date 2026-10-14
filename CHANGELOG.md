@@ -47,6 +47,34 @@ here is refused before it is pushed.
   message a caller sends to an MCP address; a larger one is
   `413 request_too_large`, whether the connection exists or not.
 
+- Changed: a disconnect, and the sweep of a sign-in that ran out, revoke
+  a credential at its service only when no other connection holds the
+  same grant: the same issuer, client id and `account`, of any owner, a
+  sign-in waiting for its confirm and a reconnecting connection's own
+  credential included. A service may end every token of a grant at one
+  revocation, as Google does, so before, disconnecting one of a person's
+  connections of one account could end the others. A skipped
+  revocation is logged with `reason` `grant_held` and the `count` of
+  holders, and never the account. A connection whose account was not
+  read is revoked at its own disconnect, as before; give `account` to an
+  entry whose service ends whole grants.
+
+- Changed: the Google entries, Gmail, Google Calendar and Google Drive,
+  give `revoke_url: https://oauth2.googleapis.com/revoke`. Add it to
+  yours: the disconnect of a
+  person's last connection of a Google account then removes the
+  installation's access in that Google Account, while their other
+  connections of it keep working until then. Keep the three on one
+  client: Google ends the grant of the whole project, and Pons compares
+  the client.
+
+- Changed: protected resource metadata that names an authorization
+  server at an address that is not `https`, or whose host is an IP
+  address, is `422 connector_unreachable` with `details.reason`
+  `scheme_not_https` or `host_not_a_name`, as an issuer or an endpoint
+  of the metadata already was. Before, it was `422 sign_in_unsupported`
+  with the reason `authorization_servers`.
+
 ## v0.1.2 - 2026-10-13
 
 - Added: the limit `requests`, with which an authorizer holds a caller
