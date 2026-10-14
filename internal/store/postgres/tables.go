@@ -442,3 +442,22 @@ func (x credentials) ReleaseRefresh(ctx context.Context, connectionID string) er
 	tag, err := x.v.q.Exec(ctx, `UPDATE credentials SET refresh_until = NULL WHERE connection = $1`, connectionID)
 	return affected(tag.RowsAffected(), err)
 }
+
+func (x credentials) GrantHolders(ctx context.Context, g store.Grant) (int64, error) {
+	if g.Account == "" {
+		return 0, nil
+	}
+	// One statement reads one snapshot, so a confirm's transaction, which
+	// writes the credential and deletes the flow, is seen whole or not at
+	// all. A member the meta leaves out is the empty string.
+	var n int64
+	err := x.v.q.QueryRow(ctx, `
+SELECT (SELECT count(*) FROM credentials
+         WHERE kind = $1 AND coalesce(meta->>'issuer', '') = $2
+           AND coalesce(meta->>'client_id', '') = $3 AND meta->>'account' = $4)
+     + (SELECT count(*) FROM flows
+         WHERE pending_kind = $1 AND coalesce(pending_meta->>'issuer', '') = $2
+           AND coalesce(pending_meta->>'client_id', '') = $3 AND pending_meta->>'account' = $4)`,
+		store.KindOAuth, g.Issuer, g.ClientID, g.Account).Scan(&n)
+	return n, err
+}

@@ -249,6 +249,23 @@ type Credentials interface {
 	CompleteRefresh(ctx context.Context, connectionID string, fromVersion int64, sealed SealedCredential) error
 	// ReleaseRefresh clears the lease.
 	ReleaseRefresh(ctx context.Context, connectionID string) error
+	// GrantHolders counts the credentials of kind oauth whose meta records
+	// the grant, a connection's and a flow's pending one alike, in one
+	// statement, so a confirm that moves a pending credential to its
+	// connection is counted once. A grant with no account matches nothing
+	// and is answered 0 without a statement.
+	GrantHolders(ctx context.Context, g Grant) (int64, error)
+}
+
+// Grant is what an authorization server granted one person through one
+// client, as a credential's meta records it: the issuer, the client id and
+// the account the sign-in read. A server may end the whole grant when any
+// token of it is revoked, so a revocation waits for its last holder
+// (specs/007-sign-in.md).
+type Grant struct {
+	Issuer   string
+	ClientID string
+	Account  string
 }
 
 // Flow is a sign-in in progress (specs/002-objects.md, specs/007-sign-in.md).

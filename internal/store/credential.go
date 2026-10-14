@@ -41,6 +41,12 @@ type Meta struct {
 	Account string `json:"account,omitempty"`
 }
 
+// Grant is the grant the meta records. Its Account is empty when the
+// sign-in read none, and such a grant matches no other.
+func (m Meta) Grant() Grant {
+	return Grant{Issuer: m.Issuer, ClientID: m.ClientID, Account: m.Account}
+}
+
 // Secrets is a credential's plaintext: one JSON document of the members
 // specs/002-objects.md lists as sealed for its kind. It exists between a
 // request and a seal, and between an open and a forwarded call, and nowhere

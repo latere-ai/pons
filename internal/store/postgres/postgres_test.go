@@ -179,6 +179,8 @@ func TestEveryMethodFailsOnAClosedPool(t *testing.T) {
 	add("claim", err)
 	add("complete", s.Credentials().CompleteRefresh(ctx, c.ID, 1, cred))
 	add("release", s.Credentials().ReleaseRefresh(ctx, c.ID))
+	_, err = s.Credentials().GrantHolders(ctx, store.Grant{Issuer: "i", ClientID: "c", Account: "a"})
+	add("grant holders", err)
 	add("flow put", s.Flows().Put(ctx, flow))
 	_, err = s.Flows().Get(ctx, c.ID)
 	add("flow get", err)

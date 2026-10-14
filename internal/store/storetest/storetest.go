@@ -71,6 +71,7 @@ func Run(t *testing.T, open Open) {
 		{"Credentials", testCredentials},
 		{"Refresh", testRefresh},
 		{"Delete", testDelete},
+		{"Grants", testGrants},
 		{"Flows", testFlows},
 		{"Registrations", testRegistrations},
 		{"Calls", testCalls},
@@ -109,7 +110,13 @@ func Create(t testing.TB, st store.Store, cs ...store.Connection) {
 // Credential is a sealed credential of a connection.
 func Credential(t testing.TB, s store.Sealer, c store.Connection, secrets store.Secrets) store.SealedCredential {
 	t.Helper()
-	meta := store.Meta{Issuer: "https://auth.example.com", TokenEndpoint: "https://auth.example.com/token", TokenType: "Bearer"}
+	return CredentialWith(t, s, c, secrets, store.Meta{Issuer: "https://auth.example.com", TokenEndpoint: "https://auth.example.com/token", TokenType: "Bearer"})
+}
+
+// CredentialWith is a sealed credential of kind oauth of a connection,
+// with its meta.
+func CredentialWith(t testing.TB, s store.Sealer, c store.Connection, secrets store.Secrets, meta store.Meta) store.SealedCredential {
+	t.Helper()
 	plain, err := secrets.Encode()
 	if err != nil {
 		t.Fatal(err)
@@ -611,6 +618,97 @@ func Delete(t *testing.T, st store.Store) {
 }
 
 func testDelete(t *testing.T, e env) { Delete(t, e.st) }
+
+// testGrants holds GrantHolders to the credentials that record a grant: a
+// connection's and a flow's pending one, of any owner, of kind oauth, by
+// issuer, client id and account, a grant with no account matching nothing;
+// a confirm's move is counted once; and of connections of one grant
+// deleted at once, each deleter counting after its delete, one counts none.
+func testGrants(t *testing.T, e env) {
+	ctx := context.Background()
+	s := Sealer(t, 1)
+	g := store.Grant{Issuer: "https://accounts.example.com", ClientID: "the-shared-client", Account: "person@example.com"}
+	meta := func(g store.Grant) store.Meta {
+		return store.Meta{Issuer: g.Issuer, ClientID: g.ClientID, Account: g.Account, TokenEndpoint: "https://accounts.example.com/token"}
+	}
+	holding := func(owner, name string, state store.State, m store.Meta) store.Connection {
+		t.Helper()
+		c := Connection(owner, name, state)
+		Create(t, e.st, c)
+		_, err := e.st.Credentials().Put(ctx, c.ID, CredentialWith(t, s, c, store.Secrets{AccessToken: "access-token-" + c.ID}, m))
+		ok(t, err)
+		return c
+	}
+	count := func(g store.Grant, want int64) {
+		t.Helper()
+		n, err := e.st.Credentials().GrantHolders(ctx, g)
+		ok(t, err)
+		failIf(t, n != want, "%+v has %d holders, want %d", g, n, want)
+	}
+	mail := holding("alice", "mail", store.StateConnected, meta(g))
+	holding("bob", "calendar", store.StateConnected, meta(g))
+	other := g
+	other.Account = "someone-else@example.com"
+	holding("alice", "other-account", store.StateConnected, meta(other))
+	unread := g
+	unread.Account = ""
+	holding("alice", "no-account", store.StateConnected, meta(unread))
+	elsewhere := g
+	elsewhere.ClientID = "another-client"
+	holding("alice", "other-client", store.StateConnected, meta(elsewhere))
+	key := Connection("alice", "key", store.StateConnected)
+	Create(t, e.st, key)
+	pasted := CredentialWith(t, s, key, store.Secrets{Value: "a-pasted-key-value"}, meta(g))
+	pasted.Kind = store.KindToken
+	_, err := e.st.Credentials().Put(ctx, key.ID, pasted)
+	ok(t, err)
+	// A sign-in past its callback holds the grant through its pending
+	// credential.
+	drive := Connection("carol", "drive", store.StatePending)
+	Create(t, e.st, drive)
+	f := Flow(t, s, drive, e.clock.Now().Add(time.Minute))
+	f.Pending = CredentialWith(t, s, drive, store.Secrets{AccessToken: "pending-" + drive.ID}, meta(g))
+	ok(t, e.st.Flows().Put(ctx, f))
+
+	count(g, 3)
+	count(other, 1)
+	count(elsewhere, 1)
+	count(unread, 0)
+	count(store.Grant{Issuer: "https://elsewhere.example.com", ClientID: g.ClientID, Account: g.Account}, 0)
+	// The confirm moves the pending credential to its connection in one
+	// transaction, and the grant keeps its count.
+	ok(t, e.st.Tx(ctx, func(tx store.Tx) error {
+		if _, err := tx.Credentials().Put(ctx, drive.ID, f.Pending); err != nil {
+			return err
+		}
+		return tx.Flows().Delete(ctx, drive.ID)
+	}))
+	count(g, 3)
+	ok(t, e.st.Connections().Delete(ctx, mail.ID))
+	count(g, 2)
+
+	// Of eight connections of one grant deleted at once, each counting
+	// after its own delete, one counts none.
+	last := store.Grant{Issuer: g.Issuer, ClientID: g.ClientID, Account: "last@example.com"}
+	var ids []string
+	for i := range 8 {
+		ids = append(ids, holding(fmt.Sprintf("owner-%d", i), "last", store.StateConnected, meta(last)).ID)
+	}
+	counts := make([]int64, len(ids))
+	errs := race(len(ids), func(i int) error {
+		if err := e.st.Connections().Delete(ctx, ids[i]); err != nil {
+			return err
+		}
+		n, err := e.st.Credentials().GrantHolders(ctx, last)
+		counts[i] = n
+		return err
+	})
+	for _, err := range errs {
+		ok(t, err)
+	}
+	failIf(t, !slices.Contains(counts, 0), "no deleter counted none: %v", counts)
+	count(last, 0)
+}
 
 // AReconnectWinsOverARefresh: a caller claims a refresh, a confirm or a new
 // key writes the credential meanwhile, and the completion writes nothing.

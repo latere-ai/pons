@@ -536,6 +536,42 @@ func (x viewCredentials) ReleaseRefresh(_ context.Context, connectionID string) 
 	return nil
 }
 
+func (x viewCredentials) GrantHolders(_ context.Context, g store.Grant) (int64, error) {
+	if g.Account == "" {
+		return 0, nil
+	}
+	holds := func(c store.SealedCredential) (bool, error) {
+		if c.Kind != store.KindOAuth {
+			return false, nil
+		}
+		m, err := store.DecodeMeta(c.Meta)
+		if err != nil {
+			return false, err
+		}
+		return m.Grant() == g, nil
+	}
+	var n int64
+	for _, row := range x.v.d.credentials {
+		held, err := holds(row.sealed)
+		if err != nil {
+			return 0, err
+		}
+		if held {
+			n++
+		}
+	}
+	for _, f := range x.v.d.flows {
+		held, err := holds(f.Pending)
+		if err != nil {
+			return 0, err
+		}
+		if held {
+			n++
+		}
+	}
+	return n, nil
+}
+
 // --- flows ----------------------------------------------------------------
 
 type viewFlows struct{ v *view }

@@ -108,6 +108,11 @@ func (x credentials) ReleaseRefresh(ctx context.Context, connectionID string) er
 	return x.s.one(ctx, func(v *view) error { return v.Credentials().ReleaseRefresh(ctx, connectionID) })
 }
 
+func (x credentials) GrantHolders(ctx context.Context, g store.Grant) (n int64, err error) {
+	err = x.s.one(ctx, func(v *view) error { n, err = v.Credentials().GrantHolders(ctx, g); return err })
+	return n, err
+}
+
 type flows struct{ s *Store }
 
 func (x flows) Put(ctx context.Context, f store.Flow) error {
