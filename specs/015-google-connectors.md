@@ -10,7 +10,7 @@ depends_on:
 affects: [catalog/, internal/signin/]
 effort: small
 created: 2026-10-13
-updated: 2026-10-13
+updated: 2026-10-14
 author: changkun
 ---
 
@@ -65,6 +65,7 @@ connectors:
       issuer: https://accounts.google.com
       authorize_url: https://accounts.google.com/o/oauth2/v2/auth?access_type=offline&prompt=consent+select_account
       token_url: https://oauth2.googleapis.com/token
+      revoke_url: https://oauth2.googleapis.com/revoke
       client: {id: 123456789012-example.apps.googleusercontent.com, secret: {env: GOOGLE_CLIENT_SECRET}}
       scopes:
         - openid
@@ -88,6 +89,7 @@ connectors:
       issuer: https://accounts.google.com
       authorize_url: https://accounts.google.com/o/oauth2/v2/auth?access_type=offline&prompt=consent+select_account
       token_url: https://oauth2.googleapis.com/token
+      revoke_url: https://oauth2.googleapis.com/revoke
       client: {id: 123456789012-example.apps.googleusercontent.com, secret: {env: GOOGLE_CLIENT_SECRET}}
       scopes:
         - openid
@@ -111,6 +113,7 @@ connectors:
       issuer: https://accounts.google.com
       authorize_url: https://accounts.google.com/o/oauth2/v2/auth?access_type=offline&prompt=consent+select_account
       token_url: https://oauth2.googleapis.com/token
+      revoke_url: https://oauth2.googleapis.com/revoke
       client: {id: 123456789012-example.apps.googleusercontent.com, secret: {env: GOOGLE_CLIENT_SECRET}}
       scopes:
         - openid
@@ -176,17 +179,32 @@ connectors:
 - **Refresh.** Google's access token lasts an hour, and its answer to a
   refresh carries no new refresh token, so the one held is kept
   ([[007-sign-in]]).
-- **No revocation, for now.** Google's revocation endpoint,
-  `https://oauth2.googleapis.com/revoke`, takes a token in the form of
-  RFC 7009. Google's documentation does not say whether revoking one
-  token ends only that token or the person's whole grant to the client,
-  which the three connections share: the second would end a person's
-  Calendar when they disconnect Gmail. Until a check against the real
-  Google settles it, the entries give no `revoke_url`, and a disconnect
-  deletes the credential without revoking it at Google. The person can
-  remove the installation's access in their Google Account. If the
-  check shows a revocation ends one token alone, the entries add the
-  endpoint and nothing else changes.
+- **Revocation, by the last connection of a grant.** Google's
+  revocation endpoint, `https://oauth2.googleapis.com/revoke`, takes a
+  token in the form of RFC 7009 and answers `200`, or `400` with an
+  error code. Its documentation, read on 2026-10-14, settles what the
+  first entries waited for: a revocation is not per token. It "removes
+  all OAuth 2.0 scopes previously granted to a project, invalidating any
+  issued access or refresh tokens for all clients registered under that
+  project", and revoking a token of a combined authorization revokes
+  all of that authorization's scopes at once. Revoking at the disconnect
+  of Gmail would therefore end the person's Calendar and Drive
+  connections of the same Google account. The entries give `revoke_url`,
+  and a disconnect revokes only when no other credential holds the same
+  grant: the same issuer, client id and account, of any owner
+  ([[007-sign-in]]). A person who disconnects Gmail keeps Calendar, and
+  the disconnect of the last of their connections of that account ends
+  the grant at Google, which then no longer lists the installation in
+  the person's Google Account. The account compared is the `email` the
+  sign-in read: the sign-in records no stable subject. A sign-in whose
+  account read failed records none, and its disconnect revokes as
+  before, which can end the person's other connections of that account.
+  Google's grant is the project's while Pons compares the client, so the
+  three entries share one client: entries given different clients of one
+  project would revoke a grant another still holds. Pons authenticates
+  its client on the revocation as RFC 7009 has a client do, which
+  Google's examples leave out; the check against the real Google
+  confirms that Google takes it.
 - **Effects.** `GET` reads and every other method writes
   ([[014-http-forwarding]]), except Calendar's `POST
   /freeBusy`, a query for free time, which the entry marks
@@ -238,14 +256,17 @@ year.
 
 Built: the three entries load as this spec writes them, a sign-in whose
 `authorize_url` carries a query sends its members beside the sign-in's
-own, and a query that names one of the sign-in's own is refused. The
-check against the real Google is open.
+own, and a query that names one of the sign-in's own is refused. Since
+2026-10-14 the entries give Google's revocation endpoint, and a
+disconnect revokes only for the last holder of a grant
+([[007-sign-in]]). The check against the real Google is open.
 
 | Criterion | State |
 |---|---|
 | `catalog.TestTheGoogleEntries` | written; loads the entries from this file |
 | `signin.TestTheAuthorizeURLsQueryIsKept` | written |
 | `catalog.TestLoadRefusals`, its case of a sign-in member in `authorize_url` | written |
+| `signin.TestARevocationWaitsForTheLastHolder`, `TestOnlyTheLastConnectionOfAGrantRevokes` | written, the second with two entries of one client against the stubs, over both store adapters |
 | the manual check against the real Google | open |
 
 ## Not in this spec
@@ -260,7 +281,8 @@ changes. Each waits for a need.
 
 | Criterion | Test that proves it |
 |---|---|
-| The entries above validate, of kind `http` with no `resource` member, each account host under its `hosts`, no `revoke_url`, and Calendar's free time query reading while a draft writes | `catalog.TestTheGoogleEntries` |
+| The entries above validate, of kind `http` with no `resource` member, each account host under its `hosts`, Google's revocation endpoint as `revoke_url`, and Calendar's free time query reading while a draft writes | `catalog.TestTheGoogleEntries` |
+| Of a person's connections of one account through entries of one client, a disconnect revokes nothing while another holds the grant and the other still answers, and the last one revokes; a connection of another account revokes at its own disconnect | `signin.TestARevocationWaitsForTheLastHolder`, `TestOnlyTheLastConnectionOfAGrantRevokes`, e2e tier |
 | The authorization request of an entry whose `authorize_url` carries `access_type` and `prompt` carries both as written beside the sign-in's own members, each of which `catalog.AuthorizationMembers` names, and the sign-in connects | `signin.TestTheAuthorizeURLsQueryIsKept` |
 | An `authorize_url` whose query names a member the sign-in sets is refused when the catalog loads | `catalog.TestLoadRefusals` |
-| Against the real Google with the installation's client, a person connects each entry and sees their email as its `account`; lists their mail, reads their calendar, asks for free time and lists their files through the forwarding addresses; writes a draft and is refused a send by the installation's authorizer; and, after disconnecting one entry, the other two still answer | a manual check before the entries ship, recorded in this spec's Outcome |
+| Against the real Google with the installation's client, a person connects each entry and sees their email as its `account`; lists their mail, reads their calendar, asks for free time and lists their files through the forwarding addresses; writes a draft and is refused a send by the installation's authorizer; after disconnecting one entry, the other two still answer; and after disconnecting the last, Google takes the revocation and the person's Google Account no longer lists the installation | a manual check before the entries ship, recorded in this spec's Outcome |

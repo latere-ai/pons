@@ -79,7 +79,8 @@ func TestTheGitHubEntry(t *testing.T) {
 }
 
 // The Google entries of spec 015 validate: kind http with no resource
-// member, the account read from a host under hosts, no revocation, the
+// member, the account read from a host under hosts, Google's revocation
+// endpoint, which a disconnect asks only for a grant's last holder, the
 // authorization request's members in authorize_url's query, each url as
 // spec 015 names it, and Calendar's free time query reading while a draft
 // writes.
@@ -100,7 +101,7 @@ func TestTheGoogleEntries(t *testing.T) {
 		}
 		a := g.Auth
 		if g.Kind != catalog.KindHTTP || g.ResourceFor() || g.GitURL() != "" || a.Discovery != catalog.DiscoveryNone ||
-			a.Issuer != "https://accounts.google.com" || a.RevokeURL != "" || a.Client == nil || a.Client.Secret == nil || a.Client.Secret.Env != "GOOGLE_CLIENT_SECRET" {
+			a.Issuer != "https://accounts.google.com" || a.RevokeURL != "https://oauth2.googleapis.com/revoke" || a.Client == nil || a.Client.Secret == nil || a.Client.Secret.Env != "GOOGLE_CLIENT_SECRET" {
 			t.Fatalf("%s: %+v", name, g)
 		}
 		if a.Account == nil || a.Account.Field != "email" || !slices.Contains(g.HostPatterns(), "openidconnect.googleapis.com") {
