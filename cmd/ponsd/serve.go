@@ -208,7 +208,7 @@ func (srv *server) api(hooks Hooks) *httpapi.Server {
 		Store: srv.store, Sealer: srv.sealer, Auth: srv.access.Authenticator, Authz: srv.access.Authorizer,
 		Dial: outside, Signin: api.Signin, Resolve: api.Resolve,
 		PublicURL: s.PublicURL, BasePath: s.BasePath, ReturnURLs: s.ReturnURLs,
-		MaxForwardBytes: s.MaxForwardBytes, HeaderTimeout: s.CallHeaderTimeout, IdleTimeout: s.StreamIdleTimeout,
+		MaxRequestBytes: s.MaxRequestBytes, MaxForwardBytes: s.MaxForwardBytes, HeaderTimeout: s.CallHeaderTimeout, IdleTimeout: s.StreamIdleTimeout,
 		MaxInflight: s.MaxInflight, MaxInflightPerSubject: s.MaxInflightPerSubject, Log: srv.log,
 	}
 	return api

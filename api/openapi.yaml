@@ -352,6 +352,72 @@ paths:
         "401": {$ref: "#/components/responses/Error"}
         "404": {$ref: "#/components/responses/Error"}
         "503": {$ref: "#/components/responses/Error"}
+  /connections/{id}/mcp:
+    post:
+      tags: [addresses]
+      operationId: mcpPost
+      summary: Carry a message to the connector
+      description: >-
+        The MCP address of a connection of kind `mcp`: a Model Context Protocol server over streamable HTTP. Send what you would send the connector, one JSON-RPC message per request, with your own bearer token; the request goes to the connector's url as the catalog writes it, with the connection's credential added and your token removed, and the answer, a JSON body or an event stream, comes back as the connector gave it. The body is read up to `PONS_MAX_REQUEST_BYTES` and must be one JSON object; for `tools/call` its `params.name` is the tool the allow is asked about and held to. `Mcp-Method` and `Mcp-Name`, when sent, must agree with the body.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, description: One JSON-RPC request, notification or reply.}
+      responses:
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+        "502": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+        "504": {$ref: "#/components/responses/Error"}
+        default: {$ref: "#/components/responses/Forwarded"}
+    get:
+      tags: [addresses]
+      operationId: mcpListen
+      summary: Open a stream of an earlier revision
+      description: >-
+        The MCP address of a connection of kind `mcp`, for a connector of a protocol revision from 2025-03-26 to 2025-11-25, which opens a stream with GET in the session `Mcp-Session-Id` names. The request reaches the connector unchanged but for the credential; a connector of the current revision answers `405`, which passes on as its own.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+      responses:
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+        "502": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+        "504": {$ref: "#/components/responses/Error"}
+        default: {$ref: "#/components/responses/Forwarded"}
+    delete:
+      tags: [addresses]
+      operationId: mcpEnd
+      summary: End a session of an earlier revision
+      description: >-
+        The MCP address of a connection of kind `mcp`, for a connector of a protocol revision from 2025-03-26 to 2025-11-25, which ends the session `Mcp-Session-Id` names with DELETE. The request reaches the connector unchanged but for the credential; a connector of the current revision answers `405`, which passes on as its own.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+      responses:
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "429": {$ref: "#/components/responses/Error"}
+        "502": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+        "504": {$ref: "#/components/responses/Error"}
+        default: {$ref: "#/components/responses/Forwarded"}
   /connections/{id}/http/{path}:
     get:
       tags: [addresses]

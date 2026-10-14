@@ -35,13 +35,14 @@ type upstream struct {
 	api  *stubs.API
 	auth *stubs.AuthServer
 	git  *stubs.GitHost
+	mcp  *stubs.Connector
 }
 
 // newUpstream starts the stubs. A client of the example's warehouse is any
 // client named "wh", whatever its secret.
 func newUpstream(t testing.TB) *upstream {
 	t.Helper()
-	u := &upstream{api: stubs.NewAPI(t), auth: stubs.NewAuthServer(t)}
+	u := &upstream{api: stubs.NewAPI(t), auth: stubs.NewAuthServer(t), mcp: stubs.NewConnector(t)}
 	u.auth.AddClient("wh", "")
 	if tt, ok := t.(*testing.T); ok {
 		if _, err := stubs.GitPath(); err == nil {
@@ -56,7 +57,7 @@ func newUpstream(t testing.TB) *upstream {
 
 // ports are the stubs' listeners, which the harness's dialer may reach.
 func (u *upstream) ports() []int {
-	ports := []int{u.api.Port(), u.auth.Port()}
+	ports := []int{u.api.Port(), u.auth.Port(), u.mcp.Port()}
 	if u.git != nil {
 		ports = append(ports, u.git.Port())
 	}
@@ -72,12 +73,16 @@ func (u *upstream) gitURL() string {
 	return u.api.URL()
 }
 
-// testCatalog is the example file, its warehouse minting at the stub, with
+// testCatalog is the example file, its warehouse minting at the stub and
+// its search at the stub connector, which a pasted key is probed at, with
 // one more entry of kind http at the stub API and one that links to where
 // a person changes what the service grants.
 func testCatalog(t testing.TB, u *upstream) catalog.Catalog {
 	t.Helper()
-	example := strings.Replace(string(catalog.Example), "https://login.warehouse.example.org/oauth/token", u.auth.TokenURL(), 1)
+	example := strings.NewReplacer(
+		"https://login.warehouse.example.org/oauth/token", u.auth.TokenURL(),
+		"https://api.search.example.net/mcp", u.mcp.URL(),
+	).Replace(string(catalog.Example))
 	extra := `
   - name: api
     title: Example API
@@ -205,7 +210,7 @@ func newHarnessOn(t testing.TB, st store.Store, opts ...option) *harness {
 		ReturnURLs: []string{"https://app.example.com/done", "https://app.example.com/settings/"}}
 	h.srv.Carrier = &carry.Carrier{
 		Store: st, Sealer: sealer, Auth: tokens{}, Authz: h.authz, Dial: outside, Signin: h.srv.Signin, Resolve: h.srv.Resolve,
-		PublicURL: h.srv.PublicURL, BasePath: h.srv.BasePath, MaxForwardBytes: 1 << 20,
+		PublicURL: h.srv.PublicURL, BasePath: h.srv.BasePath, MaxRequestBytes: 1 << 20, MaxForwardBytes: 1 << 20,
 		HeaderTimeout: 5 * time.Second, IdleTimeout: 5 * time.Second, MaxInflight: 64, MaxInflightPerSubject: 32, Log: h.srv.Log,
 	}
 	for _, o := range opts {

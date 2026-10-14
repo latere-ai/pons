@@ -363,7 +363,10 @@ func TestHandlersHoldTheContract(t *testing.T) {
 	check(http.MethodPost, "/v1/connectors", "alice", map[string]any{"name": "oauth", "title": "O", "kind": "mcp", "url": "https://o.example.com/mcp", "auth": map[string]any{"type": "oauth"}})
 	check(http.MethodPost, "/v1/connectors", "alice", `{"name": 1}`)
 	check(http.MethodGet, "/v1/connectors/"+ctr, "alice", nil)
-	conn := check(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": ctr, "credential": map[string]any{"value": "a-key-of-alice"}})
+	// A key of an added connector is probed at its url, on port 443, which
+	// no stub listens on: the connect is refused as unreachable.
+	check(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": ctr, "credential": map[string]any{"value": "a-key-of-alice"}})
+	conn := check(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": "search", "credential": map[string]any{"value": "a-key-of-alice"}})
 	con := idOf(t, conn)
 	check(http.MethodDelete, "/v1/connectors/"+ctr, "alice", nil)
 	check(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": "tracker", "return_to": "https://app.example.com/done"})

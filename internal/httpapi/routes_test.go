@@ -20,6 +20,7 @@ import (
 	"latere.ai/x/pons/internal/store"
 	"latere.ai/x/pons/internal/store/postgres"
 	"latere.ai/x/pons/internal/store/postgres/pgtest"
+	"latere.ai/x/pons/test/stubs"
 )
 
 func TestMain(m *testing.M) { pgtest.Main(m) }
@@ -48,10 +49,16 @@ func fixture(t testing.TB, h *harness) (ctr, con string) {
 }
 
 // request is one valid request of a route, as alice, about the fixture. A
-// request to an address is to the connection of kind http.
+// request to the MCP address is to the connection of kind mcp, and one to
+// another address to the connection of kind http.
 func request(h *harness, rt Route, ctr, con string) (path string, body any, headers []string) {
 	path = "/v1" + strings.NewReplacer("{ref}", "search", "{id}", con).Replace(rt.Path)
 	switch {
+	case strings.HasSuffix(rt.Path, "/mcp") && rt.Method == http.MethodPost:
+		body = map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": map[string]any{
+			"_meta": map[string]any{"io.modelcontextprotocol/protocolVersion": stubs.MCPRevision},
+		}}
+		headers = []string{"MCP-Protocol-Version", stubs.MCPRevision, "Mcp-Method", "tools/list", "Accept", "application/json, text/event-stream"}
 	case strings.HasSuffix(rt.Path, "/http/{path}"):
 		path = "/v1/connections/" + h.web + "/http/user"
 	case strings.HasSuffix(rt.Path, "/git/{path}") && rt.Method == http.MethodGet:
@@ -82,6 +89,9 @@ func TestEveryRouteAsksItsAction(t *testing.T) {
 	// A confirm with no flow and a reconnect of a key answer an error after
 	// their question.
 	after := map[string]int{"/connections/{id}/confirm": http.StatusGone, "/connections/{id}/reconnect": http.StatusConflict}
+	// The stub connector speaks the current revision, which answers GET and
+	// DELETE 405, and that status passes on as the connector's.
+	afterMethod := map[string]int{http.MethodGet + " /connections/{id}/mcp": http.StatusMethodNotAllowed, http.MethodDelete + " /connections/{id}/mcp": http.StatusMethodNotAllowed}
 	for _, rt := range Routes() {
 		if slices.Contains(public, rt) {
 			continue
@@ -95,7 +105,11 @@ func TestEveryRouteAsksItsAction(t *testing.T) {
 			}
 			path, body, headers := request(h, rt, ctr, con)
 			a := h.do(rt.Method, path, "alice", body, headers...)
-			if want, ok := after[rt.Path]; (ok && a.status != want) || (!ok && a.status >= 300) {
+			want, ok := after[rt.Path]
+			if w, byMethod := afterMethod[rt.Method+" "+rt.Path]; byMethod {
+				want, ok = w, true
+			}
+			if (ok && a.status != want) || (!ok && a.status >= 300) {
 				t.Fatalf("%d %s", a.status, a.body)
 			}
 			asked := h.authz.questions()[before:]

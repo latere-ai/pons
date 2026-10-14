@@ -67,8 +67,8 @@ type Server struct {
 	// /readyz carries.
 	AllowPrivate bool
 
-	// Carrier serves the forwarding and git addresses of connections, and
-	// probes a key. Signin signs people in at the other service.
+	// Carrier serves the MCP, forwarding and git addresses of connections,
+	// and probes a key. Signin signs people in at the other service.
 	Carrier *carry.Carrier
 	Signin  *signin.Signin
 
@@ -123,10 +123,15 @@ var routes = []route{
 // the base path.
 type Route struct{ Method, Path string }
 
-// carried are the routes of the carrier: the forwarding address takes
-// every method OpenAPI names but TRACE, and the git address git's smart
-// HTTP alone (specs/014-http-forwarding.md).
+// carried are the routes of the carrier: the MCP address takes POST, and
+// GET and DELETE for a connector of an earlier protocol revision
+// (specs/008-carrying-a-call.md); the forwarding address takes every method
+// OpenAPI names but TRACE, and the git address git's smart HTTP alone
+// (specs/014-http-forwarding.md).
 var carried = []Route{
+	{http.MethodPost, "/connections/{id}/mcp"},
+	{http.MethodGet, "/connections/{id}/mcp"},
+	{http.MethodDelete, "/connections/{id}/mcp"},
 	{http.MethodGet, "/connections/{id}/http/{path}"},
 	{http.MethodPut, "/connections/{id}/http/{path}"},
 	{http.MethodPost, "/connections/{id}/http/{path}"},
