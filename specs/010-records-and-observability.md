@@ -181,6 +181,7 @@ scheme, host and path.
 | the start: which store, who decides, whether anything can be sealed, the dial switch and the proxy ([[011-distribution]]) | info, and warning for the switch |
 | one per call when it ends: `call`, `connection`, `connector`, `outcome`, `status`, `duration_ms`, sizes | info |
 | a refresh, a sign-in's end, a state a connection moved to | info |
+| a revocation at a disconnect or a sweep ([[007-sign-in]]): `outcome` `revoked`, `failed` with the `reason`, or `skipped` with the `reason` `grant_held` and the `count` of credentials that still hold the grant, or `grant_not_counted`; never the account | info, and warning for `failed` and `grant_not_counted` |
 | a record or a sweep that failed to write, a value no key opens | warning |
 | an error nobody classified | error |
 

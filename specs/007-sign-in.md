@@ -452,21 +452,57 @@ do, so nothing granted before is lost.
 `DELETE /connections/{id}` opens the credential, removes the row and
 the ciphertext in one transaction ([[002-objects]]), and then revokes
 at the revocation endpoint recorded with the credential at the sign-in,
-when there is one. Pons sends the refresh token, or else the access
-token, with its `token_type_hint` and the client (RFC 7009), once, in
-10 seconds. A failure is logged without the token and does not fail the
-delete. A credential nothing can open, with no sealing key, under a key
-no longer listed or with a binding that does not match
+when there is one and the credential was the last holder of its grant
+(below). Pons sends the refresh token, or else the access token, with
+its `token_type_hint` and the client (RFC 7009), once, in 10 seconds. A
+failure is logged without the token and does not fail the delete. A
+credential nothing can open, with no sealing key, under a key no longer
+listed or with a binding that does not match
 ([[005-store-and-sealing]]), is removed without revoking. Pons cannot
 revoke a pasted key.
+
+**The last holder of a grant revokes.** A revocation may end more than
+the token sent: RFC 7009 lets a server end the grant the token came
+from, and Google's ends every token the person granted the client's
+project ([[015-google-connectors]]). Two connections of one person
+through one client, of two connectors of one service or in two owners'
+names, then share one grant, and revoking at the disconnect of one
+would end the other. A grant is the issuer, the client id and the
+account recorded with the credential. The account is the one the
+sign-in read through `auth.account` ([[013-github-connector]]), the
+connection's `account`: the sign-in records no stable subject, such as
+OpenID Connect's `sub`, to prefer. Every connection's credential and
+every flow's pending credential of kind `oauth` that records the same
+three, of any owner, holds the grant. Pons revokes only when none is
+left. Otherwise it logs that the revocation was skipped, with `reason`
+`grant_held` and `count` the holders, and never the account
+([[010-records-and-observability]]). A credential whose account was not
+read names no person, so no other credential holds its grant and it is
+revoked as before: an entry whose service ends whole grants reads the
+account.
+
+The holders are counted after the removal has committed, in one
+statement of their own. Of two disconnects of a grant's last two
+holders at once, the one that counts later sees the other's removal and
+revokes; both may, and a second revocation of an ended grant fails and
+is logged. Counting inside the removal's transaction would not hold:
+under read committed each would see the other's row, not yet deleted,
+and both would skip. One statement counts the connections' credentials
+and the flows' pending ones together, so a confirm that moves a pending
+credential to its connection is counted once. A count that fails skips
+the revocation with a warning, `reason` `grant_not_counted`, and the
+delete stands.
 
 ### The sweep
 
 Each replica sweeps every minute. It takes the flows past their time,
-each handed by the store to one sweeper, and discards and revokes their
-pending credentials as a disconnect does. A `pending` connection that
-never had a credential is deleted with its flow. One being reconnected
-returns to `connected`, or to `needs_reconnect` when it has a `reason`.
+each handed by the store to one sweeper, and discards their pending
+credentials, revoking each as a disconnect does when it was the last
+holder of its grant. A connection being reconnected holds the grant of
+the credential it keeps until the confirm, so a reconnect that runs out
+does not end it. A `pending` connection that never had a credential is
+deleted with its flow. One being reconnected returns to `connected`, or
+to `needs_reconnect` when it has a `reason`.
 
 Ending a flow, at the callback or the confirm, sets its time to now: a
 mismatched `iss`, an answer with `error`, a failed exchange and a wrong
@@ -484,7 +520,8 @@ with the `iss` rules, the code exchange with GitHub's habits, the account
 read once, the confirm, `return_to` held to `PONS_RETURN_URLS`, refresh by
 one writer, a `client_credentials` token minted at use and a first mint
 at connect, reconnect with the union of scopes and the issuer kept,
-disconnect with revocation, and the sweep every minute on every replica.
+disconnect with revocation by the last holder of a grant, and the sweep
+every minute on every replica.
 A call past a connection's 16 places in flight is answered `429`, so of
 fifty callers at once the ones past the places come back after their
 `Retry-After`; one of them refreshes.
@@ -517,6 +554,7 @@ that its server takes a client metadata document and says it sends
 | `signin.TestMintedTokenIsNotStored` | written |
 | `signin.TestReconnectAsksForTheUnion`, `TestReconnectKeepsServing`, `signin.TestReconnectKeepsItsIssuer` | written |
 | `TestDeleteRevokesBestEffort`, `signin.TestSweep` | written, with `signin.TestDisconnectRevokes` |
+| `signin.TestARevocationWaitsForTheLastHolder`, `signin.TestTheLastTwoDisconnectsAtOnce`, `TestOnlyTheLastConnectionOfAGrantRevokes` | written, the last over the memory store and two replicas of one Postgres, with the store suite's `Grants` and `signin.TestAnUncountedGrantIsNotRevoked` |
 | `TestNoCredentialLeavesButTowardItsConnector` | written: issued tokens of a sign-in in GitHub's manner hold the canary |
 
 ## Not in this spec
@@ -547,4 +585,5 @@ no `account`: it asks for no identity scope a connector did not name.
 | A `client_credentials` token is minted once per process until 60 seconds before its expiry and appears in no table | `signin.TestMintedTokenIsNotStored` |
 | A reconnect for more scopes asks for the union of old and named scopes, and the old credential answers calls until the confirm; a reconnect whose discovery finds another issuer is `422` with `issuer_changed` and changes nothing | `signin.TestReconnectAsksForTheUnion`, `TestReconnectKeepsServing`, `signin.TestReconnectKeepsItsIssuer` |
 | A delete revokes at the revocation endpoint recorded with the credential, a failed revocation does not fail it, and a credential nothing can open is removed without revoking; the sweep ends a late flow, and a flow ended by a wrong code or an error answer at its next tick, revokes its pending credential and restores a reconnecting connection's state | `TestDeleteRevokesBestEffort`, `signin.TestSweep` |
+| A delete or a sweep revokes only when no other connection's credential or flow's pending credential, of any owner, records the same issuer, client id and account, a reconnecting connection's own credential included, and logs a skipped revocation with its reason and without the account; a credential whose account was not read is revoked as before; of the last two holders of a grant disconnected at once at least one revokes | `signin.TestARevocationWaitsForTheLastHolder`, `signin.TestTheLastTwoDisconnectsAtOnce`, `TestOnlyTheLastConnectionOfAGrantRevokes` against both store adapters |
 | No token, code, verifier, `state` or finish code appears in a response, a log line, an error or a record | `TestNoCredentialLeavesButTowardItsConnector` |

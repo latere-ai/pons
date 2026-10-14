@@ -8,7 +8,7 @@ depends_on:
 affects: [internal/store/, internal/config/, cmd/ponsd/]
 effort: large
 created: 2026-10-12
-updated: 2026-10-13
+updated: 2026-10-14
 author: changkun
 ---
 
@@ -77,6 +77,10 @@ type Credentials interface {
     ClaimRefresh(ctx context.Context, connectionID string, lease time.Duration) (claimed bool, version int64, err error)
     CompleteRefresh(ctx context.Context, connectionID string, fromVersion int64, sealed SealedCredential) error
     ReleaseRefresh(ctx context.Context, connectionID string) error
+    // GrantHolders counts the oauth credentials, a flow's pending ones
+    // included, whose meta records the issuer, client id and account, in
+    // one statement; a grant with no account matches nothing.
+    GrantHolders(ctx context.Context, g Grant) (int64, error)
 }
 
 type Rotation interface {
@@ -362,7 +366,7 @@ Remains: `TestNoTransactionSpansARefresh` and the 100 calls of
 | Criterion | State |
 |---|---|
 | `TestMemoryStore`, `TestPostgresStore`, `TestPostgresStoreThroughAPooler` | written |
-| the `Transactions`, `Names`, `Cap`, `Delete`, `Flows`, `Refresh` and `Prune` cases | written |
+| the `Transactions`, `Names`, `Cap`, `Delete`, `Grants`, `Flows`, `Refresh` and `Prune` cases | written |
 | `store.TestConnectionStateMachine` | written |
 | `TestDeleteRemovesTheCredentialFirst` | written |
 | `store.TestACopiedCiphertextDoesNotOpen`, `store.TestEverySealIsFresh`, `store.TestRewrittenEndpointDoesNotOpen` | written |
@@ -395,6 +399,7 @@ Remains: `TestNoTransactionSpansARefresh` and the 100 calls of
 | After a key is prepended, the rewrap moves every value of the three tables under it and keeps every ciphertext byte; a refresh during it loses no write; `ponsd check` reports what remains and exits non-zero for a value under no key | `TestRotationRewrapsEveryValue`, `TestRewrapNeverOverwritesARefresh`, `TestCheckReportsWhatRemains` |
 | With no sealing key a server over a database does not start; one on the memory store starts, says so, answers `503 sealing_unavailable` to every request that would seal or open, and serves reads and deletes; a value no key opens answers the same and moves no state | `TestWithoutASealingKey`, `TestAValueNoKeyOpens` |
 | The flow sweep of two replicas takes each expired flow once | the `Flows` case of the suite |
+| `GrantHolders` counts the oauth credentials and the flows' pending ones of every owner that record one issuer, client id and account, none for an empty account, a confirm's move once; of 8 deleters of one grant's rows at once, each counting after its delete, one counts none | the `Grants` case of the suite |
 | Of 16 callers that claim one refresh at once, one claims; a lapsed lease is claimed again; a release frees it; a completion on a moved version writes nothing; `Put` bumps the version and clears the lease | the `Refresh` case of the suite, `TestAReconnectWinsOverARefresh` |
 | No transaction is open across the request to the other service: with a pool of one connection, a refresh held at the stub blocks no other statement | `TestNoTransactionSpansARefresh` |
 | 100 calls through one connection within a minute write `last_used_at` once | `TestLastUsedIsWrittenOnceAMinute` |
