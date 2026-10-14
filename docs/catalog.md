@@ -80,13 +80,13 @@ asked about and what a call record keeps. `GET`, `HEAD`, `OPTIONS` and
 an `http.read_only` match read, and every other request writes. On the
 git address, a clone or a fetch reads and a push writes.
 
-**`mcp`** is a Model Context Protocol server, and `url` its address.
-**This release does not serve the address a caller would use for it.**
-A catalog entry of kind `mcp` loads, can be listed and connected, and
-its connections cannot be called yet. `tools.read_only` marks the tools
-that only read, and `tools.hidden` the tools a client should not offer;
-a tool no `read_only` glob matches is treated as one that changes
-something. In a glob, `*` stands for any run of characters, and a glob
+**`mcp`** is a Model Context Protocol server over streamable HTTP, and
+`url` its address, which a connection's MCP address forwards to as it is
+written ([The API](api.md#the-mcp-address)). `tools.read_only` marks the
+tools that only read, and `tools.hidden` the tools a client should not
+offer, whose calls Pons refuses; a tool no `read_only` glob matches is
+treated as one that changes something. A server's own hints about its
+tools are not read. In a glob, `*` stands for any run of characters, and a glob
 matches a whole name, by case.
 
 ## Ways to give access
@@ -219,10 +219,10 @@ new service's hosts.
 ## The example file
 
 [`catalog/example.yaml`](../catalog/example.yaml) has one entry per way
-to give access, for invented services. All four are of kind `mcp`, so
-none can be called in this release. Since the services are invented,
-only `search` and `weather` can be connected, and the file loads only
-with `TRACKER_CLIENT_SECRET` set:
+to give access, for invented services, all four of kind `mcp`. Since the
+services are invented, only `weather` can be connected: a key for
+`search` is tried against a service that does not answer. The file loads
+only with `TRACKER_CLIENT_SECRET` set:
 
 ```yaml
 connectors:

@@ -64,7 +64,7 @@ start.
 | `PONS_CREATES_PER_MINUTE` | `10` | how many connects, reconnects and connector additions one caller may make in a minute, per replica. Past it, `429 rate_limited` |
 | `PONS_MAX_INFLIGHT_PER_SUBJECT` | `32` | how many requests one caller may have in flight at a connection's addresses, per replica |
 | `PONS_MAX_INFLIGHT` | `1024` | how many requests all callers may have in flight at the addresses, per replica |
-| `PONS_MAX_REQUEST_BYTES` | `4194304` (4 MiB) | the largest body of a call to a connection's MCP address. Read and checked; it takes effect when the MCP address is served |
+| `PONS_MAX_REQUEST_BYTES` | `4194304` (4 MiB) | the largest message a caller sends to a connection's MCP address, which Pons reads whole. Past it, `413 request_too_large` |
 | `PONS_MAX_FORWARD_BYTES` | `2147483648` (2 GiB) | the largest body of a request to a forwarding or git address. The body streams, and one that runs past this is ended with `413 request_too_large` |
 | `PONS_CALL_HEADER_TIMEOUT` | `30s` | how long Pons waits for the other service to start its answer. Past it, `504 connector_timeout` |
 | `PONS_STREAM_IDLE_TIMEOUT` | `5m` | how long an answer may stream with nothing read before Pons ends it |

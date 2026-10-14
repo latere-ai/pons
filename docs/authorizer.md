@@ -104,11 +104,15 @@ asked.
   space. You decide whether the caller may. A request that names no owner
   leaves the member out, which means the caller's own. Either way, your
   allow may say whose the new object is, in `limits.owner`.
-- **`connection.use`** names what the request does. `method` is the HTTP
-  method. On the forwarding address, `tool` is the path below the
-  address, such as `/repos/acme/app/issues`; on the git address it is
-  `git-upload-pack`, a clone or a fetch, or `git-receive-pack`, a push.
-  `effect` is `read` or `write` by the connector's rules
+- **`connection.use`** names what the request does. On the MCP address,
+  `method` is the protocol method, such as `tools/list` or `tools/call`,
+  or `GET` or `DELETE` for a server of an earlier revision, and is left
+  out for a reply that has none; a `tools/call` also names `tool`, the
+  tool's name, and its `effect`. On the other addresses `method` is the
+  HTTP method; on the forwarding address `tool` is the path below the
+  address, such as `/repos/acme/app/issues`, and on the git address it
+  is `git-upload-pack`, a clone or a fetch, or `git-receive-pack`, a
+  push. `effect` is `read` or `write` by the connector's rules
   ([The catalog](catalog.md#kinds)). `refs` are the full names of the
   refs a push updates.
 - The callback, the client metadata documents and the OpenAPI document
@@ -125,8 +129,8 @@ others:
 | `owner` | `connection.create` with no `id`, `connector.create` | whose the new object is. Without it, the owner the request named, or the caller |
 | `max_connections` | `connection.create` with no `id` | how many connections the owner may hold. It lowers the installation's `PONS_MAX_CONNECTIONS_PER_OWNER` and never raises it. Past it, `403 forbidden` on `owner` |
 | `connectors` | `connection.create` with no `id` | globs of the connector references the caller may connect. `ctr_*` admits every added connector, and a list of catalog names admits none. Outside them, `403 forbidden` on `connector` |
-| `read_only` | `connection.use` | `true` refuses a request whose effect is `write`: `403 forbidden` on `tool` |
-| `tools` | `connection.use` | globs of the `tool` values the caller may use, such as `["/repos/acme/*", "git-upload-pack"]`. Outside them, `403 forbidden` on `tool` |
+| `read_only` | `connection.use` | `true` refuses a request whose effect is `write`: `403 forbidden` on `tool`. On the MCP address it holds `tools/call` alone, so a list of tools passes |
+| `tools` | `connection.use` | globs of the `tool` values the caller may use, such as `["search_*", "get_*"]` on the MCP address or `["/repos/acme/*", "git-upload-pack"]` elsewhere. Outside them, `403 forbidden` on `tool`. On the MCP address it holds `tools/call` alone |
 | `refs` | `connection.use` | globs of the full ref names a push may update, such as `["refs/heads/agents/*"]`. A push naming any other, a deletion included, is refused and none of it reaches the service. It is answered in git's own protocol, so git prints the rule, such as `only branches under refs/heads/agents/ may be pushed by this caller` |
 | `requests` | `connection.use` | the requests the caller may send to the forwarding address, each a method in capitals, one space, and a path pattern, such as `["GET /**", "POST /repos/*/*/issues"]`. In a pattern `*` is exactly one non-empty segment, a last `**` is the rest of the path, and `/` alone is the address itself. Outside them, `403 forbidden` on `tool` with the reason `requests`, so the caller learns the request is not allowed rather than that the connection is missing. The git address is held by `refs` instead |
 | `calls_per_minute` | `connection.use` | how many requests the caller may send to the connection in a minute, counted per replica. Past it, `429 rate_limited` |

@@ -73,8 +73,7 @@ theirs alone and `404` to everyone else. It is of kind `mcp`, its `url`
 is `https` on port 443 and a public name, and its credential goes to
 that host alone. It takes `auth.type` `token` or `none`; one whose
 people sign in, `oauth`, is refused with `422 sign_in_unsupported` in
-this release. Since this release does not serve the address of kind
-`mcp`, an added connector can be connected and not yet called.
+this release. A connection to it is used through its MCP address, below.
 
 ## Connecting
 
@@ -106,10 +105,14 @@ curl -s http://localhost:8080/v1/connections \
 ```
 
 A key for a connector of kind `http` is tried first with one `GET` of
-the service's `url`, and a client is tried by minting a token once. A
-key the service refuses with `401` or `403`, or a client its token
-endpoint answers `invalid_client`, is `422 credential_refused`. Any
-other failure to reach or use the service is
+the service's `url`. A key for a connector of kind `mcp` is tried by
+listing its tools, and, for a server of a protocol revision before
+2026-07-28, by that revision's handshake, a list of tools in the session
+it opens, and the end of that session. A client is tried by minting a
+token once. A key the service refuses with `401` or `403`, or a client
+its token endpoint answers `invalid_client`, is
+`422 credential_refused`. Any other failure to reach or use the service,
+and for kind `mcp` any answer to the list but a `2xx`, is
 `422 connector_unreachable`. In both cases nothing is stored.
 
 ### By signing in
@@ -199,7 +202,7 @@ it.
 | `reason` | why it needs reconnecting: `refresh_refused`, `revoked` or `credential_refused` |
 | `account` | the account at the service this connection acts as, where the connector reads one |
 | `scopes` | the scopes granted |
-| `address` | where a caller reaches the connection: the forwarding address for kind `http`. For kind `mcp`, an address ending in `/mcp` that this release does not serve |
+| `address` | where a caller reaches the connection: the MCP address for kind `mcp`, the forwarding address for kind `http` |
 | `git_address` | for kind `http` whose connector names a git host |
 | `tools` | the connector's tool marks, `read_only` and `hidden` |
 | `links.manage` | where a person changes what the service grants, when the connector names it |
@@ -208,6 +211,63 @@ it.
 Nothing in it is ever the credential.
 
 ## The addresses
+
+### The MCP address
+
+A connection of kind `mcp` is a Model Context Protocol server at its
+`address`, `/v1/connections/{id}/mcp`, over streamable HTTP. A client
+sends it what it would send the service, with its own token in
+`Authorization`, and receives what the service answers, a JSON body or
+an event stream, each event passed on as it arrives:
+
+```sh
+curl -s "$ADDRESS" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+  -H "MCP-Protocol-Version: 2026-07-28" -H "Mcp-Method: tools/list" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}'
+```
+
+The request goes to the connector's `url` exactly as the catalog writes
+it; nothing of the caller's path or query is joined to it. It takes
+`POST`, one JSON-RPC message per request, and `GET` and `DELETE` for a
+server of a revision from 2025-03-26 to 2025-11-25, whose
+`Mcp-Session-Id` passes both ways, so any replica serves any request of
+a session. Any other method is `400 invalid_request`.
+
+Each request is asked as `connection.use` with its protocol method, and
+a `tools/call` with the tool its `params.name` names and that tool's
+effect, `read` when a `tools.read_only` glob of the connector matches it
+and `write` otherwise. A server's own hints about its tools are not
+read. Under an allow, `read_only` refuses a `tools/call` of a writing
+tool, `tools` one of a tool outside its globs, and a tool the connector
+marks `hidden` is refused always, each `403 forbidden` on `tool`; a
+`tools/list` and every other method pass. `calls_per_minute` and the
+places in flight hold every request.
+
+**What Pons reads.** The body, up to `PONS_MAX_REQUEST_BYTES`, 4 MiB by
+default, must be one JSON object; Pons reads its `method` and, for
+`tools/call`, `params.name`, and nothing else, and forwards the body
+byte for byte. A second `method`, `params` or `params.name` key, or one
+that differs from those only by case, is `400 invalid_request`, and so
+is an `Mcp-Method` or `Mcp-Name` header that does not say what the body
+says, after its `=?base64?...?=` form is decoded.
+
+**What Pons changes.** Toward the service it passes `Accept`,
+`Content-Type`, `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`,
+`Mcp-Param-*`, `Mcp-Session-Id` and `Last-Event-ID`, removes everything
+else, the caller's `Authorization` first, asks for no content coding,
+and puts the credential in its place. Back to the caller it passes the
+status, the body, `Content-Type`, `Cache-Control`, `Retry-After` and
+`Mcp-Session-Id`, and marks an event stream `X-Accel-Buffering: no`.
+`WWW-Authenticate`, `Set-Cookie` and `Location` never pass, so a client
+never meets the service's own sign-in. A redirect is not followed: it is
+`502 connector_unavailable` with the reason `redirect_refused`.
+
+A refused credential is handled as on the other addresses, below, with
+one difference: the body is held in memory, so a request is always sent
+once more after its credential was renewed.
+
+### The forwarding and git addresses
 
 A caller uses a connection of kind `http` through two addresses, each
 with its own token, never the service's:
@@ -285,9 +345,9 @@ the person reconnects or gives a new key. A renewal that fails another
 way, such as a token endpoint that does not answer, moves nothing and
 answers `502 connector_unavailable`.
 
-**From a browser.** A request carrying an `Origin` header is refused
-with `403 forbidden` unless that origin is the origin of an entry of
-`PONS_RETURN_URLS`.
+**From a browser.** A request to any address carrying an `Origin` header
+is refused with `403 forbidden` unless that origin is the origin of an
+entry of `PONS_RETURN_URLS`.
 
 ### From a sandbox
 
@@ -314,9 +374,9 @@ sandbox is given a fresh one before then.
 A request to an address leaves a record, read with
 `GET /connections/{id}/calls`, once its token is verified, its path read
 and its connection found. A request refused before that leaves none: one
-with a bad token, `Origin` or path, one with a method the forwarding
-address does not carry, one whose `Content-Length` is over the size
-limit, one past the caller's or the replica's limit of requests in
+with a bad token, `Origin` or path, one with a method its address does
+not carry, one whose body is over the size limit, a message Pons cannot
+read, one past the caller's or the replica's limit of requests in
 flight, one the git address does not serve, a push Pons cannot read, and
 one to an id that names no connection. Nor does a request that failed
 inside Pons, a `500` or a `503`. A `denied` call is recorded at most
@@ -330,7 +390,7 @@ header or query string.
 |---|---|
 | `subject`, `session` | who called, and the `session` claim of their token when it carries one |
 | `at`, `duration_ms` | when, and for how long |
-| `method`, `tool`, `effect` | the HTTP method; the path, or the git service; `read` or `write` |
+| `method`, `tool`, `effect` | on the MCP address, the protocol method, or `GET` or `DELETE`, and for a `tools/call` the tool; elsewhere the HTTP method, and the path or the git service; `read` or `write` |
 | `refs` | how many refs a push named |
 | `outcome` | `ok`, `denied`, `not_connected`, `upstream_error`, `upstream_refused`, `timeout` or `canceled` |
 | `status` | the service's status, when it answered |
@@ -352,9 +412,8 @@ Every error Pons raises at a route it serves is one JSON body:
 }
 ```
 
-A path or a method no route serves, such as the `address` of a
-connection of kind `mcp` in this release, is answered a plain `404` or
-`405` with no JSON body.
+A path or a method no route serves, such as a path below the MCP
+address, is answered a plain `404` or `405` with no JSON body.
 
 Branch on `code`. `message` is a sentence to show a person, and never
 changes for a code. `details.reason` says what happened in this
@@ -366,7 +425,7 @@ the errors below are Pons's.
 
 | Code | Status | Means |
 |---|---|---|
-| `invalid_request` | 400 | the request could not be read; on an address, a path that would leave its connector |
+| `invalid_request` | 400 | the request could not be read; on an address, a path that would leave its connector, a method it does not carry, or a message that is not one JSON object Pons can read |
 | `unknown_field` | 400 | a member the API does not describe |
 | `invalid_field` | 400 | a member has a value it cannot take |
 | `missing_field` | 400 | a required member is absent |
@@ -387,7 +446,7 @@ the errors below are Pons's.
 | `credential_refused` | 422 | the service refused the key or the client |
 | `rate_limited` | 429 | too many requests; retryable, with `Retry-After` |
 | `internal` | 500 | something failed inside Pons |
-| `connector_unavailable` | 502 | the service did not answer, or redirected elsewhere; retryable unless the reason is `redirect_elsewhere` |
+| `connector_unavailable` | 502 | the service did not answer, or redirected elsewhere; retryable unless the reason is `redirect_elsewhere` or `redirect_refused` |
 | `authorizer_unavailable` | 503 | no decision could be had; nothing was done; retryable |
 | `sealing_unavailable` | 503 | the installation has no sealing key |
 | `connector_timeout` | 504 | the service did not start its answer in time; retryable |
