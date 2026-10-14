@@ -21,8 +21,9 @@ import (
 // Disconnect removes a connection (specs/007-sign-in.md): it opens the
 // credential, removes the row, the ciphertext and the flow in one
 // transaction, and then revokes at the revocation endpoint recorded with
-// the credential, once, best effort. A credential nothing can open is
-// removed without revoking; a pasted key cannot be revoked.
+// the credential, once, best effort, when no other credential holds its
+// grant. A credential nothing can open is removed without revoking; a
+// pasted key cannot be revoked.
 func (s *Signin) Disconnect(ctx context.Context, c store.Connection) error {
 	var held *Opened
 	if c.Auth == catalog.AuthOAuth {
@@ -43,16 +44,48 @@ func (s *Signin) Disconnect(ctx context.Context, c store.Connection) error {
 		return err
 	}
 	s.mint.forget(c.ID)
-	if held != nil && held.Meta.RevocationEndpoint != "" {
-		s.revoke(ctx, held.Connector, held.Meta, held.Secrets)
+	if held != nil {
+		s.revokeLast(ctx, held.Connector, held.Meta, held.Secrets, "connection", c.ID)
 	}
 	return nil
+}
+
+// revokeLast revokes a credential already removed from the store, at the
+// revocation endpoint its meta records, unless another credential still
+// holds its grant (specs/007-sign-in.md). A server may end the whole grant
+// at the revocation of any of its tokens, as Google does, which would end
+// the other connections of the person's account at that client.
+//
+// The holders are counted after the removal has committed, in a statement
+// of their own. Of two removals of a grant's last two holders at once, the
+// one that counts later sees the other's removal and revokes; both may,
+// and a second revocation of an ended grant only fails. Counting inside
+// the removal's transaction would let each see the other's row, not yet
+// deleted, and both skip. A meta with no account names no person, so its
+// grant has no holder to wait for and is revoked. attrs name what the
+// credential was, for the log.
+func (s *Signin) revokeLast(ctx context.Context, conn Connector, meta store.Meta, secrets store.Secrets, attrs ...any) {
+	if meta.RevocationEndpoint == "" {
+		return
+	}
+	n, err := s.Store.Credentials().GrantHolders(ctx, meta.Grant())
+	switch {
+	case err != nil:
+		s.log().WarnContext(ctx, "a revocation was skipped: the holders of its grant were not counted",
+			append(attrs, "outcome", "skipped", "reason", "grant_not_counted", "error", err.Error())...)
+		return
+	case n > 0:
+		s.log().InfoContext(ctx, "a revocation was skipped: other credentials hold the same grant",
+			append(attrs, "outcome", "skipped", "reason", "grant_held", "count", n)...)
+		return
+	}
+	s.revoke(ctx, conn, meta, secrets, attrs...)
 }
 
 // revoke revokes a credential's tokens (RFC 7009): the refresh token, or
 // else the access token, with its hint and the client, once, in 10 seconds.
 // A failure is logged without the token and changes nothing.
-func (s *Signin) revoke(ctx context.Context, conn Connector, meta store.Meta, secrets store.Secrets) {
+func (s *Signin) revoke(ctx context.Context, conn Connector, meta store.Meta, secrets store.Secrets, attrs ...any) {
 	token, hint := secrets.RefreshToken, "refresh_token"
 	if token == "" {
 		token, hint = secrets.AccessToken, "access_token"
@@ -71,15 +104,16 @@ func (s *Signin) revoke(ctx context.Context, conn Connector, meta store.Meta, se
 		}
 	}
 	if err != nil {
-		s.log().WarnContext(ctx, "a revocation failed", "reason", reasonOf(err))
+		s.log().WarnContext(ctx, "a revocation failed", append(attrs, "outcome", "failed", "reason", reasonOf(err))...)
 		return
 	}
-	s.log().InfoContext(ctx, "a credential was revoked")
+	s.log().InfoContext(ctx, "a credential was revoked", append(attrs, "outcome", "revoked")...)
 }
 
 // Sweep takes the flows past their time, each handed by the store to one
-// sweeper (specs/007-sign-in.md): it discards and revokes their pending
-// credentials, deletes a pending connection that never had a credential,
+// sweeper (specs/007-sign-in.md): it discards their pending credentials and
+// revokes each whose grant has no other holder, deletes a pending
+// connection that never had a credential,
 // and returns one being reconnected to connected, or to needs_reconnect
 // when it has a reason. It answers how many flows it took.
 func (s *Signin) Sweep(ctx context.Context) (int, error) {
@@ -101,7 +135,9 @@ func (s *Signin) Sweep(ctx context.Context) (int, error) {
 	}
 }
 
-// settle is one expired flow: its pending credential revoked, its
+// settle is one expired flow, which the store already deleted: its pending
+// credential revoked unless another credential holds its grant, the
+// connection's own among them while a reconnect keeps it, and its
 // connection deleted or returned to the state it left.
 func (s *Signin) settle(ctx context.Context, f store.Flow) error {
 	row, err := s.Store.Connections().Get(ctx, f.Connection)
@@ -124,8 +160,8 @@ func (s *Signin) settle(ctx context.Context, f store.Flow) error {
 		if err == nil {
 			secrets, derr := store.DecodeSecrets(plain)
 			clear(plain)
-			if derr == nil && meta.RevocationEndpoint != "" {
-				s.revoke(ctx, conn, meta, secrets)
+			if derr == nil {
+				s.revokeLast(ctx, conn, meta, secrets, "flow", f.ID, "connection", row.ID)
 			}
 		}
 	}

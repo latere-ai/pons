@@ -64,6 +64,13 @@ func (c brokenCredentials) ReleaseRefresh(ctx context.Context, id string) error 
 	return c.Credentials.ReleaseRefresh(ctx, id)
 }
 
+func (c brokenCredentials) GrantHolders(ctx context.Context, g store.Grant) (int64, error) {
+	if c.failAt == "GrantHolders" {
+		return 0, errBroken
+	}
+	return c.Credentials.GrantHolders(ctx, g)
+}
+
 func (c brokenCredentials) CompleteRefresh(ctx context.Context, id string, from int64, sealed store.SealedCredential) error {
 	switch c.failAt {
 	case "CompleteRefresh":

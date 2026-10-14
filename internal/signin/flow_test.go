@@ -419,9 +419,12 @@ func TestSweep(t *testing.T) {
 	r.auth.Set(func(sw *stubs.AuthSwitches) { sw.IssSupported = false })
 	// A late flow of a connection that never had a credential.
 	never, _, _ := r.pending("alice", "code", nil)
-	// One ended by a wrong code, its pending credential revoked.
+	// One ended by a wrong code, its pending credential revoked: its
+	// account holds no other credential.
 	wrong, address, _ := r.pending("bob", "code", nil)
+	r.api.SetLogin("bob-alone")
 	r.callback(browser(t, address))
+	r.api.SetLogin("octo-person")
 	if err := r.s.Confirm(ctx, wrong, "a-wrong-code"); apierr.Classify(err).Code != apierr.CodeInvalidCode {
 		t.Fatal(err)
 	}
