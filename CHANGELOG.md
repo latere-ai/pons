@@ -6,6 +6,8 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+## v0.2.0 - 2026-10-14
+
 - Added: the MCP address. A connection of kind `mcp` is used at its
   `address`, `/v1/connections/{id}/mcp`, as a Model Context Protocol
   server over streamable HTTP: a client sends one JSON-RPC message per
