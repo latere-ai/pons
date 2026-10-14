@@ -4,16 +4,17 @@
 // Package carry is the carrier: it serves the addresses a caller reaches a
 // connection at, adds the connection's credential, forwards the request
 // through the dialer and streams the answer back (specs/008-carrying-a-call.md).
-// Built here are the forwarding address and the git address of a connection
-// of kind http (specs/014-http-forwarding.md), and the probe of a key for
-// that kind.
+// Built here are the MCP address of a connection of kind mcp, the
+// forwarding address and the git address of a connection of kind http
+// (specs/014-http-forwarding.md), and the probe of a key for both kinds.
 //
 // A request is taken in the order of spec 008: the origin, the caller and
-// the places in flight, what is read from the request (its path, and for a
-// push the refs it updates), the connection, the effect, one question, the
-// kind, the limits of the allow, the state, the credential, the forward, the
-// answer and the record. A caller who may not use a connection is answered
-// 404 for every request to it, and nothing tells it the id exists.
+// the places in flight, what is read from the request (the method and the
+// tool of a message, a path, and for a push the refs it updates), the
+// connection, the effect, one question, the kind, the limits of the allow,
+// the state, the credential, the forward, the answer and the record. A
+// caller who may not use a connection is answered 404 for every request to
+// it, and nothing tells it the id exists.
 //
 // This package and internal/signin are the only callers of Sealer.Open.
 package carry
@@ -76,7 +77,10 @@ type Carrier struct {
 	// alone a request with an Origin header may come from.
 	ReturnURLs []string
 
-	// The bounds of a call.
+	// The bounds of a call. MaxRequestBytes bounds the message a POST to an
+	// MCP address carries, which is read whole; MaxForwardBytes a body on a
+	// forwarding or git address, which streams.
+	MaxRequestBytes       int64
 	MaxForwardBytes       int64
 	HeaderTimeout         time.Duration
 	IdleTimeout           time.Duration
@@ -121,8 +125,8 @@ func (c *Carrier) log() *slog.Logger {
 	return slog.Default()
 }
 
-// Handles reports whether a request is to a forwarding or a git address,
-// which the carrier serves before any router cleans its path.
+// Handles reports whether a request is to an MCP, a forwarding or a git
+// address, which the carrier serves before any router cleans its path.
 func (c *Carrier) Handles(r *http.Request) bool {
 	_, _, _, ok := c.split(r.URL.EscapedPath())
 	return ok
@@ -132,10 +136,15 @@ func (c *Carrier) Handles(r *http.Request) bool {
 // span and its metrics, holding no id.
 func (c *Carrier) Pattern(r *http.Request) string {
 	_, address, _, _ := c.split(r.URL.EscapedPath())
+	if address == AddressMCP {
+		return c.BasePath + "/connections/{id}/" + AddressMCP
+	}
 	return c.BasePath + "/connections/{id}/" + address + "/{path}"
 }
 
 // split reads an escaped path as {base}/connections/{id}/{address}{tail}.
+// The MCP address has no tail: the connector's url is used as the catalog
+// writes it, so nothing of the caller's path is joined to it.
 func (c *Carrier) split(p string) (connection, address, tail string, ok bool) {
 	rest, ok := strings.CutPrefix(p, c.BasePath+"/connections/")
 	if !ok {
@@ -144,6 +153,9 @@ func (c *Carrier) split(p string) (connection, address, tail string, ok bool) {
 	connection, rest, ok = strings.Cut(rest, "/")
 	if !ok || connection == "" {
 		return "", "", "", false
+	}
+	if rest == AddressMCP {
+		return connection, AddressMCP, "", true
 	}
 	for _, a := range []string{AddressHTTP, AddressGit} {
 		if rest == a || strings.HasPrefix(rest, a+"/") {
@@ -167,7 +179,7 @@ var ForwardedMethods = []string{
 	http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete,
 }
 
-// ServeHTTP serves one request to a forwarding or a git address.
+// ServeHTTP serves one request to an MCP, a forwarding or a git address.
 func (c *Carrier) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c.init()
 	call := &call{start: c.now()}
@@ -203,6 +215,9 @@ func (c *Carrier) serve(w http.ResponseWriter, r *http.Request, call *call) erro
 		return err
 	}
 	defer release()
+	if address == AddressMCP {
+		return c.serveMCP(w, r, call, caller, connection)
+	}
 
 	t, why := checkPath(tail)
 	if why != "" {
@@ -239,13 +254,9 @@ func (c *Carrier) serve(w http.ResponseWriter, r *http.Request, call *call) erro
 	case err != nil:
 		return apierr.Internal(err)
 	}
-	conn, err := c.Resolve(ctx, row.Connector)
-	gone := errors.Is(err, signin.ErrNoConnector) || (err == nil && (conn.Kind != row.Kind || conn.Auth.Type != row.Auth))
-	if err != nil && !gone {
-		return apierr.Internal(err)
-	}
-	if gone {
-		conn = signin.Connector{}
+	conn, gone, err := c.connectorOf(ctx, row)
+	if err != nil {
+		return err
 	}
 	tool, effect := service, catalog.EffectRead
 	switch {
@@ -320,6 +331,13 @@ func (c *Carrier) hold(l authorizer.Limits, subject, connection, method, effect,
 			return nil, apierr.OnField(apierr.CodeForbidden, fieldRefs, "refs")
 		}
 	}
+	return c.admit(l, subject, connection)
+}
+
+// admit holds every request to an address to the allow's rate per minute,
+// counted per subject and connection, and takes one of the connection's
+// places in flight.
+func (c *Carrier) admit(l authorizer.Limits, subject, connection string) (func(), error) {
 	if l.CallsPerMinute > 0 {
 		key := subject + "\n" + connection
 		c.rate.SetRate(key, l.CallsPerMinute)

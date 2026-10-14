@@ -147,6 +147,7 @@ type rig struct {
 	api    *stubs.API
 	auth   *stubs.AuthServer
 	git    *stubs.GitHost
+	mcp    *stubs.Connector
 	conns  map[string]signin.Connector
 	logs   *logs
 	// serving counts the requests the carrier has not finished, whose
@@ -172,8 +173,9 @@ const clientSecret = "the-catalog-client-secret"
 
 func newRig(t *testing.T, withGit bool) *rig {
 	t.Helper()
-	r := &rig{t: t, st: memory.New(memory.Options{}), az: &decider{}, api: stubs.NewAPI(t), auth: stubs.NewAuthServer(t), logs: &logs{}}
-	ports := []int{r.api.Port(), r.auth.Port()}
+	r := &rig{t: t, st: memory.New(memory.Options{}), az: &decider{}, api: stubs.NewAPI(t), auth: stubs.NewAuthServer(t),
+		mcp: stubs.NewConnector(t), logs: &logs{}}
+	ports := []int{r.api.Port(), r.auth.Port(), r.mcp.Port()}
 	gitURL := r.api.URL()
 	if withGit {
 		r.git = stubs.NewGitHost(t)
@@ -220,10 +222,37 @@ func newRig(t *testing.T, withGit bool) *rig {
     kind: http
     url: ` + r.api.URL() + `
     auth: {type: none}
-  - name: tools
-    title: Tools
+  - name: notes
+    title: Notes
     kind: mcp
-    url: ` + r.api.URL() + `/mcp
+    url: ` + r.mcp.URL() + `
+    auth: {type: token}
+    tools: {read_only: ["search_*", "get_*", "count"], hidden: [delete_notebook]}
+  - name: notes-key
+    title: Notes by key
+    kind: mcp
+    url: ` + r.mcp.URL() + `
+    auth: {type: token, inject: {header: X-Api-Key, format: "key {value}"}}
+  - name: notes-signed
+    title: Notes signed in
+    kind: mcp
+    url: ` + r.mcp.URL() + `
+    auth:
+      type: oauth
+      discovery: none
+      authorize_url: ` + r.auth.AuthorizeURL() + `
+      token_url: ` + r.auth.TokenURL() + `
+      client: {id: pons-client, secret: {env: CLIENT_SECRET}}
+    tools: {read_only: ["search_*", "get_*", "count"]}
+  - name: notes-minted
+    title: Notes minted
+    kind: mcp
+    url: ` + r.mcp.URL() + `
+    auth: {type: client_credentials, token_url: "` + r.auth.TokenURL() + `", scopes: [read]}
+  - name: notes-open
+    title: Notes open
+    kind: mcp
+    url: ` + r.mcp.URL() + `
     auth: {type: none}
 `
 	lookup := func(name string) (string, bool) { return clientSecret, name == "CLIENT_SECRET" }
@@ -248,7 +277,7 @@ func newRig(t *testing.T, withGit bool) *rig {
 	r.c = &Carrier{
 		Store: r.st, Sealer: r.sealer, Auth: bearers{}, Authz: r.az, Dial: outside, Signin: sign, Resolve: resolve,
 		BasePath: "/v1", ReturnURLs: []string{"https://app.example.com/back"},
-		MaxForwardBytes: 1 << 20, HeaderTimeout: 5 * time.Second, IdleTimeout: 5 * time.Second,
+		MaxRequestBytes: 1 << 16, MaxForwardBytes: 1 << 20, HeaderTimeout: 5 * time.Second, IdleTimeout: 5 * time.Second,
 		MaxInflight: 64, MaxInflightPerSubject: 32, Log: log,
 	}
 	r.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -311,6 +340,12 @@ func (r *rig) put(c store.Connection, secrets store.Secrets, meta store.Meta) {
 	}
 }
 
+// noted is a token connection of alice's to the notes connector of kind
+// mcp.
+func (r *rig) noted() store.Connection {
+	return r.connect("alice", "notes", store.Secrets{Value: "the-notes-key-of-alice"}, store.Meta{Header: "Authorization", Format: "Bearer {value}"})
+}
+
 // keyed is a token connection of alice's to the api connector.
 func (r *rig) keyed() store.Connection {
 	return r.connect("alice", "api", store.Secrets{Value: "the-key-of-alice-0001"}, store.Meta{Header: "Authorization", Format: "Bearer {value}"})
@@ -318,8 +353,14 @@ func (r *rig) keyed() store.Connection {
 
 // signedIn is an oauth connection of alice's whose tokens the stub issued.
 func (r *rig) signedIn(expires time.Time) (store.Connection, string) {
+	return r.signedInTo("signed", "alice", expires)
+}
+
+// signedInTo is an oauth connection of an owner's to a connector, whose
+// tokens the stub issued, its access token ending at expires.
+func (r *rig) signedInTo(connector, owner string, expires time.Time) (store.Connection, string) {
 	access, refresh := r.auth.Grant("pons-client", "read")
-	return r.connect("alice", "signed", store.Secrets{AccessToken: access, RefreshToken: refresh}, store.Meta{
+	return r.connect(owner, connector, store.Secrets{AccessToken: access, RefreshToken: refresh}, store.Meta{
 		TokenType: "Bearer", AccessExpiresAt: expires, Issuer: "", TokenEndpoint: r.auth.TokenURL(), ClientID: "pons-client",
 	}), access
 }
@@ -383,6 +424,40 @@ func (r *rig) send(method, path, bearer string, body io.Reader, headers ...strin
 		r.t.Fatal(err, cerr)
 	}
 	return answer{status: resp.StatusCode, header: resp.Header, body: raw}
+}
+
+// rpc is one JSON-RPC request of the current revision: its body, with the
+// protocol version in _meta, and the headers the revision mirrors from it.
+func rpc(method string, params map[string]any) (string, []string) {
+	if params == nil {
+		params = map[string]any{}
+	}
+	params["_meta"] = map[string]any{"io.modelcontextprotocol/protocolVersion": stubs.MCPRevision}
+	body, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 7, "method": method, "params": params})
+	if err != nil {
+		panic(err)
+	}
+	headers := []string{"MCP-Protocol-Version", stubs.MCPRevision, "Mcp-Method", method,
+		"Accept", "application/json, text/event-stream", "Content-Type", "application/json"}
+	if name, ok := params["name"].(string); ok {
+		headers = append(headers, "Mcp-Name", name)
+	}
+	return string(body), headers
+}
+
+// call sends a tools/call of a tool with its arguments to a connection's MCP
+// address as the bearer.
+func (r *rig) call(c store.Connection, bearer, tool string, args map[string]any, headers ...string) answer {
+	r.t.Helper()
+	body, h := rpc("tools/call", map[string]any{"name": tool, "arguments": args})
+	return r.send(http.MethodPost, address(c, "mcp"), bearer, strings.NewReader(body), append(h, headers...)...)
+}
+
+// list sends a tools/list to a connection's MCP address as the bearer.
+func (r *rig) list(c store.Connection, bearer string, headers ...string) answer {
+	r.t.Helper()
+	body, h := rpc("tools/list", nil)
+	return r.send(http.MethodPost, address(c, "mcp"), bearer, strings.NewReader(body), append(h, headers...)...)
 }
 
 // address is the path of a connection's address.

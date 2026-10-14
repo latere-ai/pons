@@ -44,6 +44,33 @@ func TestAUseAsksWithItsTool(t *testing.T) {
 	if _, ok := res.Resource(authorizer.ActionConnectionRead).Fields["refs"]; ok {
 		t.Fatal("a read carries refs")
 	}
+
+	// At the MCP address a tools/call names its tool and effect, any other
+	// message its method alone, and a reply, which has no method, neither.
+	n := r.noted()
+	for _, tc := range []struct {
+		send func() answer
+		want map[string]any
+	}{
+		{func() answer { return r.call(n, "alice", "create_note", map[string]any{"title": "x"}) }, map[string]any{"method": "tools/call", "tool": "create_note", "effect": "write"}},
+		{func() answer { return r.list(n, "alice") }, map[string]any{"method": "tools/list"}},
+		{func() answer { return r.send(http.MethodGet, address(n, "mcp"), "alice", nil) }, map[string]any{"method": "GET"}},
+		{func() answer {
+			return r.send(http.MethodPost, address(n, "mcp"), "alice", strings.NewReader(`{"jsonrpc":"2.0","id":4,"result":{}}`))
+		}, map[string]any{}},
+	} {
+		before := len(r.az.questions())
+		tc.send()
+		q := r.az.questions()[before]
+		for _, k := range []string{"method", "tool", "effect"} {
+			if q.Resource.Fields[k] != tc.want[k] {
+				t.Errorf("%s is %v, want %v", k, q.Resource.Fields[k], tc.want[k])
+			}
+		}
+		if q.Resource.Fields["connection_kind"] != "mcp" {
+			t.Errorf("the kind %v", q.Resource.Fields)
+		}
+	}
 }
 
 // A call a limit refuses opens no credential, reaches no connector and is
@@ -223,9 +250,6 @@ func TestProbeOfAKey(t *testing.T) {
 	if err := r.c.Probe(t.Context(), gone, key, meta); err == nil || !strings.Contains(err.Error(), "connector_unreachable") {
 		t.Fatalf("a url that does not parse: %v", err)
 	}
-	if err := r.c.Probe(t.Context(), r.conns["tools"], key, meta); err != nil {
-		t.Fatalf("an mcp connector is not probed here: %v", err)
-	}
 }
 
 // A connection is used in the states that may be used, and every other
@@ -343,6 +367,53 @@ func TestTimeoutsAndCancel(t *testing.T) {
 	if got := r.calls(k); len(got) != 2 || got[1].Outcome != OutcomeCanceled {
 		t.Fatalf("records %+v", got)
 	}
+
+	// The MCP address: the header timeout is 504, a silent stream is cut,
+	// and a caller that goes away cancels the connector's request.
+	r.api.Slow(0)
+	n := r.noted()
+	r.serving.Wait()
+	r.c.HeaderTimeout = 100 * time.Millisecond
+	r.mcp.Set(func(sw *stubs.ConnectorSwitches) { sw.Slow = time.Second })
+	if a := r.list(n, "alice"); a.status != http.StatusGatewayTimeout || a.code() != "connector_timeout" {
+		t.Fatalf("the header timeout at the MCP address: %d %s", a.status, a.body)
+	}
+	r.serving.Wait()
+	r.c.HeaderTimeout, r.c.IdleTimeout = 5*time.Second, 100*time.Millisecond
+	r.mcp.Set(func(sw *stubs.ConnectorSwitches) { sw.Slow, sw.Gap = 0, time.Second })
+	if a := r.call(n, "alice", "count", nil); a.status != http.StatusOK || strings.Count(string(a.body), "notifications/progress") != 1 {
+		t.Fatalf("a silent stream: %d %s", a.status, a.body)
+	}
+	r.serving.Wait()
+	r.c.IdleTimeout = 5 * time.Second
+	r.mcp.Set(func(sw *stubs.ConnectorSwitches) { sw.Gap, sw.Endless = 0, true })
+	ctx, cancel = context.WithCancel(context.Background())
+	body, headers := rpc("tools/call", map[string]any{"name": "count"})
+	req, err = http.NewRequestWithContext(ctx, http.MethodPost, r.srv.URL+address(n, "mcp"), strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer alice")
+	for i := 0; i+1 < len(headers); i += 2 {
+		req.Header.Set(headers[i], headers[i+1])
+	}
+	resp, err := r.srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	closeBody(resp)
+	deadline = time.Now().Add(5 * time.Second)
+	for r.mcp.Left() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if r.mcp.Left() != 1 {
+		t.Fatal("the connector's request outlived its caller")
+	}
+	got = r.calls(n)
+	if len(got) != 3 || got[0].Outcome != OutcomeTimeout || got[1].Outcome != OutcomeTimeout || got[2].Outcome != OutcomeCanceled {
+		t.Fatalf("records %+v", got)
+	}
 }
 
 // A scope challenge of an oauth connection is 409 with scope_insufficient
@@ -369,6 +440,25 @@ func TestInsufficientScope(t *testing.T) {
 	}
 	if scopes, ok := insufficientScope([]string{`Bearer error="insufficient_scope"`}); !ok || len(scopes) != 0 {
 		t.Fatalf("a challenge with no scope: %v %v", scopes, ok)
+	}
+
+	// The same at the MCP address.
+	n, _ := r.signedInTo("notes-signed", "bob", time.Now().Add(time.Hour))
+	r.mcp.Set(func(sw *stubs.ConnectorSwitches) { sw.Insufficient = []string{"notes:write"} })
+	a = r.call(n, "bob", "create_note", nil)
+	scopes, _ = a.detail("scopes").([]any)
+	if a.status != http.StatusConflict || a.detail("reason") != "scope_insufficient" || len(scopes) != 1 || scopes[0] != "notes:write" {
+		t.Fatalf("a scope challenge at the MCP address: %d %s", a.status, a.body)
+	}
+	if row, _ := r.st.Connections().Get(t.Context(), n.ID); row.State != store.StateConnected {
+		t.Fatalf("the state moved: %s", row.State)
+	}
+	nk := r.noted()
+	if a := r.list(nk, "alice"); a.status != http.StatusForbidden || a.header.Get("WWW-Authenticate") != "" {
+		t.Fatalf("a key's 403 at the MCP address: %d %v", a.status, a.header)
+	}
+	if got := r.calls(n); len(got) != 1 || got[0].Outcome != OutcomeUpstreamRefused {
+		t.Fatalf("records %+v", got)
 	}
 }
 

@@ -64,7 +64,7 @@ func TestAForwardedPathStaysOnItsConnector(t *testing.T) {
 	if a := r.send(http.MethodGet, "/v1/connections/"+c.ID+"/http/user", "expired", nil); a.status != http.StatusUnauthorized || a.code() != "invalid_token" {
 		t.Fatalf("a refused bearer: %d %s", a.status, a.body)
 	}
-	if r.c.Handles(httpRequest(t, "/v1/connections/"+c.ID+"/mcp")) || r.c.Handles(httpRequest(t, "/v1/connections/")) {
+	if r.c.Handles(httpRequest(t, "/v1/connections/"+c.ID+"/files")) || r.c.Handles(httpRequest(t, "/v1/connections/")) {
 		t.Fatal("the carrier takes an address it does not serve")
 	}
 }
