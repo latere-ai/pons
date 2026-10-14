@@ -189,12 +189,17 @@ run against the stub connector through the MCP address; for row 4
 `TestATokenStaysWithItsAuthorizationServer`. `SECURITY.md` lists rows 2,
 3 and 11 since their tests exist, row 3 without the metadata.
 
-Discovery refuses an authorization server that the protected resource
+Discovery's refusal of an authorization server and row 3 are one since
+2026-10-14: an authorization server that the protected resource
 metadata names at an address that is not https, or whose host is an
-address, with `422 sign_in_unsupported` and the reason
-`authorization_servers` ([[007-sign-in]]), where row 3 and the criterion
-of `TestMetadataCannotPointInside` say `connector_unreachable` with the
-rule's name. That test waits for the two to be made one.
+address, is `422 connector_unreachable` with the rule's name,
+`scheme_not_https` or `host_not_a_name`, as an issuer or an endpoint of
+the metadata already was ([[007-sign-in]]); before, it was `422
+sign_in_unsupported` with the reason `authorization_servers`
+(`signin.TestProtectedResourceDiscovery`,
+`signin.TestDocumentsThatCannotBeUsed`). `TestMetadataCannotPointInside`
+itself, over a name that resolves inside and a redirect too, is not
+written.
 
 Remains: `TestThreatModelTestsExist` and `TestSecurityPolicyMatchesTheModel`,
 which hold this table and `SECURITY.md` to the tree, and the tests of the
