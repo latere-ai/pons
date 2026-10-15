@@ -679,3 +679,41 @@ func TestNew(t *testing.T) {
 		t.Fatal("a client with no URL was built")
 	}
 }
+
+// An authorizer that predates connector.update, served from the shared
+// scaffold with the vocabulary it knows, answers the new action with no
+// decision, so an edit fails closed; and a decider that knows nothing of
+// connector_owner answers a connect as it did, the new field unread.
+func TestAnAuthorizerOfAnEarlierVocabularyFailsClosed(t *testing.T) {
+	var earlier []authz.Action
+	for _, a := range authorizer.Vocabulary().Actions {
+		if a.Name != authorizer.ActionConnectorUpdate {
+			earlier = append(earlier, a)
+		}
+	}
+	vocab, err := authz.NewVocabulary(authorizer.Core, earlier...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const token = "earlier-bearer"
+	srv := httptest.NewServer(server.New(server.Options{Bearer: token, Vocabulary: vocab, Decider: access.OwnerPolicy{}}))
+	defer srv.Close()
+	c, err := access.NewClient(access.ClientOptions{URL: srv.URL, Token: config.NewSecret(token), HTTP: srv.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	az := access.NewAuthorizer(c)
+	edit := access.Question{Action: authorizer.ActionConnectorUpdate, Resource: access.Connector{ID: "ctr_1", Owner: alice}.Resource(authorizer.ActionConnectorUpdate)}
+	if d, err := az.Authorize(t.Context(), caller(alice), edit); !errors.Is(err, access.ErrUnavailable) || d.Allow {
+		t.Fatalf("an edit asked of an earlier authorizer: %+v %v", d, err)
+	}
+	q := connect("")
+	q.Resource = access.Connection{Connector: "ctr_1", Name: "wiki", Kind: "mcp", Auth: "token", ConnectorOwner: bob}.Resource(authorizer.ActionConnectionCreate)
+	if d, err := az.Authorize(t.Context(), caller(alice), q); err != nil || !d.Allow {
+		t.Fatalf("a connect with connector_owner: %+v %v", d, err)
+	}
+	read := access.Question{Action: authorizer.ActionConnectorRead, Resource: access.Connector{ID: "ctr_1", Owner: bob, Kind: "mcp"}.Resource(authorizer.ActionConnectorRead)}
+	if d, err := az.Authorize(t.Context(), caller(alice), read); err != nil || d.Allow {
+		t.Fatalf("a read of another owner's connector, which gates the connect: %+v %v", d, err)
+	}
+}
