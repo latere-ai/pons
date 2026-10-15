@@ -106,7 +106,7 @@ func (c *Carrier) serveMCP(w http.ResponseWriter, r *http.Request, call *call, c
 		return apierr.Internal(err)
 	case !d.Allow:
 		call.outcome = OutcomeDenied
-		return apierr.Fail(apierr.CodeConnectionNotFound, "")
+		return refused(d, row)
 	}
 	if row.Kind != catalog.KindMCP {
 		call.outcome = OutcomeDenied

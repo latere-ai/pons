@@ -282,7 +282,7 @@ func (c *Carrier) serve(w http.ResponseWriter, r *http.Request, call *call) erro
 		return apierr.Internal(err)
 	case !d.Allow:
 		call.outcome = OutcomeDenied
-		return apierr.Fail(apierr.CodeConnectionNotFound, "")
+		return refused(d, row)
 	}
 	if row.Kind != catalog.KindHTTP || (address == AddressGit && !gone && conn.GitURL() == "") {
 		call.outcome = OutcomeDenied
@@ -346,6 +346,19 @@ func (c *Carrier) admit(l authorizer.Limits, subject, connection string) (func()
 		}
 	}
 	return c.places.connectionPlace(connection)
+}
+
+// refused answers a deny of connection.use: 404 connection_not_found, so a
+// caller that may not use a connection learns nothing of its id, but for
+// the one deny that is about the session rather than the connection,
+// authorizer.ReasonKeptApartFromGoogle, which is 409
+// connection_not_connected with that reason, so the session's caller can
+// tell the person why.
+func refused(d access.Decision, row store.Connection) error {
+	if d.Reason == authorizer.ReasonKeptApartFromGoogle {
+		return &apierr.Error{Code: apierr.CodeConnectionNotConnected, Reason: d.Reason, Extra: map[string]any{"state": string(row.State)}}
+	}
+	return apierr.Fail(apierr.CodeConnectionNotFound, "")
 }
 
 // usable is the credential of a connection that may be used: one

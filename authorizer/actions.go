@@ -186,3 +186,15 @@ func SendsID(name string) bool {
 	}
 	return false
 }
+
+// ReasonKeptApartFromGoogle is the one reason of a deny of connection.use
+// that Pons tells the caller. The session the request speaks for already
+// used a connection the installation keeps apart from this one: Google's
+// connectors on one side, a server someone added on the other, so data
+// from Google does not reach a server that Google's review of the
+// installation does not cover. The reason is about the session, not the
+// connection, and an authorizer answers it only for a connection the
+// session holds, so nothing about the id is learned from it. Pons answers
+// it 409 connection_not_connected with this reason; every other deny of a
+// use is 404 connection_not_found.
+const ReasonKeptApartFromGoogle = "kept_apart_from_google"

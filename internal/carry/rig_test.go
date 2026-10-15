@@ -63,6 +63,8 @@ type decider struct {
 	asked       []access.Question
 	limits      authorizer.Limits
 	unavailable bool
+	// denied is the reason every question is denied with, when set.
+	denied string
 }
 
 func (d *decider) Authorize(_ context.Context, c access.Caller, q access.Question) (access.Decision, error) {
@@ -71,6 +73,9 @@ func (d *decider) Authorize(_ context.Context, c access.Caller, q access.Questio
 	d.asked = append(d.asked, q)
 	if d.unavailable {
 		return access.Decision{}, access.ErrUnavailable
+	}
+	if d.denied != "" {
+		return access.Decision{Reason: d.denied}, nil
 	}
 	owner, _ := q.Resource.Fields[authorizer.FieldOwner].(string)
 	if owner != c.Subject && c.Sub != "agent" {
@@ -82,6 +87,12 @@ func (d *decider) Authorize(_ context.Context, c access.Caller, q access.Questio
 func (d *decider) set(l authorizer.Limits) {
 	d.mu.Lock()
 	d.limits = l
+	d.mu.Unlock()
+}
+
+func (d *decider) deny(reason string) {
+	d.mu.Lock()
+	d.denied = reason
 	d.mu.Unlock()
 }
 

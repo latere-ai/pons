@@ -675,3 +675,35 @@ func TestProbe(t *testing.T) {
 	}
 	_ = catalog.KindMCP
 }
+
+// A deny of a use for the session's sake, kept_apart_from_google, is 409
+// connection_not_connected with that reason at the MCP address and the
+// forwarding address alike, recorded as denied and forwarded nowhere; any
+// other reason of a deny stays the 404 of an id that names nothing.
+func TestASessionsRefusalSaysWhy(t *testing.T) {
+	r := newRig(t, false)
+	c := r.noted()
+	web := r.keyed()
+	r.az.deny(authorizer.ReasonKeptApartFromGoogle)
+	body, headers := rpc("tools/list", nil)
+	for name, a := range map[string]answer{
+		"mcp":  r.send(http.MethodPost, address(c, "mcp"), "alice", strings.NewReader(body), headers...),
+		"http": r.send(http.MethodGet, address(web, "http")+"/user", "alice", nil),
+	} {
+		if a.status != http.StatusConflict || a.code() != "connection_not_connected" ||
+			a.detail("reason") != authorizer.ReasonKeptApartFromGoogle || a.detail("state") != string(store.StateConnected) {
+			t.Errorf("%s: %d %s", name, a.status, a.body)
+		}
+	}
+	if len(r.mcp.Requests()) != 0 || len(r.api.Requests()) != 0 {
+		t.Fatal("a refused request was forwarded")
+	}
+	if got := r.calls(c); len(got) != 1 || got[0].Outcome != OutcomeDenied {
+		t.Fatalf("the record %+v", got)
+	}
+	r.az.deny("not_attached")
+	nothing := r.send(http.MethodPost, "/v1/connections/con_nothing/mcp", "alice", strings.NewReader(body), headers...)
+	if a := r.send(http.MethodPost, address(c, "mcp"), "alice", strings.NewReader(body), headers...); a.status != http.StatusNotFound || !bytes.Equal(a.body, nothing.body) {
+		t.Fatalf("another reason: %d %s", a.status, a.body)
+	}
+}
