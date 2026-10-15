@@ -356,6 +356,11 @@ func (c *Carrier) usable(ctx context.Context, row store.Connection, conn signin.
 	if gone {
 		return signin.Opened{}, &apierr.Error{Code: apierr.CodeConnectionNotConnected, Reason: "connector_removed", Extra: map[string]any{"state": string(row.State)}}
 	}
+	if conn.Disabled {
+		// Its owner turned the connector off; the connection and its
+		// credential are kept for when it is turned on.
+		return signin.Opened{}, &apierr.Error{Code: apierr.CodeConnectionNotConnected, Reason: "connector_disabled", Extra: map[string]any{"state": string(row.State)}}
+	}
 	reason := row.Reason
 	switch {
 	case row.State == store.StatePending && reason == "":

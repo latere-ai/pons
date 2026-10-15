@@ -101,7 +101,7 @@ func TestTheProbesRequests(t *testing.T) {
 	}
 	for name, build := range map[string]func() (*http.Request, error){
 		"notifications/initialized": func() (*http.Request, error) { return Initialized(ctx, url, "s-1", "2025-06-18") },
-		"tools/list":                func() (*http.Request, error) { return ListToolsIn(ctx, url, "s-1", "2025-06-18") },
+		"tools/list":                func() (*http.Request, error) { return ListToolsIn(ctx, url, "s-1", "2025-06-18", "") },
 		"":                          func() (*http.Request, error) { return End(ctx, url, "s-1", "2025-06-18") },
 	} {
 		req, err := build()
@@ -132,7 +132,7 @@ func TestTheProbesRequests(t *testing.T) {
 		"list":       func() (*http.Request, error) { return ListTools(ctx, "https://%zz") },
 		"init":       func() (*http.Request, error) { return Initialize(ctx, "https://%zz") },
 		"note":       func() (*http.Request, error) { return Initialized(ctx, "https://%zz", "s", Legacy) },
-		"in session": func() (*http.Request, error) { return ListToolsIn(ctx, "https://%zz", "s", Legacy) },
+		"in session": func() (*http.Request, error) { return ListToolsIn(ctx, "https://%zz", "s", Legacy, "") },
 		"end":        func() (*http.Request, error) { return End(ctx, "https://%zz", "s", Legacy) },
 	} {
 		if _, err := build(); err == nil {
@@ -150,5 +150,48 @@ func read(t *testing.T, req *http.Request, v any) {
 	}
 	if err := json.Unmarshal(raw, v); err != nil {
 		t.Fatalf("%s: %v", raw, err)
+	}
+}
+
+// A list of tools names the page it asks for in either revision, and its
+// answer is read from a JSON body or from the event that carries it, with
+// the cursor of the next page.
+func TestAListOfTools(t *testing.T) {
+	ctx := t.Context()
+	const url = "https://mcp.example.com/mcp"
+	var after struct {
+		Params struct {
+			Cursor string `json:"cursor"`
+		} `json:"params"`
+	}
+	req, err := ListToolsAfter(ctx, url, "page-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	read(t, req, &after)
+	if after.Params.Cursor != "page-2" || req.Header.Get(HeaderMethod) != "tools/list" {
+		t.Fatalf("the page after a cursor: %+v %v", after, req.Header)
+	}
+	req, err = ListToolsIn(ctx, url, "s-1", Legacy, "page-3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	read(t, req, &after)
+	if after.Params.Cursor != "page-3" {
+		t.Fatalf("the page after a cursor in a session: %+v", after)
+	}
+	answer := `{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"get_note","description":"Reads a note."}],"nextCursor":"n"}}`
+	tools, next, err := ToolsOf("application/json", []byte(answer))
+	if err != nil || len(tools) != 1 || tools[0].Name != "get_note" || tools[0].Description != "Reads a note." || next != "n" {
+		t.Fatalf("a JSON answer: %+v %q %v", tools, next, err)
+	}
+	stream := "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\n\ndata: " + answer + "\n\n"
+	if tools, _, err := ToolsOf("text/event-stream; charset=utf-8", []byte(stream)); err != nil || len(tools) != 1 {
+		t.Fatalf("an event stream: %+v %v", tools, err)
+	}
+	for _, body := range []string{`{"jsonrpc":"2.0","id":1,"error":{"code":-32601}}`, `not json`} {
+		if _, _, err := ToolsOf("application/json", []byte(body)); err == nil {
+			t.Errorf("%s read as a list", body)
+		}
 	}
 }

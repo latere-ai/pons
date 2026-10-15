@@ -126,7 +126,7 @@ func (p *prober) earlier(ctx context.Context) (int, error) {
 		return status, err
 	}
 	status, err = p.send(ctx, false, func(ctx context.Context) (*http.Request, error) {
-		return mcp.ListToolsIn(ctx, url, session, negotiated)
+		return mcp.ListToolsIn(ctx, url, session, negotiated, "")
 	})
 	if session != "" {
 		// A session left open ends at the connector's own time; the key's

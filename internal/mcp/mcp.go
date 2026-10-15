@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -94,13 +95,23 @@ func clientInfo() map[string]string {
 // client and empty client capabilities, with the headers the revision
 // requires.
 func ListTools(ctx context.Context, url string) (*http.Request, error) {
-	body := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": map[string]any{
+	return ListToolsAfter(ctx, url, "")
+}
+
+// ListToolsAfter is ListTools for the page after a cursor, the first page
+// for "".
+func ListToolsAfter(ctx context.Context, url, cursor string) (*http.Request, error) {
+	params := map[string]any{
 		"_meta": map[string]any{
 			"io.modelcontextprotocol/protocolVersion":    Revision,
 			"io.modelcontextprotocol/clientInfo":         clientInfo(),
 			"io.modelcontextprotocol/clientCapabilities": map[string]any{},
 		},
-	}}
+	}
+	if cursor != "" {
+		params["cursor"] = cursor
+	}
+	body := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": params}
 	req, err := post(ctx, url, body)
 	if err != nil {
 		return nil, err
@@ -128,9 +139,14 @@ func Initialized(ctx context.Context, url, session, negotiated string) (*http.Re
 	return req, nil
 }
 
-// ListToolsIn is tools/list of the earlier revision, in a session.
-func ListToolsIn(ctx context.Context, url, session, negotiated string) (*http.Request, error) {
-	req, err := post(ctx, url, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+// ListToolsIn is tools/list of the earlier revision, in a session, for the
+// page after a cursor, the first page for "".
+func ListToolsIn(ctx context.Context, url, session, negotiated, cursor string) (*http.Request, error) {
+	msg := map[string]any{"jsonrpc": "2.0", "id": 2, "method": "tools/list"}
+	if cursor != "" {
+		msg["params"] = map[string]any{"cursor": cursor}
+	}
+	req, err := post(ctx, url, msg)
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +183,39 @@ func Negotiated(body []byte) string {
 		return Legacy
 	}
 	return r.Result.ProtocolVersion
+}
+
+// Tool is a tool a server lists: its name and its description.
+type Tool struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// ToolsOf reads an answer to tools/list, a JSON body or an event stream
+// whose events carry it: the tools and the cursor of the next page, "" on
+// the last. An answer that holds no result is an error.
+func ToolsOf(contentType string, body []byte) ([]Tool, string, error) {
+	messages := [][]byte{body}
+	if strings.HasPrefix(strings.ToLower(contentType), "text/event-stream") {
+		messages = nil
+		for line := range bytes.SplitSeq(body, []byte("\n")) {
+			if data, ok := bytes.CutPrefix(bytes.TrimSpace(line), []byte("data:")); ok {
+				messages = append(messages, bytes.TrimSpace(data))
+			}
+		}
+	}
+	for _, m := range messages {
+		var r struct {
+			Result *struct {
+				Tools      []Tool `json:"tools"`
+				NextCursor string `json:"nextCursor"`
+			} `json:"result"`
+		}
+		if json.Unmarshal(m, &r) == nil && r.Result != nil {
+			return r.Result.Tools, r.Result.NextCursor, nil
+		}
+	}
+	return nil, "", errors.New("mcp: the answer holds no list of tools")
 }
 
 // post is a POST of one JSON-RPC message with the transport's content
