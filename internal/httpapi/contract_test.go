@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"latere.ai/x/pons/internal/apierr"
+	"latere.ai/x/pons/test/stubs"
 
 	"go.yaml.in/yaml/v3"
 
@@ -361,11 +362,29 @@ func TestHandlersHoldTheContract(t *testing.T) {
 	ctr := idOf(t, added)
 	check(http.MethodPost, "/v1/connectors", "alice", map[string]any{"name": "wiki", "title": "W", "kind": "mcp", "url": addedURL, "auth": map[string]any{"type": "none"}})
 	check(http.MethodPost, "/v1/connectors", "alice", map[string]any{"name": "oauth", "title": "O", "kind": "mcp", "url": addedURL, "auth": map[string]any{"type": "oauth"}})
+	check(http.MethodPost, "/v1/connectors", "alice", map[string]any{"name": "gone", "title": "G", "kind": "mcp", "url": "https://nobody.example.com/mcp"})
 	check(http.MethodPost, "/v1/connectors", "alice", `{"name": 1}`)
 	check(http.MethodGet, "/v1/connectors/"+ctr, "alice", nil)
+	check(http.MethodPatch, "/v1/connectors/"+ctr, "alice", map[string]any{"title": "The wiki", "tools": map[string]any{"hidden": []string{"delete_*"}}, "disabled": false})
+	check(http.MethodPatch, "/v1/connectors/"+ctr, "alice", map[string]any{"url": "https://other.example.com/mcp"})
 	// A key of an added connector is probed at its url, on port 443, which
-	// no stub listens on: the connect is refused as unreachable.
-	check(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": ctr, "credential": map[string]any{"value": "a-key-of-alice"}})
+	// the stubs' front reaches, and its tools are listed through it.
+	addedCon := idOf(t, check(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": ctr, "credential": map[string]any{"value": "a-key-of-alice"}}))
+	check(http.MethodGet, "/v1/connections/"+addedCon+"/tools", "alice", nil)
+	check(http.MethodGet, "/v1/connections/"+addedCon+"/tools", "bob", nil)
+	check(http.MethodDelete, "/v1/connections/"+addedCon, "alice", nil)
+	// A vouched-for add of a server that signs people in, with a client
+	// of its own, and one that registers.
+	h.authz.set(orgPolicy)
+	h.signsIn()
+	check(http.MethodPost, "/v1/connectors", "admin", map[string]any{
+		"name": "vouched", "title": "Vouched", "kind": "mcp", "url": addedURL,
+		"auth": map[string]any{"type": "oauth", "client": map[string]any{"id": "a-client", "secret": "a-client-secret"}},
+	})
+	check(http.MethodPost, "/v1/connectors", "admin", map[string]any{"name": "registered", "title": "Registered", "kind": "mcp", "url": addedURL})
+	check(http.MethodGet, "/v1/connectors", "admin", nil)
+	h.authz.set(nil)
+	h.up.mcp.Set(func(sw *stubs.ConnectorSwitches) { *sw = stubs.ConnectorSwitches{} })
 	conn := check(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": "search", "credential": map[string]any{"value": "a-key-of-alice"}})
 	con := idOf(t, conn)
 	check(http.MethodDelete, "/v1/connectors/"+ctr, "alice", nil)

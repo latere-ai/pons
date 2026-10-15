@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 	"testing"
 
 	"latere.ai/x/pkg/authz"
@@ -364,4 +365,94 @@ func (h *harness) signIn(t testing.TB, bearer, connector string) (string, *url.U
 func (h *harness) confirm(t testing.TB, bearer, con string, back *url.URL) answer {
 	t.Helper()
 	return h.do(http.MethodPost, "/v1/connections/"+con+"/confirm", bearer, map[string]any{"code": back.Query().Get("code")})
+}
+
+// Who may change an added connector, as the authorizer answers
+// connector.update, sees how many connections of every owner use it, on a
+// read, in a list and in an edit's answer; a reader does not, and an
+// authorizer that gives no decision about it hides the count and fails
+// nothing.
+func TestWhoMayChangeAConnectorSeesItsConnections(t *testing.T) {
+	h := newHarness(t)
+	h.authz.set(orgPolicy)
+	wiki := idOf(t, h.add("admin", "wiki", map[string]any{"type": "token"}))
+	mine := idOf(t, h.add("alice", "mine", map[string]any{"type": "token"}))
+	for _, who := range []string{"alice", "admin"} {
+		if a := h.connect(who, wiki, "", "the-key-of-"+who+"-0"); a.status != http.StatusCreated {
+			t.Fatalf("%s connects: %d %s", who, a.status, a.body)
+		}
+	}
+	if a := h.connect("alice", mine, "", "the-key-of-alice-1"); a.status != http.StatusCreated {
+		t.Fatal(a.status)
+	}
+	before := len(h.authz.questions())
+	list := h.do(http.MethodGet, "/v1/connectors", "alice", nil)
+	if item := itemOf(t, list, wiki); item["connections"] != nil {
+		t.Fatalf("a member reads the organization's count: %v", item)
+	}
+	if item := itemOf(t, list, mine); item["connections"] != float64(1) {
+		t.Fatalf("alice's own: %v", item)
+	}
+	if q := h.asked(before, authorizer.ActionConnectorUpdate); len(q) != 2 || q[0].Resource.ID != "" || q[1].Resource.ID != "" {
+		t.Fatalf("the list asked %+v, want one question per owner on its page", q)
+	}
+	if item := itemOf(t, h.do(http.MethodGet, "/v1/connectors", "admin", nil), wiki); item["connections"] != float64(2) {
+		t.Fatalf("admin lists %v", item)
+	}
+	if a := h.do(http.MethodPatch, "/v1/connectors/"+wiki, "admin", map[string]any{"description": "Notes."}).json(t); a["connections"] != float64(2) {
+		t.Fatalf("an edit answers %v", a)
+	}
+	h.authz.set(func(c access.Caller, q access.Question) (access.Decision, error) {
+		if q.Action == authorizer.ActionConnectorUpdate {
+			return access.Decision{}, fmt.Errorf("%w: the endpoint hung", access.ErrUnavailable)
+		}
+		return orgPolicy(c, q)
+	})
+	if a := h.do(http.MethodGet, "/v1/connectors/"+wiki, "admin", nil); a.status != http.StatusOK || a.json(t)["connections"] != nil {
+		t.Fatalf("a read when the count has no decision: %d %s", a.status, a.body)
+	}
+	if a := h.do(http.MethodGet, "/v1/connectors", "admin", nil); a.status != http.StatusOK || itemOf(t, a, wiki)["connections"] != nil {
+		t.Fatalf("a list when the count has no decision: %d %s", a.status, a.body)
+	}
+	if !strings.Contains(h.logText(), "the count of a connector's connections is not shown") {
+		t.Fatal("a count with no decision was not logged")
+	}
+}
+
+// An added connector's view carries what a client draws it with: its
+// owner, url, presentation and tool marks, how a person gives access and,
+// for a server that signs people in, how Pons identifies itself there,
+// whether it is turned off and vouched for, and for a vouched-for client
+// the address to register it with; never the client's id or secret.
+func TestAnAddedConnectorsView(t *testing.T) {
+	h := newHarness(t)
+	h.authz.set(orgPolicy)
+	h.signsIn()
+	a := h.do(http.MethodPost, "/v1/connectors", "admin", map[string]any{
+		"name": "wiki", "title": "Team wiki", "description": "The team's notes.", "icon": "https://mcp.example.com/icon.svg",
+		"kind": "mcp", "url": addedURL, "tools": map[string]any{"read_only": []string{"get_*"}},
+		"auth": map[string]any{"type": "oauth", "scopes": []string{"notes:read"}, "client": map[string]any{"id": "wiki-client", "secret": "the-wiki-client-secret"}},
+	})
+	if a.status != http.StatusCreated {
+		t.Fatalf("%d %s", a.status, a.body)
+	}
+	id := idOf(t, a)
+	want := `{"name":"wiki","id":"` + id + `","owner":"` + orgOwner + `","title":"Team wiki","description":"The team's notes.",` +
+		`"icon":"https://mcp.example.com/icon.svg","kind":"mcp","url":"` + addedURL + `","hosts":["mcp.example.com"],` +
+		`"auth":{"type":"oauth","scopes":["notes:read"],"client":"own","redirect_uri":"https://pons.example.com/v1/callback"},` +
+		`"tools":{"read_only":["get_*"],"hidden":[]},"disabled":false,"vouched":true,"connections":0}`
+	if got := strings.TrimSpace(string(h.do(http.MethodGet, "/v1/connectors/"+id, "admin", nil).body)); got != want {
+		t.Fatalf("the view\n got %s\nwant %s", got, want)
+	}
+	h.up.mcp.Set(func(sw *stubs.ConnectorSwitches) { *sw = stubs.ConnectorSwitches{KeyOnly: true} })
+	key := h.add("alice", "keyed", nil)
+	want = `{"name":"keyed","id":"` + idOf(t, key) + `","owner":"` + subject("alice") + `","title":"Wiki","kind":"mcp","url":"` + addedURL + `",` +
+		`"hosts":["mcp.example.com"],"auth":{"type":"token","inject":{"header":"Authorization","format":"Bearer {value}"},"hint":"API key"},` +
+		`"tools":{"read_only":[],"hidden":[]},"disabled":false,"vouched":false}`
+	if got := strings.TrimSpace(string(key.body)); got != want {
+		t.Fatalf("a key's view\n got %s\nwant %s", got, want)
+	}
+	if got := itemOf(t, h.do(http.MethodGet, "/v1/connectors", "alice", nil), id); got["connections"] != nil || got["auth"].(map[string]any)["client"] != "own" {
+		t.Fatalf("a member lists %v", got)
+	}
 }
