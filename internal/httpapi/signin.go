@@ -227,9 +227,10 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 
 // clientDocument is GET /client and GET /client/{id}: the client metadata
 // document that names Pons to an authorization server, for the catalog's
-// connectors, or for one connector a person added.
+// connectors, or for one connector added by its address, with the redirect
+// address its add found.
 func (s *Server) clientDocument(w http.ResponseWriter, r *http.Request) {
-	id, title := r.PathValue("id"), ""
+	id, title, redirect := r.PathValue("id"), "", s.Signin.RedirectURI()
 	if id != "" {
 		row, err := s.Store.Connectors().Get(r.Context(), id)
 		switch {
@@ -241,8 +242,14 @@ func (s *Server) clientDocument(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		title = row.Title
+		found, err := foundOf(row)
+		if err != nil {
+			s.answer(w, r, apierr.Internal(err))
+			return
+		}
+		redirect = s.Signin.RedirectOf(found)
 	}
-	body, err := json.Marshal(s.Signin.ClientDocument(id, title))
+	body, err := json.Marshal(s.Signin.ClientDocument(id, title, redirect))
 	if err != nil {
 		s.answer(w, r, apierr.Internal(err))
 		return

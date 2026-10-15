@@ -288,7 +288,7 @@ func TestARefreshIsTheClientsOwn(t *testing.T) {
 	// A catalog secret that does not resolve fails the refresh.
 	code := r.conns["code"]
 	code.Auth.Client.Secret.Env = "NOTHING"
-	if _, err := r.s.clientAt(ctx, code, "", "pons-client"); apierr.Classify(err).Reason != "client_secret_unresolved" {
+	if _, err := r.s.clientAt(ctx, code, "", "pons-client", ""); apierr.Classify(err).Reason != "client_secret_unresolved" {
 		t.Fatalf("an unresolved secret: %v", err)
 	}
 	// A registration's secret no key opens.
@@ -297,7 +297,7 @@ func TestARefreshIsTheClientsOwn(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.s.Sealer = other
-	if _, err := r.s.clientAt(ctx, r.conns["code"], "https://auth.example.com", "reg-1"); apierr.Classify(err).Code != apierr.CodeSealingUnavailable {
+	if _, err := r.s.clientAt(ctx, r.conns["code"], "https://auth.example.com", "reg-1", ""); apierr.Classify(err).Code != apierr.CodeSealingUnavailable {
 		t.Fatalf("a secret no key opens: %v", err)
 	}
 	if _, err := r.s.seal(store.Connection{}, Connector{}, store.Secrets{}, store.Meta{}); err != nil {

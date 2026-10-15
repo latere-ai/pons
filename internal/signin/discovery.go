@@ -31,8 +31,11 @@ type Plan struct {
 	// answer carries iss.
 	IssParameterSupported bool
 	ClientID              string
-	Resource              string
-	Scopes                []string
+	// RedirectURI is where the answer comes back: the shared callback, or
+	// the issuer's own for an added server that sends no iss.
+	RedirectURI string
+	Resource    string
+	Scopes      []string
 }
 
 // unsupported is a document that was read and cannot be used, naming the
@@ -61,7 +64,7 @@ func (s *Signin) Discover(ctx context.Context, conn Connector, requested []strin
 	case catalog.DiscoveryNone:
 		p := Plan{
 			Issuer: a.Issuer, AuthorizationEndpoint: a.AuthorizeURL, TokenEndpoint: a.TokenURL, RevocationEndpoint: a.RevokeURL,
-			ClientID: a.Client.ID, Scopes: union(a.Scopes, requested),
+			ClientID: a.Client.ID, RedirectURI: s.RedirectURI(), Scopes: union(a.Scopes, requested),
 		}
 		if conn.ResourceFor() {
 			p.Resource = conn.URL
@@ -137,15 +140,26 @@ var challengeMember = regexp.MustCompile(`(resource_metadata|scope)="([^"]*)"`)
 // resourceMetadata finds and validates a connector's protected resource
 // metadata, and answers the scopes its challenge named.
 func (s *Signin) resourceMetadata(ctx context.Context, conn Connector) (resourceDocument, []string, error) {
+	challenge, ok, err := s.challenge(ctx, conn)
+	if err != nil {
+		return resourceDocument{}, nil, err
+	}
+	if !ok {
+		challenge = ""
+	}
+	return s.resourceAt(ctx, conn, challenge)
+}
+
+// resourceAt reads the protected resource metadata a challenge names, else
+// the well-known addresses, and validates it.
+func (s *Signin) resourceAt(ctx context.Context, conn Connector, challenge string) (resourceDocument, []string, error) {
 	u, err := url.Parse(conn.URL)
 	if err != nil {
 		return resourceDocument{}, nil, unsupported("url")
 	}
 	var addresses []string
 	var scopes []string
-	if challenge, ok, err := s.challenge(ctx, conn); err != nil {
-		return resourceDocument{}, nil, err
-	} else if ok {
+	if challenge != "" {
 		for _, m := range challengeMember.FindAllStringSubmatch(challenge, -1) {
 			switch m[1] {
 			case "resource_metadata":
@@ -325,29 +339,40 @@ func checkEndpoint(raw string) string {
 }
 
 // planAt chooses how Pons identifies itself at an authorization server, in
-// the protocol's order: the catalog's client, when the issuer is the one
-// the entry names; a client metadata document; dynamic registration; or
-// none, which is sign_in_unsupported.
+// the protocol's order: a client of the connector's own, the catalog's or
+// a vouched-for added connector's, when the issuer is the one it names; a
+// client metadata document; dynamic registration; or none, which is
+// sign_in_unsupported. An added server whose authorization server sends no
+// iss has a redirect address of the issuer's own, which the document and
+// the registration name.
 func (s *Signin) planAt(ctx context.Context, conn Connector, md metadataDocument) (Plan, error) {
 	p := Plan{
 		Issuer: md.Issuer, AuthorizationEndpoint: md.AuthorizationEndpoint, TokenEndpoint: md.TokenEndpoint,
 		RevocationEndpoint: md.RevocationEndpoint, IssParameterSupported: md.IssParameterSupported,
+		RedirectURI: s.redirectFor(conn, md.Issuer, md.IssParameterSupported),
 	}
-	switch {
-	case conn.Auth.Client != nil:
-		if conn.Auth.Issuer != md.Issuer {
+	if conn.Auth.Client != nil {
+		switch {
+		case conn.Auth.Issuer != md.Issuer:
 			// A client is bound to the server that issued it.
 			return Plan{}, unsupported("client_at_another_issuer")
+		case conn.AddedURL != "" && md.TokenEndpoint != conn.Found.TokenEndpoint:
+			// The client's secret is bound to the token endpoint the add
+			// found, and is sent to no other.
+			return Plan{}, unsupported("token_endpoint_changed")
 		}
 		p.ClientID = conn.Auth.Client.ID
-	case md.ClientIDMetadataDocumentSupported && strings.HasPrefix(s.PublicURL, "https://"):
+		return p, nil
+	}
+	switch s.clientWay(md) {
+	case ClientByDocument:
 		id := ""
 		if conn.AddedURL != "" {
 			id = conn.Ref
 		}
 		p.ClientID = s.ClientDocumentURL(id)
-	case md.RegistrationEndpoint != "" && conn.AddedURL == "":
-		id, err := s.register(ctx, conn, md)
+	case ClientRegistered:
+		id, err := s.register(ctx, conn, md, p.RedirectURI)
 		if err != nil {
 			return Plan{}, err
 		}

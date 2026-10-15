@@ -238,6 +238,13 @@ func (r *rig) state(c store.Connection) store.Connection {
 // It reaches the stub by its name on loopback.
 func browser(t *testing.T, address string) url.Values {
 	t.Helper()
+	return follow(t, address).Query()
+}
+
+// follow follows an authorization request at the stub and answers the
+// address it redirects to.
+func follow(t *testing.T, address string) *url.URL {
+	t.Helper()
 	dialer := &net.Dialer{}
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -267,7 +274,7 @@ func browser(t *testing.T, address string) url.Values {
 	if err != nil || resp.StatusCode != http.StatusFound {
 		t.Fatalf("the authorization request answered %d %v", resp.StatusCode, err)
 	}
-	return loc.Query()
+	return loc
 }
 
 // pending makes a pending connection of a connector and starts its

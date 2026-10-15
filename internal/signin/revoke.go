@@ -95,7 +95,7 @@ func (s *Signin) revoke(ctx context.Context, conn Connector, meta store.Meta, se
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), revokeTimeout)
 	defer cancel()
-	c, err := s.clientAt(ctx, conn, meta.Issuer, meta.ClientID)
+	c, err := s.clientAt(ctx, conn, meta.Issuer, meta.ClientID, meta.TokenEndpoint)
 	if err == nil {
 		var status int
 		status, _, err = s.post(ctx, meta.RevocationEndpoint, conn.Ports(), url.Values{"token_type_hint": {hint}}, map[string]string{"token": token}, c)

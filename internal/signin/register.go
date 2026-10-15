@@ -34,15 +34,16 @@ type Document struct {
 
 // ClientDocument is the client metadata document of the catalog's
 // connectors, or of an added connector when title is given: its own
-// address as client_id, one redirect address, and no secret.
-func (s *Signin) ClientDocument(id, title string) Document {
+// address as client_id, the one redirect address its sign-ins use, and no
+// secret.
+func (s *Signin) ClientDocument(id, title, redirect string) Document {
 	name := s.ClientName
 	if title != "" {
 		name += " for " + title
 	}
 	return Document{
 		ClientID: s.ClientDocumentURL(id), ClientName: name, ClientURI: s.ClientURI,
-		RedirectURIs: []string{s.RedirectURI()}, GrantTypes: []string{"authorization_code", "refresh_token"},
+		RedirectURIs: []string{redirect}, GrantTypes: []string{"authorization_code", "refresh_token"},
 		ResponseTypes: []string{"code"}, TokenEndpointAuthMethod: "none",
 	}
 }
@@ -54,15 +55,15 @@ const maxRegistrationAnswer = 1 << 20
 // 7591): the registration kept for the issuer and the redirect address, or
 // a new one, its secret sealed. Of two replicas that register at once the
 // store keeps the first row, which both use.
-func (s *Signin) register(ctx context.Context, conn Connector, md metadataDocument) (string, error) {
-	reg, err := s.Store.Registrations().Get(ctx, md.Issuer, s.RedirectURI())
+func (s *Signin) register(ctx context.Context, conn Connector, md metadataDocument, redirect string) (string, error) {
+	reg, err := s.Store.Registrations().Get(ctx, md.Issuer, redirect)
 	switch {
 	case err == nil:
 		return reg.ClientID, nil
 	case !errors.Is(err, store.ErrNotFound):
 		return "", apierr.Internal(err)
 	}
-	doc := s.ClientDocument("", "")
+	doc := s.ClientDocument("", "", redirect)
 	doc.ClientID = ""
 	doc.ApplicationType = "web"
 	if u, err := url.Parse(s.PublicURL); err == nil {
@@ -98,9 +99,9 @@ func (s *Signin) register(ctx context.Context, conn Connector, md metadataDocume
 	if resp.StatusCode < 200 || resp.StatusCode > 299 || json.Unmarshal(raw, &answer) != nil || answer.ClientID == "" {
 		return "", unsupported("registration")
 	}
-	row := store.Registration{Issuer: md.Issuer, RedirectURI: s.RedirectURI(), ClientID: answer.ClientID, RegisteredAt: s.now()}
+	row := store.Registration{Issuer: md.Issuer, RedirectURI: redirect, ClientID: answer.ClientID, RegisteredAt: s.now()}
 	if answer.ClientSecret != "" {
-		sealed, err := s.Sealer.Seal([]byte(answer.ClientSecret), store.RegistrationBinding(md.Issuer, s.RedirectURI()))
+		sealed, err := s.Sealer.Seal([]byte(answer.ClientSecret), store.RegistrationBinding(md.Issuer, redirect))
 		switch {
 		case errors.Is(err, store.ErrNoSealingKey):
 			return "", apierr.Fail(apierr.CodeSealingUnavailable, "no_sealing_key")
@@ -116,14 +117,17 @@ func (s *Signin) register(ctx context.Context, conn Connector, md metadataDocume
 	return kept.ClientID, nil
 }
 
-// forget deletes a registration the server no longer knows, so the next
-// sign-in at the issuer registers again.
+// forget deletes a registration the server no longer knows, at the shared
+// callback or the issuer's own, so the next sign-in at the issuer
+// registers again.
 func (s *Signin) forget(ctx context.Context, issuer, clientID string) {
-	reg, err := s.Store.Registrations().Get(ctx, issuer, s.RedirectURI())
-	if err != nil || reg.ClientID != clientID {
-		return
-	}
-	if err := s.Store.Registrations().Delete(ctx, issuer, s.RedirectURI()); err != nil {
-		s.log().WarnContext(ctx, "a refused registration was not deleted", "error", err.Error())
+	for _, redirect := range []string{s.RedirectURI(), s.CallbackFor(issuer)} {
+		reg, err := s.Store.Registrations().Get(ctx, issuer, redirect)
+		if err != nil || reg.ClientID != clientID {
+			continue
+		}
+		if err := s.Store.Registrations().Delete(ctx, issuer, redirect); err != nil {
+			s.log().WarnContext(ctx, "a refused registration was not deleted", "error", err.Error())
+		}
 	}
 }

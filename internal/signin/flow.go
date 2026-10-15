@@ -62,11 +62,14 @@ func (s *Signin) Begin(c store.Connection, p Plan, returnTo string) (string, sto
 		return "", store.Flow{}, unsupported("authorization_endpoint")
 	}
 	state, verifier := secret(), secret()
+	if p.RedirectURI == "" {
+		p.RedirectURI = s.RedirectURI()
+	}
 	f := store.Flow{
 		ID: s.newID(id.Flow), Connection: c.ID, StateHash: hash(state),
 		Issuer: p.Issuer, AuthorizationEndpoint: p.AuthorizationEndpoint, TokenEndpoint: p.TokenEndpoint,
 		RevocationEndpoint: p.RevocationEndpoint, IssParameterSupported: p.IssParameterSupported,
-		ClientID: p.ClientID, RedirectURI: s.RedirectURI(), Resource: p.Resource, Scopes: p.Scopes,
+		ClientID: p.ClientID, RedirectURI: p.RedirectURI, Resource: p.Resource, Scopes: p.Scopes,
 		ReturnTo: returnTo, CreatedAt: s.now(), ExpiresAt: s.now().Add(FlowTime),
 	}
 	sealed, err := s.Sealer.Seal([]byte(verifier), store.VerifierBinding(f.ID, c.ID))
@@ -119,12 +122,27 @@ func (s *Signin) end(ctx context.Context, f store.Flow, outcome string) {
 }
 
 // Callback takes the answer the other service sent a person's browser back
-// with (specs/007-sign-in.md): it finds the flow by its state, validates
-// iss before the code goes anywhere, exchanges the code at the flow's token
-// endpoint, reads the account once, seals the tokens with the flow, and
-// mints the finish code. It answers where the browser goes: the flow's
-// return_to and no other address. ErrNoFlow is a state no live flow has.
+// with to the shared callback (specs/007-sign-in.md): it finds the flow by
+// its state, validates iss before the code goes anywhere, exchanges the
+// code at the flow's token endpoint, reads the account once, seals the
+// tokens with the flow, and mints the finish code. It answers where the
+// browser goes: the flow's return_to and no other address. ErrNoFlow is a
+// state no live flow has.
 func (s *Signin) Callback(ctx context.Context, q url.Values) (string, error) {
+	return s.callback(ctx, q, "")
+}
+
+// CallbackAt is Callback at the callback of the issuer whose key is key
+// (specs/016-connectors-added-for-others.md): the key is compared with the
+// flow's recorded issuer before the code goes anywhere, so an answer that
+// arrives at another server's address is refused.
+func (s *Signin) CallbackAt(ctx context.Context, key string, q url.Values) (string, error) {
+	return s.callback(ctx, q, key)
+}
+
+// callback is the callback at the shared address, key "", or at an
+// issuer's own.
+func (s *Signin) callback(ctx context.Context, q url.Values, key string) (string, error) {
 	state := q.Get("state")
 	if state == "" {
 		return "", ErrNoFlow
@@ -155,7 +173,14 @@ func (s *Signin) Callback(ctx context.Context, q url.Values) (string, error) {
 		s.end(ctx, f, backFailed)
 		return back(f, "error", backFailed), nil
 	}
-	if !issAccepted(q, f, conn) {
+	// The answer arrived where the flow said it would: the shared
+	// callback, or the callback of the flow's own issuer.
+	arrived := s.RedirectURI()
+	if key != "" {
+		arrived = s.RedirectURI() + "/" + key
+	}
+	own := key != "" && key == IssuerKey(f.Issuer)
+	if f.RedirectURI != arrived || (key != "" && !own) || !issAccepted(q, f, conn, own) {
 		s.end(ctx, f, backFailed)
 		return back(f, "error", backFailed), nil
 	}
@@ -185,16 +210,20 @@ func (s *Signin) Callback(ctx context.Context, q url.Values) (string, error) {
 // issAccepted is the iss rule of specs/007-sign-in.md, with its last row
 // narrowed: an iss present is compared with the recorded issuer as strings;
 // an absent one is refused when the metadata says iss is sent, and accepted
-// otherwise only from a server the catalog names, by its issuer or by its
-// endpoints.
-func issAccepted(q url.Values, f store.Flow, conn Connector) bool {
+// otherwise from an answer that arrived at the callback of the flow's own
+// issuer (specs/016-connectors-added-for-others.md), or from a server the
+// catalog names, by its issuer or by its endpoints.
+func issAccepted(q url.Values, f store.Flow, conn Connector, own bool) bool {
 	if values, ok := q["iss"]; ok {
 		return f.Issuer != "" && len(values) == 1 && values[0] == f.Issuer
 	}
 	if f.IssParameterSupported {
 		return false
 	}
-	return conn.Auth.Discovery == catalog.DiscoveryNone || (conn.Auth.Issuer != "" && conn.Auth.Issuer == f.Issuer)
+	if own {
+		return true
+	}
+	return conn.AddedURL == "" && (conn.Auth.Discovery == catalog.DiscoveryNone || (conn.Auth.Issuer != "" && conn.Auth.Issuer == f.Issuer))
 }
 
 // exchange trades a code at the flow's token endpoint, with the verifier,
@@ -209,7 +238,7 @@ func (s *Signin) exchange(ctx context.Context, row store.Connection, conn Connec
 	if err != nil {
 		return store.SealedCredential{}, err
 	}
-	c, err := s.clientAt(ctx, conn, f.Issuer, f.ClientID)
+	c, err := s.clientAt(ctx, conn, f.Issuer, f.ClientID, f.TokenEndpoint)
 	if err != nil {
 		return store.SealedCredential{}, err
 	}

@@ -195,11 +195,12 @@ func TestClientSelection(t *testing.T) {
 		t.Fatalf("an added connector's own document: %+v %v", p, err)
 	}
 	r.auth.Set(func(sw *stubs.AuthSwitches) { sw.CIMD = false })
-	if _, err := r.s.Discover(ctx, added, nil); apierr.Classify(err).Reason != "no_client" {
-		t.Fatalf("an added connector is never registered: %v", err)
+	p, err := r.s.Discover(ctx, added, nil)
+	if err != nil || !strings.HasPrefix(p.ClientID, "reg-") {
+		t.Fatalf("an added connector's registration: %+v %v", p, err)
 	}
-	if p, err := r.s.Discover(ctx, r.conns["found"], nil); err != nil || !strings.HasPrefix(p.ClientID, "reg-") {
-		t.Fatalf("a registration: %+v %v", p, err)
+	if again, err := r.s.Discover(ctx, r.conns["found"], nil); err != nil || again.ClientID != p.ClientID {
+		t.Fatalf("a registration is the installation's at its issuer: %+v %v", again, err)
 	}
 	r.st.Registrations().Delete(ctx, r.auth.Issuer(), r.s.RedirectURI())
 	r.auth.Set(func(sw *stubs.AuthSwitches) { sw.NoRegistration = true })
@@ -212,7 +213,7 @@ func TestClientSelection(t *testing.T) {
 	if _, err := r.s.Discover(ctx, r.conns["found"], nil); apierr.Classify(err).Reason != "no_client" {
 		t.Fatalf("a document on plain http: %v", err)
 	}
-	doc := r.s.ClientDocument("ctr_01", "Team wiki")
+	doc := r.s.ClientDocument("ctr_01", "Team wiki", r.s.RedirectURI())
 	if doc.ClientName != "Pons for Team wiki" || doc.TokenEndpointAuthMethod != "none" || len(doc.RedirectURIs) != 1 {
 		t.Fatalf("a document %+v", doc)
 	}

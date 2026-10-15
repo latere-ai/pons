@@ -59,15 +59,23 @@ const (
 )
 
 // Connector is a connector as the sign-in reads it: the entry, and the url
-// of a connector a person added, which a credential of it is bound to.
+// of a connector added by its address, which a credential of it is bound
+// to, with what its add found and its sealed client secret.
 type Connector struct {
 	catalog.Connector
 	// Ref is the connector reference: a catalog name, or an added
 	// connector's id.
 	Ref string
-	// AddedURL is the url of a connector a person added, and empty for a
-	// catalog connector.
+	// AddedURL is the url of a connector added by its address, and empty
+	// for a catalog connector.
 	AddedURL string
+	// Found is what the add found of how the server signs people in.
+	Found Found
+	// ClientSecret is the sealed secret of a vouched-for added connector's
+	// own client, bound to its id and Found's token endpoint.
+	ClientSecret store.Sealed
+	// Disabled is an added connector its owner turned off.
+	Disabled bool
 }
 
 // ErrNoConnector is a reference that names no connector.

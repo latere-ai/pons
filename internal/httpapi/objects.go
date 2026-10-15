@@ -119,6 +119,16 @@ func (s *Server) resolve(ctx context.Context, ref string) (connector, error) {
 	return fromRow(row)
 }
 
+// foundOf reads what an added connector's add found of its sign-in.
+func foundOf(row store.Connector) (signin.Found, error) {
+	var f signin.Found
+	if len(row.SignIn) == 0 {
+		return f, nil
+	}
+	err := json.Unmarshal(row.SignIn, &f)
+	return f, err
+}
+
 // fromRow reads an added connector's row.
 func fromRow(row store.Connector) (connector, error) {
 	c := catalog.Connector{

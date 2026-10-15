@@ -129,11 +129,11 @@ func TestIssuerValidation(t *testing.T) {
 	// The comparison is of strings.
 	f := store.Flow{Issuer: "https://auth.example.com"}
 	for _, iss := range []string{"https://AUTH.example.com", "https://auth.example.com/", "https://auth.example.com:443"} {
-		if issAccepted(url.Values{"iss": {iss}}, f, r.conns["issued"]) {
+		if issAccepted(url.Values{"iss": {iss}}, f, r.conns["issued"], false) {
 			t.Errorf("%s matched by normalization", iss)
 		}
 	}
-	if issAccepted(url.Values{"iss": {f.Issuer, f.Issuer}}, f, r.conns["issued"]) {
+	if issAccepted(url.Values{"iss": {f.Issuer, f.Issuer}}, f, r.conns["issued"], false) {
 		t.Error("a repeated iss")
 	}
 }

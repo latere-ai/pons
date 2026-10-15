@@ -147,7 +147,7 @@ func (s *Signin) reopen(ctx context.Context, o Opened) (Opened, error) {
 // refreshGrant asks the recorded token endpoint for new tokens with the
 // refresh token, the client and the resource.
 func (s *Signin) refreshGrant(ctx context.Context, o Opened) (answer, error) {
-	c, err := s.clientAt(ctx, o.Connector, o.Meta.Issuer, o.Meta.ClientID)
+	c, err := s.clientAt(ctx, o.Connector, o.Meta.Issuer, o.Meta.ClientID, o.Meta.TokenEndpoint)
 	if err != nil {
 		return answer{}, err
 	}
@@ -199,10 +199,22 @@ func (s *Signin) seal(c store.Connection, conn Connector, secrets store.Secrets,
 }
 
 // clientAt is the client a credential was issued to, with its secret read
-// at use: the catalog's client when the entry names that id, a registration
-// kept for the issuer, or a public client.
-func (s *Signin) clientAt(ctx context.Context, conn Connector, issuer, clientID string) (client, error) {
+// at use: the catalog's client when the entry names that id; a vouched-for
+// added connector's own, whose sealed secret opens for the token endpoint
+// its add found alone; a registration kept for the issuer at the shared
+// callback or the issuer's own; or a public client.
+func (s *Signin) clientAt(ctx context.Context, conn Connector, issuer, clientID, tokenEndpoint string) (client, error) {
 	if cl := conn.Auth.Client; cl != nil && cl.ID == clientID {
+		if conn.AddedURL != "" {
+			if conn.ClientSecret.Zero() {
+				return client{ID: clientID}, nil
+			}
+			secret, err := s.Sealer.Open(conn.ClientSecret, store.ConnectorClientBinding(conn.Ref, tokenEndpoint))
+			if err != nil {
+				return client{}, &apierr.Error{Code: apierr.CodeSealingUnavailable, Reason: "not_opened"}
+			}
+			return client{ID: clientID, Secret: string(secret)}, nil
+		}
 		if cl.Secret == nil {
 			return client{ID: clientID}, nil
 		}
@@ -212,19 +224,25 @@ func (s *Signin) clientAt(ctx context.Context, conn Connector, issuer, clientID 
 		}
 		return client{ID: clientID, Secret: secret}, nil
 	}
-	reg, err := s.Store.Registrations().Get(ctx, issuer, s.RedirectURI())
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		return client{ID: clientID}, nil
-	case err != nil:
-		return client{}, apierr.Internal(err)
+	for _, redirect := range []string{s.RedirectURI(), s.CallbackFor(issuer)} {
+		reg, err := s.Store.Registrations().Get(ctx, issuer, redirect)
+		switch {
+		case errors.Is(err, store.ErrNotFound):
+			continue
+		case err != nil:
+			return client{}, apierr.Internal(err)
+		}
+		if reg.ClientID != clientID {
+			continue
+		}
+		if reg.Secret.Zero() {
+			return client{ID: clientID}, nil
+		}
+		secret, err := s.Sealer.Open(reg.Secret, store.RegistrationBinding(reg.Issuer, reg.RedirectURI))
+		if err != nil {
+			return client{}, &apierr.Error{Code: apierr.CodeSealingUnavailable, Reason: "not_opened"}
+		}
+		return client{ID: clientID, Secret: string(secret)}, nil
 	}
-	if reg.ClientID != clientID || reg.Secret.Zero() {
-		return client{ID: clientID}, nil
-	}
-	secret, err := s.Sealer.Open(reg.Secret, store.RegistrationBinding(reg.Issuer, reg.RedirectURI))
-	if err != nil {
-		return client{}, &apierr.Error{Code: apierr.CodeSealingUnavailable, Reason: "not_opened"}
-	}
-	return client{ID: clientID, Secret: string(secret)}, nil
+	return client{ID: clientID}, nil
 }
