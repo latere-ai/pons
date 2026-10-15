@@ -57,7 +57,7 @@ named by its `name`.
 
 | Route | What it does | Asks |
 |---|---|---|
-| `GET /connectors` | the catalog in the order of its file, then the added connectors the caller may see; `kind`, `limit`, `cursor` | `connector.list` |
+| `GET /connectors` | the catalog in the order of its file, then the added connectors the caller may see; `owner` narrows the added ones to one owner the caller may see; `kind`, `limit`, `cursor` | `connector.list` |
 | `GET /connectors/{ref}` | one connector, by catalog name or id | `connector.read` |
 | `POST /connectors` | add a connector by its address | `connector.create` |
 | `PATCH /connectors/{id}` | change an added connector, or turn it off and on | `connector.update` |
