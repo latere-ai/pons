@@ -110,7 +110,7 @@ func (f *Front) serve(conn net.Conn) {
 				return nil, errHello
 			},
 		})
-		if err := hello.Handshake(); !errors.Is(err, errHello) {
+		if err := hello.HandshakeContext(ctx); !errors.Is(err, errHello) {
 			return
 		}
 		p, ok := f.route(name)
