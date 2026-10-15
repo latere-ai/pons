@@ -85,6 +85,7 @@ const (
 	CodeUnknownField           = "unknown_field"
 	CodeInvalidField           = "invalid_field"
 	CodeMissingField           = "missing_field"
+	CodeImmutableField         = "immutable_field"
 	CodeInvalidCode            = "invalid_code"
 	CodeMissingToken           = "missing_token"
 	CodeInvalidToken           = "invalid_token"
@@ -93,12 +94,16 @@ const (
 	CodeConnectionNotFound     = "connection_not_found"
 	CodeNameTaken              = "name_taken"
 	CodeConnectorInUse         = "connector_in_use"
+	CodeConnectorLimit         = "connector_limit"
+	CodeConnectorDisabled      = "connector_disabled"
 	CodeConnectionNotConnected = "connection_not_connected"
 	CodeWrongKind              = "wrong_kind"
 	CodeFlowExpired            = "flow_expired"
 	CodeRequestTooLarge        = "request_too_large"
 	CodeConnectorUnreachable   = "connector_unreachable"
 	CodeSignInUnsupported      = "sign_in_unsupported"
+	CodeServerUnreachable      = "server_unreachable"
+	CodeAuthMismatch           = "auth_mismatch"
 	CodeCredentialRefused      = "credential_refused"
 	CodeRateLimited            = "rate_limited"
 	CodeInternal               = "internal"
@@ -124,6 +129,7 @@ var table = map[string]kind{
 	CodeUnknownField:           {http.StatusBadRequest, "The request has a member this API does not take.", false},
 	CodeInvalidField:           {http.StatusBadRequest, "A member of the request is not valid.", false},
 	CodeMissingField:           {http.StatusBadRequest, "A required member of the request is missing.", false},
+	CodeImmutableField:         {http.StatusBadRequest, "This member of a connector cannot be changed. Add the server again instead.", false},
 	CodeInvalidCode:            {http.StatusBadRequest, "The sign-in could not be confirmed. Start it again.", false},
 	CodeMissingToken:           {http.StatusUnauthorized, "This request needs a token.", false},
 	CodeInvalidToken:           {http.StatusUnauthorized, "The token of this request was not accepted.", false},
@@ -132,12 +138,16 @@ var table = map[string]kind{
 	CodeConnectionNotFound:     {http.StatusNotFound, "This connection does not exist.", false},
 	CodeNameTaken:              {http.StatusConflict, "That name is already in use.", false},
 	CodeConnectorInUse:         {http.StatusConflict, "A connection still uses this connector.", false},
+	CodeConnectorLimit:         {http.StatusConflict, "No more connectors can be added here. Remove one first.", false},
+	CodeConnectorDisabled:      {http.StatusConflict, "This connector is turned off.", false},
 	CodeConnectionNotConnected: {http.StatusConflict, "This connection needs to be connected again.", false},
 	CodeWrongKind:              {http.StatusConflict, "This connection does not take this request.", false},
 	CodeFlowExpired:            {http.StatusGone, "This sign-in has expired. Start it again.", false},
 	CodeRequestTooLarge:        {http.StatusRequestEntityTooLarge, "The request is too large.", false},
 	CodeConnectorUnreachable:   {http.StatusUnprocessableEntity, "The service could not be reached.", false},
 	CodeSignInUnsupported:      {http.StatusUnprocessableEntity, "This service cannot be connected by signing in.", false},
+	CodeServerUnreachable:      {http.StatusUnprocessableEntity, "No server that can be connected answered at this address.", false},
+	CodeAuthMismatch:           {http.StatusUnprocessableEntity, "This server asks for a different way to connect than the one given.", false},
 	CodeCredentialRefused:      {http.StatusUnprocessableEntity, "The service did not accept this credential.", false},
 	CodeRateLimited:            {http.StatusTooManyRequests, "Too many requests. Try again in a moment.", true},
 	CodeInternal:               {http.StatusInternalServerError, "Something went wrong on our side.", false},

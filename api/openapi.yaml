@@ -934,7 +934,7 @@ components:
           properties:
             code:
               type: string
-              enum: [invalid_request, unknown_field, invalid_field, missing_field, invalid_code, missing_token, invalid_token, forbidden, connector_not_found, connection_not_found, name_taken, connector_in_use, connection_not_connected, wrong_kind, flow_expired, request_too_large, connector_unreachable, sign_in_unsupported, credential_refused, rate_limited, internal, connector_unavailable, authorizer_unavailable, sealing_unavailable, connector_timeout]
+              enum: [invalid_request, unknown_field, invalid_field, missing_field, immutable_field, invalid_code, missing_token, invalid_token, forbidden, connector_not_found, connection_not_found, name_taken, connector_in_use, connector_limit, connector_disabled, connection_not_connected, wrong_kind, flow_expired, request_too_large, connector_unreachable, server_unreachable, sign_in_unsupported, auth_mismatch, credential_refused, rate_limited, internal, connector_unavailable, authorizer_unavailable, sealing_unavailable, connector_timeout]
             message: {type: string, description: One fixed sentence for a person.}
             details:
               type: object
