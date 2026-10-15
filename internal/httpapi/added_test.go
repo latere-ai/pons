@@ -6,7 +6,6 @@ package httpapi
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -19,8 +18,6 @@ import (
 	"latere.ai/x/pons/authorizer"
 	"latere.ai/x/pons/internal/access"
 	"latere.ai/x/pons/internal/apierr"
-	"latere.ai/x/pons/internal/signin"
-	"latere.ai/x/pons/internal/store"
 	"latere.ai/x/pons/test/stubs"
 )
 
@@ -275,10 +272,18 @@ func (h *harness) callTool(bearer, con, tool string) answer {
 }
 
 // browser follows a sign-in as a person's browser does: the authorization
-// request at the stub, reached by its name on loopback, then the answer at
-// the address the stub sent it back to, on the harness. It answers that
-// address and where the harness sent the browser on.
+// request at the stub, then the answer at the address the stub sent it
+// back to, on the harness. It answers that address and where the harness
+// sent the browser on.
 func (h *harness) browser(t testing.TB, authorizationURL string) (landed, back *url.URL) {
+	t.Helper()
+	landed = authorize(t, authorizationURL)
+	return landed, h.callback(t, landed)
+}
+
+// authorize follows an authorization request at the stub, reached by its
+// name on loopback, and answers the address it sends the browser back to.
+func authorize(t testing.TB, authorizationURL string) *url.URL {
 	t.Helper()
 	dialer := &net.Dialer{}
 	client := &http.Client{
@@ -305,11 +310,11 @@ func (h *harness) browser(t testing.TB, authorizationURL string) (landed, back *
 	if err := resp.Body.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if landed, err = url.Parse(resp.Header.Get("Location")); err != nil || resp.StatusCode != http.StatusFound {
+	landed, err := url.Parse(resp.Header.Get("Location"))
+	if err != nil || resp.StatusCode != http.StatusFound {
 		t.Fatalf("the authorization request answered %d %v", resp.StatusCode, err)
 	}
-	back = h.callback(t, landed)
-	return landed, back
+	return landed
 }
 
 // callback brings the answer at an address of the harness's callback to
@@ -360,7 +365,3 @@ func (h *harness) confirm(t testing.TB, bearer, con string, back *url.URL) answe
 	t.Helper()
 	return h.do(http.MethodPost, "/v1/connections/"+con+"/confirm", bearer, map[string]any{"code": back.Query().Get("code")})
 }
-
-var _ = errors.New
-var _ = signin.ClientOwn
-var _ = store.ErrNotFound
