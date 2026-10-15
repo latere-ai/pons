@@ -191,6 +191,14 @@ about a stored object, a read, a change, a use, a confirm, is answered
 exactly as a missing object, with the `404` of its kind, so a caller
 cannot learn that an id exists.
 
+One reason of a deny of `connection.use` is told to the caller:
+`kept_apart_from_google`, for a session that already used a connection
+your installation keeps apart from this one, such as Google's
+connectors and a server someone added. Pons answers it `409
+connection_not_connected` with that reason, so the session can tell
+the person to start a new conversation. Answer it only for a
+connection the session holds, since the answer says the id exists.
+
 ## Failing closed
 
 Anything that is not a well-formed answer is no decision: a status other

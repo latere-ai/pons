@@ -6,6 +6,15 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+- Added: one reason of a deny of `connection.use` reaches the caller.
+  When your authorizer denies a use with `kept_apart_from_google`, for
+  a session that already used a connection you keep apart from this one,
+  Pons answers `409 connection_not_connected` with that reason in
+  `details.reason`, at the MCP and the forwarding address, so the
+  session can tell the person to start a new conversation. Every other
+  deny of a use is still `404 connection_not_found`. Send this reason
+  only for a connection the session holds.
+
 - Added: MCP servers added by their address for others. The owner of an
   added connector is the one your authorizer's allow of
   `connector.create` names, a string Pons gives no meaning: use one for

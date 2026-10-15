@@ -119,7 +119,13 @@ In order. The first failing step answers, and nothing after it runs.
 The body is read before the connection is looked up, and the kind is
 checked after the question, so a caller who may not use a connection
 receives `404` for every request to it and nothing tells it that the
-id exists. One question is asked per request.
+id exists. One question is asked per request. The one exception is a
+deny whose reason is `kept_apart_from_google`
+([[016-connectors-added-for-others]]): it is about the session, which
+already used a connection the installation keeps apart from this one,
+and an authorizer answers it only for a connection the session holds.
+It is `409 connection_not_connected` with that reason, at the MCP and
+the forwarding address alike.
 
 ### What is read from a request
 
@@ -456,6 +462,7 @@ Pons through this address: a caller arrives with a token.
 | A `3xx` is `502 connector_unavailable` and the redirect is not followed | `TestCarrierFollowsNoRedirect` |
 | A body over the limit is `413` before it is read; a body that is not one object, a duplicate or differently cased key, or a mirrored header that differs from the body is `400`; arguments are never decoded | `carry.TestParseOnlyTheMethodAndTool`, `carry.FuzzParse` |
 | A caller that may not use a connection gets `404 connection_not_found` for every request to it, a wrong kind included, and an oversized body is `413` whether the id exists or not; one question is asked per request | `carry.TestNothingTellsAnIdBeforeTheQuestion`, `TestADenyDoesNotConfirmAnId` |
+| A deny of a use whose reason is `kept_apart_from_google` is `409 connection_not_connected` with that reason at the MCP and the forwarding address, recorded as denied and forwarded nowhere; every other reason stays `404` | `carry.TestASessionsRefusalSaysWhy` |
 | The effect follows the marks; a writing tool under `ReadOnly`, a tool outside `Tools` and a hidden tool are `403`, a `tools/list` under `ReadOnly` passes, and the limit per minute and the seventeenth request in flight on one connection are `429`; a refused call opens no credential | `carry.TestLimitsOfAnAllow`, `carry.TestALimitRefusesBeforeTheCredential`, `TestAConnectionsConcurrencyIsBounded` |
 | A subject past `PONS_MAX_INFLIGHT_PER_SUBJECT` requests in flight, across its connections, and a process past `PONS_MAX_INFLIGHT` are `429` before the body is read, with no authorizer and under an allow that names no limit | `TestACallersConcurrencyIsBounded` |
 | A `pending` connection being reconnected is served with its old credential, and a connection whose connector left the catalog answers `409` with `connector_removed` | `TestReconnectKeepsServing`, `TestRemovedConnectorKeepsItsConnections` |

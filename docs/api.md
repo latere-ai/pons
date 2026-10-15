@@ -331,7 +331,8 @@ Each request is asked as `connection.use`, with its method, its effect,
 address, or `git-upload-pack` or `git-receive-pack` on the git address,
 with the branches a push updates. A caller who may not use the
 connection is answered `404 connection_not_found`, as for one that does
-not exist.
+not exist, but for a session the installation keeps apart from this
+connection, below.
 
 **What Pons changes.** It removes the caller's `Authorization` and puts
 the connection's credential in the place the catalog names. Toward the
@@ -510,7 +511,11 @@ acts on. `details.state` is the connection's state, and
 `details.reason` is the connection's own reason when it has one,
 `not_confirmed` for a sign-in not yet confirmed, `connector_removed`
 when its catalog entry is gone, `connector_disabled` when the connector
-is turned off, or `scope_insufficient` when the service asked for more
-scopes, which `details.scopes` names. For `connector_disabled`, tell the
-person the server is turned off; in each other case, offer the person to
-reconnect, or to give a new key.
+is turned off, `scope_insufficient` when the service asked for more
+scopes, which `details.scopes` names, or `kept_apart_from_google` when
+the session already used a connection the installation keeps apart from
+this one, Google's connectors on one side and added servers on the
+other. For `connector_disabled`, tell the person the server is turned
+off; for `kept_apart_from_google`, that this conversation cannot use it
+and a new one can; in each other case, offer the person to reconnect,
+or to give a new key.
