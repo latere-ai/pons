@@ -90,7 +90,7 @@ sends, and `SendsID` for whether it sends the id of a stored object.
 
 | Kind | Action | Resource members sent |
 |---|---|---|
-| `Connector` | `connector.list` | none |
+| `Connector` | `connector.list` | `owner` when the request names one |
 | `Connector` | `connector.read` | `name` for a catalog connector; `id` and `owner` for an added one; `connector_kind` |
 | `Connector` | `connector.create` | `owner`, `connector_kind`, `host` |
 | `Connector` | `connector.update` | `id` and `owner`; a list asks it with `owner` alone ([[016-connectors-added-for-others]]) |
@@ -166,10 +166,11 @@ no id is never cached, so every connect, add and list is asked.
 `filter` narrows a list to owners. An allow with no filter lists the
 caller's own, so an authorizer that lets a caller see other owners
 names them. The request's `owner` member narrows further and never
-widens. A list of connections that names an owner sends it in the
-question, so a service that lists one person's connections for them is
-answered by a filter naming that person, and is never handed a filter
-of every owner it might ask about. For `connector.list` the filter narrows the added connectors;
+widens. A list of connections or of connectors that names an owner
+sends it in the question, so a service that lists one person's
+connections or servers for them is answered by a filter naming that
+person, and is never handed a filter of every owner it might ask
+about. For `connector.list` the filter narrows the added connectors;
 the catalog is the installation's and is listed whatever the filter. A
 filter that names labels cannot be applied, since nothing in Pons is
 labeled, and is treated as no answer.

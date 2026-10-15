@@ -113,7 +113,7 @@ var connection = []string{FieldOwner, FieldConnector, FieldName, FieldConnection
 // table is the vocabulary of specs/004-identity-and-authorization.md, in its
 // order, with the fields each action sends.
 var table = []action{
-	{ActionConnectorList, KindConnector, nil, false},
+	{ActionConnectorList, KindConnector, []string{FieldOwner}, false},
 	{ActionConnectorRead, KindConnector, []string{FieldName, FieldOwner, FieldConnectorKind}, true},
 	{ActionConnectorCreate, KindConnector, []string{FieldOwner, FieldConnectorKind, FieldHost}, false},
 	{ActionConnectorUpdate, KindConnector, []string{FieldOwner}, true},

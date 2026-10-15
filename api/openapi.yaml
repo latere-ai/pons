@@ -47,6 +47,10 @@ paths:
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Cursor"
+        - name: owner
+          in: query
+          description: Only this owner's added connectors; the catalog is listed whatever it says. It narrows what the caller may see and never widens it.
+          schema: {type: string}
         - name: kind
           in: query
           description: Only connectors of this kind.

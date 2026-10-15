@@ -134,6 +134,18 @@ func TestAnAddedConnectorListsToTheOwnersTheFilterNames(t *testing.T) {
 	if got := ids(t, h.do(http.MethodGet, "/v1/connectors", "bob", nil)); slices.Contains(got, wiki) || slices.Contains(got, mine) || len(got) != 1 {
 		t.Fatalf("bob lists %v", got)
 	}
+	// A list that names an owner sends it in its question and narrows to
+	// it; one naming an owner the filter leaves out lists none of theirs.
+	before = len(h.authz.questions())
+	if got := ids(t, h.do(http.MethodGet, "/v1/connectors?owner="+url.QueryEscape(orgOwner), "alice", nil)); !slices.Equal(got, []string{wiki}) {
+		t.Fatalf("alice lists the organization's as %v", got)
+	}
+	if q := h.asked(before, authorizer.ActionConnectorList); len(q) != 1 || q[0].Resource.String(authorizer.FieldOwner) != orgOwner {
+		t.Fatalf("the list asked %+v", q)
+	}
+	if got := ids(t, h.do(http.MethodGet, "/v1/connectors?owner="+url.QueryEscape(subject("alice")), "bob", nil)); len(got) != 0 {
+		t.Fatalf("bob lists alice's as %v", got)
+	}
 	if a := h.do(http.MethodGet, "/v1/connectors/"+wiki, "alice", nil); a.status != http.StatusOK || a.json(t)["owner"] != orgOwner {
 		t.Fatalf("alice reads the organization's: %d %s", a.status, a.body)
 	}

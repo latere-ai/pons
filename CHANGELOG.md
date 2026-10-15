@@ -6,6 +6,12 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+- Added: a list of connectors takes `owner`, as a list of connections
+  does, and sends it in its `connector.list` question, so your
+  authorizer can let a service list one person's servers, for instance
+  to remove a closed account's, with a filter naming that person alone.
+  A list that names no owner asks as before.
+
 - Added: one reason of a deny of `connection.use` reaches the caller.
   When your authorizer denies a use with `kept_apart_from_google`, for
   a session that already used a connection you keep apart from this one,

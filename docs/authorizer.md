@@ -79,7 +79,7 @@ asked.
 
 | Kind | Action | Asked by | Resource members |
 |---|---|---|---|
-| `Connector` | `connector.list` | the list of connectors | none |
+| `Connector` | `connector.list` | the list of connectors | `owner` when the request names one |
 | `Connector` | `connector.read` | a read of one connector | `name` for a catalog connector; `id` and `owner` for one a person added; `connector_kind` |
 | `Connector` | `connector.create` | adding a connector by its address | `owner` when the request names one, `connector_kind`, `host` |
 | `Connector` | `connector.update` | an edit of an added connector; and a list, once per owner on its page, with no `id` | `id`, `owner` |
@@ -179,7 +179,7 @@ owners whose objects the caller may see. An allow with no filter lists
 the caller's own. The request's `owner` parameter narrows the list
 further and never widens it, and a list that names an owner sends it in
 the question, so you can answer a service that lists one person's
-connections with a filter naming that person. For `connector.list` the
+connections or servers with a filter naming that person. For `connector.list` the
 filter narrows the connectors people added; the catalog is listed
 whatever it says. A filter that names labels cannot be applied, since
 nothing in Pons is labeled, and is no answer.

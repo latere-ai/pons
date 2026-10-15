@@ -169,8 +169,8 @@ func asJSON(t *testing.T, fields map[string]any) string {
 
 // The endpoint Pons asks answers the contract for every row of the
 // vocabulary: the stub authorizer, as the test tiers start it.
-// A list of connections names the owner it asks for and no other member;
-// one that names none sends no field; a list of connectors sends none.
+// A list of connections or of connectors names the owner it asks for and
+// no other member, and one that names none sends no field.
 func TestAListNamesItsOwner(t *testing.T) {
 	const alice = "https://issuer.example.com|alice"
 	l := access.ListOf(authorizer.ActionConnectionList, alice)
@@ -180,8 +180,11 @@ func TestAListNamesItsOwner(t *testing.T) {
 	if l := access.ListOf(authorizer.ActionConnectionList, ""); len(l.Fields) != 0 {
 		t.Fatalf("a list naming none sends %v", l.Fields)
 	}
-	if l := access.ListOf(authorizer.ActionConnectorList, alice); len(l.Fields) != 0 || l.Kind != authorizer.KindConnector {
+	if l := access.ListOf(authorizer.ActionConnectorList, alice); len(l.Fields) != 1 || l.Kind != authorizer.KindConnector || l.String(authorizer.FieldOwner) != alice {
 		t.Fatalf("a list of connectors sends %+v", l)
+	}
+	if l := access.ListOf(authorizer.ActionConnectorList, ""); len(l.Fields) != 0 {
+		t.Fatalf("a list of connectors naming none sends %v", l.Fields)
 	}
 }
 

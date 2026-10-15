@@ -43,7 +43,8 @@ func (s *Server) listConnectors(w http.ResponseWriter, r *http.Request, c access
 	if kind != "" && kind != catalog.KindMCP && kind != catalog.KindHTTP {
 		return apierr.OnField(apierr.CodeInvalidField, "kind", "not_mcp_or_http")
 	}
-	d, err := s.ask(r, c, authorizer.ActionConnectorList, access.List(authorizer.ActionConnectorList))
+	owner := r.URL.Query().Get("owner")
+	d, err := s.ask(r, c, authorizer.ActionConnectorList, access.ListOf(authorizer.ActionConnectorList, owner))
 	if err != nil {
 		return err
 	}
@@ -82,7 +83,7 @@ func (s *Server) listConnectors(w http.ResponseWriter, r *http.Request, c access
 	if added.Limit == 0 {
 		// The page is full of catalog entries; the next starts at the
 		// first added connector, if there is one.
-		rows, _, err := s.Store.Connectors().List(r.Context(), d.Owners(c, ""), store.Page{Limit: 1})
+		rows, _, err := s.Store.Connectors().List(r.Context(), d.Owners(c, owner), store.Page{Limit: 1})
 		if err != nil {
 			return apierr.Internal(err)
 		}
@@ -91,7 +92,7 @@ func (s *Server) listConnectors(w http.ResponseWriter, r *http.Request, c access
 		}
 		return write(w, http.StatusOK, out)
 	}
-	rows, next, err := s.Store.Connectors().List(r.Context(), d.Owners(c, ""), added)
+	rows, next, err := s.Store.Connectors().List(r.Context(), d.Owners(c, owner), added)
 	if err != nil {
 		return apierr.Internal(err)
 	}
