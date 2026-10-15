@@ -41,8 +41,12 @@ type connectRequest struct {
 }
 
 // createConnection is POST /connections. A connection by a key, by a
-// client of its own or with no credential is connected at once. One by
-// signing in needs the sign-in, which is refused until it is built.
+// client of its own or with no credential is connected at once; one by
+// signing in is pending with the address of its sign-in. A connect to an
+// added connector asks connector.read of it first, so a connector another
+// owner added is connected by whom the authorizer lets read it
+// (specs/016-connectors-added-for-others.md), and one turned off is
+// connected by nobody.
 func (s *Server) createConnection(w http.ResponseWriter, r *http.Request, c access.Caller) error {
 	if err := s.limited(c); err != nil {
 		return err
@@ -83,6 +87,20 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request, c acce
 		return err
 	}
 	res := access.Connection{Owner: req.Owner, Connector: conn.ref(), Name: name, Kind: conn.Kind, Auth: conn.Auth.Type}
+	if conn.added != nil {
+		read := access.Connector{ID: conn.added.ID, Owner: conn.added.Owner, Kind: conn.Kind}
+		d, err := s.ask(r, c, authorizer.ActionConnectorRead, read.Resource(authorizer.ActionConnectorRead))
+		if err != nil {
+			return err
+		}
+		if !d.Allow {
+			return apierr.OnField(apierr.CodeConnectorNotFound, "connector", "")
+		}
+		if conn.added.Disabled {
+			return apierr.OnField(apierr.CodeConnectorDisabled, "connector", "")
+		}
+		res.ConnectorOwner = conn.added.Owner
+	}
 	d, err := s.ask(r, c, authorizer.ActionConnectionCreate, res.Resource(authorizer.ActionConnectionCreate))
 	if err != nil {
 		return err
@@ -94,10 +112,6 @@ func (s *Server) createConnection(w http.ResponseWriter, r *http.Request, c acce
 		return apierr.OnField(apierr.CodeForbidden, "connector", "connectors")
 	}
 	owner := ownerOf(d, req.Owner, c)
-	if conn.added != nil && conn.added.Owner != owner {
-		// An added connector is its owner's alone.
-		return apierr.OnField(apierr.CodeConnectorNotFound, "connector", "")
-	}
 	row := store.Connection{
 		ID: s.newID(id.Connection), Owner: owner, Name: name, Connector: conn.ref(), Kind: conn.Kind,
 		Auth: conn.Auth.Type, State: store.StateConnected, CreatedBy: c.Subject,
@@ -415,6 +429,10 @@ func (s *Server) replaceCredential(w http.ResponseWriter, r *http.Request, c acc
 		return &apierr.Error{Code: apierr.CodeConnectionNotConnected, Reason: "connector_removed", Extra: map[string]any{"state": string(row.State)}}
 	case err != nil:
 		return apierr.Internal(err)
+	case conn.added != nil && conn.added.Disabled:
+		// A new key is tried at the server, which nobody reaches through a
+		// connector turned off.
+		return apierr.OnField(apierr.CodeConnectorDisabled, "connector", "")
 	}
 	secrets, meta, err := credentialOf(conn, req.Credential)
 	if err != nil {
@@ -483,6 +501,35 @@ func (s *Server) listCalls(w http.ResponseWriter, r *http.Request, c access.Call
 	out := list[callView]{Items: []callView{}, NextCursor: next}
 	for _, call := range calls {
 		out.Items = append(out.Items, callOf(call))
+	}
+	return write(w, http.StatusOK, out)
+}
+
+// toolView is one tool a connection's server lists, with the effect its
+// connector's marks give it and whether they hide it.
+type toolView struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Effect      string `json:"effect"`
+	Hidden      bool   `json:"hidden,omitempty"`
+}
+
+// listTools is GET /connections/{id}/tools: the tools the connection's
+// server lists through it, asked each time and recorded as no call, so an
+// administrator chooses tool marks from the tools a server has
+// (specs/016-connectors-added-for-others.md).
+func (s *Server) listTools(w http.ResponseWriter, r *http.Request, c access.Caller) error {
+	row, err := s.stored(r, c, authorizer.ActionConnectionRead)
+	if err != nil {
+		return err
+	}
+	tools, err := s.Carrier.Tools(r.Context(), row)
+	if err != nil {
+		return err
+	}
+	out := list[toolView]{Items: make([]toolView, 0, len(tools))}
+	for _, t := range tools {
+		out.Items = append(out.Items, toolView{Name: t.Name, Description: t.Description, Effect: t.Effect, Hidden: t.Hidden})
 	}
 	return write(w, http.StatusOK, out)
 }

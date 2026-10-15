@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"io"
 	"maps"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -61,14 +62,20 @@ func (s *syncBuffer) String() string {
 func key(b byte) string { return base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{b}, 32)) }
 
 // upstream are the stubs a test's servers reach: the API, the
-// authorization server, the connector, and the git host where git is
-// installed. A test has one set, made on first use.
+// authorization server, the connector, the git host where git is
+// installed, and the front every request leaves through, the stacks'
+// PONS_OUTBOUND_PROXY, which reaches the connector at port 443 as
+// mcp.example.com. A test has one set, made on first use.
 type upstream struct {
-	api  *stubs.API
-	auth *stubs.AuthServer
-	git  *stubs.GitHost
-	mcp  *stubs.Connector
+	api   *stubs.API
+	auth  *stubs.AuthServer
+	git   *stubs.GitHost
+	mcp   *stubs.Connector
+	front *stubs.Front
 }
+
+// addedURL is the address a test adds the stub connector at.
+const addedURL = "https://mcp.example.com/mcp"
 
 var upstreams sync.Map // testing.TB to *upstream
 
@@ -80,6 +87,8 @@ func upstreamOf(t testing.TB) *upstream {
 		return u.(*upstream)
 	}
 	u := &upstream{api: stubs.NewAPI(t), auth: stubs.NewAuthServer(t), mcp: stubs.NewConnector(t)}
+	u.front = stubs.NewFront(t, (&net.Dialer{}).DialContext)
+	u.front.Route(u.mcp.Name(), u.mcp.Port())
 	u.auth.AddClient("wh", "")
 	u.auth.AddClient("wh-client", "")
 	u.auth.AddClient(githubClient, githubSecret)
@@ -96,9 +105,9 @@ func upstreamOf(t testing.TB) *upstream {
 	return u
 }
 
-// ports are the stubs' listeners.
+// ports are the stubs' listeners, and port 443 the front serves.
 func (u *upstream) ports() []int {
-	ports := []int{u.api.Port(), u.auth.Port(), u.mcp.Port()}
+	ports := []int{443, u.api.Port(), u.auth.Port(), u.mcp.Port()}
 	if u.git != nil {
 		ports = append(ports, u.git.Port())
 	}
@@ -274,6 +283,7 @@ func environment(t testing.TB, iss *stubs.Issuer, over map[string]string) map[st
 		// A test makes more connections in a minute than a person does.
 		"PONS_CREATES_PER_MINUTE": "1000",
 		"PONS_RETURN_URLS":        returnURL + ",https://app.example.com/settings/",
+		"PONS_OUTBOUND_PROXY":     upstreamOf(t).front.URL().String(),
 	}
 	maps.Copy(env, over)
 	for k, v := range over {

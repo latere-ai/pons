@@ -354,13 +354,13 @@ func TestHandlersHoldTheContract(t *testing.T) {
 	check(http.MethodGet, "/v1/connectors/search", "alice", nil)
 	check(http.MethodGet, "/v1/connectors/nothing", "alice", nil)
 	added := check(http.MethodPost, "/v1/connectors", "alice", map[string]any{
-		"name": "wiki", "title": "Wiki", "kind": "mcp", "url": "https://wiki.example.com/mcp",
+		"name": "wiki", "title": "Wiki", "kind": "mcp", "url": addedURL,
 		"auth":  map[string]any{"type": "token", "inject": map[string]any{"header": "X-Key", "format": "{value}"}},
 		"tools": map[string]any{"read_only": []string{"get_*"}},
 	})
 	ctr := idOf(t, added)
-	check(http.MethodPost, "/v1/connectors", "alice", map[string]any{"name": "wiki", "title": "W", "kind": "mcp", "url": "https://wiki.example.com/mcp", "auth": map[string]any{"type": "none"}})
-	check(http.MethodPost, "/v1/connectors", "alice", map[string]any{"name": "oauth", "title": "O", "kind": "mcp", "url": "https://o.example.com/mcp", "auth": map[string]any{"type": "oauth"}})
+	check(http.MethodPost, "/v1/connectors", "alice", map[string]any{"name": "wiki", "title": "W", "kind": "mcp", "url": addedURL, "auth": map[string]any{"type": "none"}})
+	check(http.MethodPost, "/v1/connectors", "alice", map[string]any{"name": "oauth", "title": "O", "kind": "mcp", "url": addedURL, "auth": map[string]any{"type": "oauth"}})
 	check(http.MethodPost, "/v1/connectors", "alice", `{"name": 1}`)
 	check(http.MethodGet, "/v1/connectors/"+ctr, "alice", nil)
 	// A key of an added connector is probed at its url, on port 443, which

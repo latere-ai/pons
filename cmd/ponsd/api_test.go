@@ -155,7 +155,7 @@ func TestIdempotentCreate(t *testing.T) {
 	if len(list) != 2 {
 		t.Fatalf("alice holds %d connections", len(list))
 	}
-	add := map[string]any{"name": "wiki", "title": "Wiki", "kind": "mcp", "url": "https://wiki.example.com/mcp", "auth": map[string]any{"type": "none"}}
+	add := map[string]any{"name": "wiki", "title": "Wiki", "kind": "mcp", "url": addedURL, "auth": map[string]any{"type": "none"}}
 	one := s.do(http.MethodPost, "/v1/connectors", "alice", add, "Idempotency-Key", "k3")
 	two := s.do(http.MethodPost, "/v1/connectors", "alice", add, "Idempotency-Key", "k3")
 	if one.status != http.StatusCreated || two.status != http.StatusCreated || one.id(t) != two.id(t) {
@@ -235,7 +235,7 @@ func TestWhoseACreateIs(t *testing.T) {
 	if got := s.connect("dave", "weather", "w3", nil).json(t)["owner"]; got != iss.Subject("dave") {
 		t.Errorf("the caller: %v", got)
 	}
-	add := map[string]any{"name": "wiki", "title": "Wiki", "kind": "mcp", "url": "https://wiki.example.com/mcp", "auth": map[string]any{"type": "none"}}
+	add := map[string]any{"name": "wiki", "title": "Wiki", "kind": "mcp", "url": addedURL, "auth": map[string]any{"type": "none"}}
 	if got := s.do(http.MethodPost, "/v1/connectors", "carol", add).json(t)["owner"]; got != team {
 		t.Errorf("an added connector's owner: %v", got)
 	}
@@ -338,6 +338,27 @@ func TestEachMemberOfAnAllowChangesTheOutcome(t *testing.T) {
 				t.Fatalf("a refused connect stored a connection: %v", items)
 			}
 		},
+	}
+	cases["Vouched"] = func(t *testing.T) {
+		az, over := withAuthorizer(t, nil)
+		az.Allow(stub.Rule{Action: authorizer.ActionConnectorCreate, Limits: map[string]any{"vouched": true}})
+		s := startStack(t, iss, over)
+		up := upstreamOf(t)
+		up.mcp.Set(func(sw *stubs.ConnectorSwitches) { sw.Servers = []string{up.auth.Issuer()} })
+		add := func(name string) answer {
+			return s.do(http.MethodPost, "/v1/connectors", "alice", map[string]any{
+				"name": name, "title": "Wiki", "kind": "mcp", "url": addedURL,
+				"auth": map[string]any{"type": "oauth", "client": map[string]any{"id": "wiki-client", "secret": "the-wiki-client-secret"}},
+			})
+		}
+		a := add("wiki")
+		if a.status != http.StatusCreated || a.json(t)["vouched"] != true || a.json(t)["auth"].(map[string]any)["client"] != "own" {
+			t.Fatalf("a vouched-for add: %d %s", a.status, a.body)
+		}
+		az.SetRules(stub.Rule{Action: authorizer.ActionConnectorCreate, Allow: true})
+		if a := add("wiki-2"); a.status != http.StatusBadRequest || a.code() != "unknown_field" || a.detail("field") != "auth.client" {
+			t.Fatalf("an add nobody vouched for: %d %s", a.status, a.body)
+		}
 	}
 	// use connects alice to the forge with a key, under an allow of a use
 	// that carries the limits, and answers the stack and the forwarding
@@ -537,7 +558,7 @@ func reachesNothing(t *testing.T, s *stack) {
 	t.Helper()
 	con := s.connect("alice", "search", "mine", map[string]any{"value": "a-key-of-alice-0007"}).id(t)
 	ctr := s.do(http.MethodPost, "/v1/connectors", "alice", map[string]any{
-		"name": "wiki", "title": "Wiki", "kind": "mcp", "url": "https://wiki.example.com/mcp", "auth": map[string]any{"type": "none"},
+		"name": "wiki", "title": "Wiki", "kind": "mcp", "url": addedURL, "auth": map[string]any{"type": "none"},
 	}).id(t)
 	before := snapshot(s)
 	for _, r := range []struct {
@@ -591,7 +612,7 @@ func snapshot(s *stack) string {
 func TestAnAddedConnectorIsItsOwnersAlone(t *testing.T) {
 	s := startStack(t, stubs.NewIssuer(t), nil)
 	a := s.do(http.MethodPost, "/v1/connectors", "alice", map[string]any{
-		"name": "weather", "title": "My weather", "kind": "mcp", "url": "https://my-weather.example.com/mcp", "auth": map[string]any{"type": "none"},
+		"name": "weather", "title": "My weather", "kind": "mcp", "url": addedURL, "auth": map[string]any{"type": "none"},
 	})
 	id := a.id(t)
 	if a := s.do(http.MethodGet, "/v1/connectors/weather", "alice", nil).json(t); a["url"] != "https://weather.example.org/mcp" {

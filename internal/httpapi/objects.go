@@ -16,8 +16,12 @@ import (
 )
 
 // connectorView is a connector as the API shows it (specs/002-objects.md).
-// Of auth it shows the type, the scopes, the inject and the hint: no
-// client, no reference to a secret and no endpoint.
+// Of auth it shows the type, the scopes, the inject and the hint, and for
+// an added connector that signs people in how Pons identifies itself, and
+// the redirect address its own client is registered with: no client id,
+// no secret or reference to one, and no endpoint. Disabled and vouched are
+// an added connector's; connections is shown to a caller who may change
+// it.
 type connectorView struct {
 	Name        string    `json:"name"`
 	ID          string    `json:"id,omitempty"`
@@ -30,6 +34,9 @@ type connectorView struct {
 	Hosts       []string  `json:"hosts"`
 	Auth        authView  `json:"auth"`
 	Tools       marksView `json:"tools"`
+	Disabled    *bool     `json:"disabled,omitempty"`
+	Vouched     *bool     `json:"vouched,omitempty"`
+	Connections *int64    `json:"connections,omitempty"`
 }
 
 type authView struct {
@@ -37,6 +44,12 @@ type authView struct {
 	Scopes []string        `json:"scopes,omitempty"`
 	Inject *catalog.Inject `json:"inject,omitempty"`
 	Hint   string          `json:"hint,omitempty"`
+	// Client is how Pons identifies itself at an added connector's
+	// authorization server: own, document or registered.
+	Client string `json:"client,omitempty"`
+	// RedirectURI is the address a vouched-for connector's own client is
+	// registered with at its authorization server.
+	RedirectURI string `json:"redirect_uri,omitempty"`
 }
 
 type marksView struct {
@@ -56,10 +69,11 @@ func nonNil(xs []string) []string {
 }
 
 // connector is the connector a reference names: an entry of the catalog,
-// or one a person added, with its row.
+// or one added by its address, with its row and what its add found.
 type connector struct {
 	catalog.Connector
 	added *store.Connector
+	found signin.Found
 }
 
 // ref is the connector's reference: its catalog name, or its id.
@@ -79,7 +93,9 @@ func (c connector) addedURL() string {
 	return ""
 }
 
-func (c connector) view() connectorView {
+// view is a connector as the API shows it, with no count of its
+// connections.
+func (s *Server) view(c connector) connectorView {
 	v := connectorView{
 		Name: c.Name, Title: c.Title, Description: c.Description, Icon: c.Icon,
 		Kind: c.Kind, URL: c.URL, Hosts: nonNil(c.HostPatterns()),
@@ -90,8 +106,16 @@ func (c connector) view() connectorView {
 		in := c.InjectOrDefault()
 		v.Auth.Inject = &in
 	}
-	if c.added != nil {
-		v.ID, v.Owner = c.added.ID, c.added.Owner
+	if c.added == nil {
+		return v
+	}
+	v.ID, v.Owner = c.added.ID, c.added.Owner
+	v.Disabled, v.Vouched = new(c.added.Disabled), new(c.added.Vouched)
+	if c.Auth.Type == catalog.AuthOAuth {
+		v.Auth.Client = c.found.Client
+		if c.found.Client == signin.ClientOwn {
+			v.Auth.RedirectURI = s.Signin.RedirectOf(c.found)
+		}
 	}
 	return v
 }
@@ -143,7 +167,11 @@ func fromRow(row store.Connector) (connector, error) {
 			return connector{}, err
 		}
 	}
-	return connector{Connector: c, added: &row}, nil
+	found, err := foundOf(row)
+	if err != nil {
+		return connector{}, err
+	}
+	return connector{Connector: c, added: &row, found: found}, nil
 }
 
 // connectionView is a connection as the API shows it
@@ -219,7 +247,11 @@ func (s *Server) Resolve(ctx context.Context, ref string) (signin.Connector, err
 
 // signin is the connector as the sign-in and the carrier read it.
 func (c connector) signin() signin.Connector {
-	return signin.Connector{Connector: c.Connector, Ref: c.ref(), AddedURL: c.addedURL()}
+	out := signin.Connector{Connector: c.Connector, Ref: c.ref(), AddedURL: c.addedURL(), Found: c.found}
+	if c.added != nil {
+		out.ClientSecret, out.Disabled = c.added.ClientSecret, c.added.Disabled
+	}
+	return out
 }
 
 // address is where a caller reaches a connection: the MCP address for kind

@@ -23,7 +23,7 @@ security:
   - bearer: []
 tags:
   - name: connectors
-    description: The catalog of an installation and the connectors a person added.
+    description: The catalog of an installation and the connectors added by their address, for a person, an organization or everyone.
   - name: connections
     description: One owner's link to one connector.
   - name: addresses
@@ -40,8 +40,10 @@ paths:
       summary: List connectors
       description: |
         The installation's catalog, in the order of its file, then the
-        connectors the caller may see that a person added, newest first.
-        The catalog is listed whatever the authorizer's filter says.
+        added connectors of every owner the authorizer lets the caller see,
+        newest first. The catalog is listed whatever the authorizer's filter
+        says. An added connector whose owner's connectors the authorizer
+        lets the caller change carries `connections`.
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Cursor"
@@ -64,11 +66,21 @@ paths:
       operationId: addConnector
       summary: Add a connector
       description: |
-        A connector a person adds by its address, theirs alone. Its `url` is
-        https on port 443 and its credential goes to that host alone. A
-        connector whose people sign in, `auth.type` `oauth`, needs the
-        sign-in, which this server does not offer yet:
-        `422 sign_in_unsupported`.
+        A connector added by its address, whose owner is the one the
+        authorizer names: a person's, an organization's, or the
+        installation's. Its `url` is https on port 443 and its credential
+        goes to that host alone. Pons asks the server how to sign in, with
+        no credential, before it answers: a server that answers is `none`,
+        one that names its protected resource metadata is `oauth`, and one
+        that refuses with no metadata is `token`. Leave `auth` out to take
+        the server's answer; an `auth` the answer does not admit is
+        `422 auth_mismatch`, and a server that does not answer as one that
+        can be connected is `422 server_unreachable`, whose
+        `details.reason` names the status or the failure and never the
+        address. An `oauth` server that offers Pons no way to identify
+        itself is `422 sign_in_unsupported`. `auth.client` is taken only
+        from an add the authorizer vouched for. An owner past
+        `PONS_MAX_ADDED_CONNECTORS` is `409 connector_limit`.
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
@@ -110,11 +122,50 @@ paths:
         "401": {$ref: "#/components/responses/Error"}
         "404": {$ref: "#/components/responses/Error"}
         "503": {$ref: "#/components/responses/Error"}
+    patch:
+      tags: [connectors]
+      operationId: editConnector
+      summary: Change an added connector
+      description: |
+        Changes an added connector in place; the next request on every
+        replica holds to the change. `title`, `description`, `icon`,
+        `tools`, `auth.scopes`, `disabled` and, on a vouched-for connector,
+        `auth.client.secret` change. `name`, `kind`, `url`, `auth.type`
+        and `auth.client.id` do not: naming another value is
+        `400 immutable_field`, and the same value is no change. A
+        connector turned off stays listed; a connect to it is
+        `409 connector_disabled`, a call through a connection to it is
+        `409 connection_not_connected` with `details.reason`
+        `connector_disabled`, and its connections and their credentials
+        are kept until it is turned on. A catalog name is no connector this
+        route changes.
+      parameters:
+        - name: ref
+          in: path
+          required: true
+          description: The id of an added connector.
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/EditConnector"}
+      responses:
+        "200":
+          description: The connector as changed, with `connections`.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Connector"}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "413": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
     delete:
       tags: [connectors]
       operationId: removeConnector
       summary: Remove an added connector
-      description: Removes a connector the caller added, when no connection uses it. A catalog name is no connector this route removes.
+      description: Removes an added connector, when no connection uses it; turn one in use off instead. A catalog name is no connector this route removes.
       parameters:
         - name: ref
           in: path
@@ -352,6 +403,32 @@ paths:
         "401": {$ref: "#/components/responses/Error"}
         "404": {$ref: "#/components/responses/Error"}
         "503": {$ref: "#/components/responses/Error"}
+  /connections/{id}/tools:
+    get:
+      tags: [connections]
+      operationId: listTools
+      summary: List a connection's tools
+      description: |
+        The tools the connector's server lists through this connection,
+        asked each time, with the effect the connector's tool marks give
+        each and whether they hide it, so an administrator chooses marks
+        from the tools a server has. It records no call. A connection of
+        kind `http` is `409 wrong_kind`; one that cannot be used now is
+        `409 connection_not_connected`, as a call is.
+      parameters:
+        - $ref: "#/components/parameters/ConnectionID"
+      responses:
+        "200":
+          description: The server's tools.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ToolList"}
+        "401": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+        "502": {$ref: "#/components/responses/Error"}
+        "503": {$ref: "#/components/responses/Error"}
+        "504": {$ref: "#/components/responses/Error"}
   /connections/{id}/mcp:
     post:
       tags: [addresses]
@@ -627,6 +704,30 @@ paths:
           content:
             text/html:
               schema: {type: string}
+  /callback/{key}:
+    get:
+      tags: [sign-in]
+      operationId: callbackOfAnIssuer
+      summary: Where an issuer that sends no iss returns a person's browser
+      description: |
+        The redirect address of an added server whose authorization
+        server does not say its answer carries `iss`. `key` is the first 16
+        hex digits of the SHA-256 of the issuer, compared with the
+        sign-in's recorded issuer before the code goes anywhere, so an
+        answer that arrives at another server's address is refused.
+      security: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema: {type: string, pattern: "^[0-9a-f]{16}$"}
+      responses:
+        "302": {description: To the sign-in's return address.}
+        "400":
+          description: A page that says the link has expired; no redirect.
+          content:
+            text/html:
+              schema: {type: string}
   /client:
     get:
       tags: [sign-in]
@@ -737,8 +838,8 @@ components:
       additionalProperties: false
       properties:
         name: {type: string, description: The catalog name, or the label of an added connector.}
-        id: {type: string, description: The id of a connector a person added.}
-        owner: {type: string, description: Whose an added connector is.}
+        id: {type: string, description: The id of an added connector.}
+        owner: {type: string, description: Whose an added connector is, as the authorizer named it at the add.}
         title: {type: string}
         description: {type: string}
         icon: {type: string, format: uri}
@@ -754,7 +855,27 @@ components:
             scopes: {type: array, items: {type: string}}
             inject: {$ref: "#/components/schemas/Inject"}
             hint: {type: string, description: Where a person gets a key.}
+            client:
+              type: string
+              enum: [own, document, registered]
+              description: |
+                How Pons identifies itself at an added oauth connector's
+                authorization server: `own`, the client registered there
+                and given with a vouched-for connector; `document`, the
+                connector's client metadata document; `registered`, a
+                registration the installation keeps per issuer, whose
+                consent a second connector at that server may reuse.
+            redirect_uri:
+              type: string
+              format: uri
+              description: The address to register a vouched-for connector's own client with, present when `client` is `own`.
         tools: {$ref: "#/components/schemas/Marks"}
+        disabled: {type: boolean, description: Present on an added connector. Turned off by its owner, it is connected and called by nobody, and its connections are kept.}
+        vouched: {type: boolean, description: Present on an added connector. The authorizer said at the add that someone the installation trusts looked at the server.}
+        connections:
+          type: integer
+          minimum: 0
+          description: Present on an added connector the caller may change, as the authorizer answers connector.update. How many connections of every owner use it.
     ConnectorList:
       type: object
       required: [items]
@@ -764,7 +885,7 @@ components:
         next_cursor: {type: string}
     AddConnector:
       type: object
-      required: [name, title, kind, url, auth]
+      required: [name, title, kind, url]
       additionalProperties: false
       properties:
         name: {type: string, description: A DNS label of at most 40 characters, unique among the owner's connectors.}
@@ -776,6 +897,7 @@ components:
         owner: {type: string, description: The owner the caller asks to add for. The authorizer decides whether it may.}
         auth:
           type: object
+          description: How a person gives access. Left out, the server's own answer is taken.
           required: [type]
           additionalProperties: false
           properties:
@@ -788,12 +910,66 @@ components:
                 header: {type: string}
                 format: {type: string}
             hint: {type: string, maxLength: 200}
+            client:
+              type: object
+              description: A client registered at the server, taken only from an add the authorizer vouched for. Its secret is sealed and never answered.
+              required: [id, secret]
+              additionalProperties: false
+              properties:
+                id: {type: string}
+                secret: {type: string, minLength: 8, writeOnly: true}
         tools:
           type: object
           additionalProperties: false
           properties:
             read_only: {type: array, items: {type: string}}
             hidden: {type: array, items: {type: string}}
+    EditConnector:
+      type: object
+      description: The members an edit changes; a member left out is unchanged.
+      additionalProperties: false
+      properties:
+        name: {type: string, description: Fixed. Another value is 400 immutable_field.}
+        title: {type: string, maxLength: 60}
+        description: {type: string, maxLength: 200}
+        icon: {type: string, format: uri}
+        kind: {type: string, description: Fixed. Another value is 400 immutable_field.}
+        url: {type: string, description: Fixed. Another value is 400 immutable_field.}
+        auth:
+          type: object
+          additionalProperties: false
+          properties:
+            type: {type: string, description: Fixed. Another value is 400 immutable_field.}
+            scopes: {type: array, items: {type: string}, description: The scopes the next sign-in asks for. A connection keeps what it was granted.}
+            client:
+              type: object
+              additionalProperties: false
+              properties:
+                id: {type: string, description: Fixed. Another value is 400 immutable_field.}
+                secret: {type: string, minLength: 8, writeOnly: true, description: A vouched-for connector's rotated secret, used at the next token request.}
+        tools:
+          type: object
+          additionalProperties: false
+          properties:
+            read_only: {type: array, items: {type: string}}
+            hidden: {type: array, items: {type: string}}
+        disabled: {type: boolean, description: Turns the connector off, or on again.}
+    ToolList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [name, effect]
+            additionalProperties: false
+            properties:
+              name: {type: string}
+              description: {type: string}
+              effect: {type: string, enum: [read, write], description: The effect the connector's tool marks give the tool.}
+              hidden: {type: boolean, description: Whether a hidden mark names the tool.}
     Credential:
       type: object
       description: Write-only. The key of a token connector, or the client of a client_credentials one.

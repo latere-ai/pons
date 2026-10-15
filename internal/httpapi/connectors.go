@@ -19,11 +19,16 @@ import (
 	"latere.ai/x/pons/catalog"
 	"latere.ai/x/pons/internal/access"
 	"latere.ai/x/pons/internal/id"
+	"latere.ai/x/pons/internal/signin"
 	"latere.ai/x/pons/internal/store"
 )
 
 // routeAddConnector names the add in an idempotency key's row.
 const routeAddConnector = "POST /connectors"
+
+// keyHint is the hint of a connector whose server asked for a key at the
+// add, when the add named none.
+const keyHint = "API key"
 
 // listConnectors is GET /connectors: the catalog, in the order of its file,
 // then the connectors the allowed owners added, newest first. The filter of
@@ -63,7 +68,7 @@ func (s *Server) listConnectors(w http.ResponseWriter, r *http.Request, c access
 				out.NextCursor = out.Items[len(out.Items)-1].Name
 				return write(w, http.StatusOK, out)
 			}
-			out.Items = append(out.Items, connector{Connector: conn}.view())
+			out.Items = append(out.Items, s.view(connector{Connector: conn}))
 		}
 	}
 	if kind == catalog.KindHTTP {
@@ -90,19 +95,69 @@ func (s *Server) listConnectors(w http.ResponseWriter, r *http.Request, c access
 	if err != nil {
 		return apierr.Internal(err)
 	}
+	first := len(out.Items)
 	for _, row := range rows {
 		conn, err := fromRow(row)
 		if err != nil {
 			return apierr.Internal(err)
 		}
-		out.Items = append(out.Items, conn.view())
+		out.Items = append(out.Items, s.view(conn))
+	}
+	if err := s.countFor(r, c, out.Items[first:]); err != nil {
+		return err
 	}
 	out.NextCursor = next
 	return write(w, http.StatusOK, out)
 }
 
-// readConnector is GET /connectors/{ref}. An added connector is its owner's
-// alone, and a deny reads as a missing connector.
+// countFor sets how many connections use each added connector of a page
+// the caller may change: connector.update is asked once per owner on the
+// page, with the owner and no id, and the connections of the allowed
+// owners' connectors are counted in one statement. A deny, and an
+// authorizer that gave no decision, show no count.
+func (s *Server) countFor(r *http.Request, c access.Caller, items []connectorView) error {
+	allowed := map[string]bool{}
+	var refs []string
+	for _, v := range items {
+		mine, asked := allowed[v.Owner]
+		if !asked {
+			mine = s.mayChange(r, c, access.Connector{Owner: v.Owner})
+			allowed[v.Owner] = mine
+		}
+		if mine {
+			refs = append(refs, v.ID)
+		}
+	}
+	if len(refs) == 0 {
+		return nil
+	}
+	counts, err := s.Store.Connections().CountByConnector(r.Context(), refs)
+	if err != nil {
+		return apierr.Internal(err)
+	}
+	for i := range items {
+		if allowed[items[i].Owner] {
+			items[i].Connections = new(counts[items[i].ID])
+		}
+	}
+	return nil
+}
+
+// mayChange asks connector.update for the count of a connector's
+// connections, which is no reason to fail the read or the list it rides
+// on: an authorizer that gave no decision shows no count, and is logged.
+func (s *Server) mayChange(r *http.Request, c access.Caller, res access.Connector) bool {
+	d, err := s.ask(r, c, authorizer.ActionConnectorUpdate, res.Resource(authorizer.ActionConnectorUpdate))
+	if err != nil {
+		s.log().WarnContext(r.Context(), "the count of a connector's connections is not shown", "route", r.Pattern, "reason", apierr.Classify(err).Code)
+		return false
+	}
+	return d.Allow
+}
+
+// readConnector is GET /connectors/{ref}. A deny reads as a missing
+// connector. An added connector the caller may change shows how many
+// connections use it.
 func (s *Server) readConnector(w http.ResponseWriter, r *http.Request, c access.Caller) error {
 	conn, err := s.resolve(r.Context(), r.PathValue("ref"))
 	switch {
@@ -122,7 +177,30 @@ func (s *Server) readConnector(w http.ResponseWriter, r *http.Request, c access.
 	if !d.Allow {
 		return apierr.Fail(apierr.CodeConnectorNotFound, "")
 	}
-	return write(w, http.StatusOK, conn.view())
+	v := s.view(conn)
+	if conn.added != nil && s.mayChange(r, c, res) {
+		if err := s.count(r, &v); err != nil {
+			return err
+		}
+	}
+	return write(w, http.StatusOK, v)
+}
+
+// count sets how many connections of every owner use one added connector.
+func (s *Server) count(r *http.Request, v *connectorView) error {
+	counts, err := s.Store.Connections().CountByConnector(r.Context(), []string{v.ID})
+	if err != nil {
+		return apierr.Internal(err)
+	}
+	v.Connections = new(counts[v.ID])
+	return nil
+}
+
+// clientRequest is the client registered at the server that a vouched-for
+// add carries, its secret write-only.
+type clientRequest struct {
+	ID     *string `json:"id"`
+	Secret *string `json:"secret"`
 }
 
 // addRequest is the body of POST /connectors.
@@ -139,13 +217,17 @@ type addRequest struct {
 		Scopes []string        `json:"scopes"`
 		Inject *catalog.Inject `json:"inject"`
 		Hint   string          `json:"hint"`
+		Client *clientRequest  `json:"client"`
 	} `json:"auth"`
 	Tools *catalog.Marks `json:"tools"`
 }
 
-// addConnector is POST /connectors: a connector a person adds by its
-// address, theirs alone. An oauth connector needs discovery, which comes
-// with the sign-in, and is refused until then.
+// addConnector is POST /connectors: a connector added by its address,
+// whose owner is the one the allow names
+// (specs/016-connectors-added-for-others.md). After the question, Pons asks
+// the server how to sign in, through the dialer and within the add's rate,
+// and stores what it answered: the way the add names, which the answer
+// must admit, or the answer's own.
 func (s *Server) addConnector(w http.ResponseWriter, r *http.Request, c access.Caller) error {
 	if err := s.limited(c); err != nil {
 		return err
@@ -154,14 +236,23 @@ func (s *Server) addConnector(w http.ResponseWriter, r *http.Request, c access.C
 	if err := decode(r, &req); err != nil {
 		return err
 	}
-	for field, missing := range map[string]bool{"name": req.Name == "", "title": req.Title == "", "kind": req.Kind == "", "url": req.URL == "", "auth": req.Auth == nil} {
-		if missing {
-			return apierr.OnField(apierr.CodeMissingField, field, "")
+	for _, field := range []struct {
+		name    string
+		missing bool
+	}{{"name", req.Name == ""}, {"title", req.Title == ""}, {"kind", req.Kind == ""}, {"url", req.URL == ""}, {"auth.type", req.Auth != nil && req.Auth.Type == ""}} {
+		if field.missing {
+			return apierr.OnField(apierr.CodeMissingField, field.name, "")
 		}
 	}
 	conn := catalog.Connector{
 		Name: req.Name, Title: req.Title, Description: req.Description, Icon: req.Icon, Kind: req.Kind, URL: req.URL,
-		Auth: catalog.Auth{Type: req.Auth.Type, Scopes: req.Auth.Scopes, Inject: req.Auth.Inject, Hint: req.Auth.Hint},
+		Auth: catalog.Auth{Type: catalog.AuthNone},
+	}
+	var client *clientRequest
+	named := ""
+	if req.Auth != nil {
+		named, client = req.Auth.Type, req.Auth.Client
+		conn.Auth = catalog.Auth{Type: req.Auth.Type, Scopes: req.Auth.Scopes, Inject: req.Auth.Inject, Hint: req.Auth.Hint}
 	}
 	if req.Tools != nil {
 		conn.Tools = *req.Tools
@@ -181,22 +272,37 @@ func (s *Server) addConnector(w http.ResponseWriter, r *http.Request, c access.C
 	if !d.Allow {
 		return forbidden(d)
 	}
+	if err := checkClient(client, named, d.Limits.Vouched); err != nil {
+		return err
+	}
+	row := store.Connector{ID: s.newID(id.Connector), Owner: ownerOf(d, req.Owner, c), Vouched: d.Limits.Vouched}
+	added := connector{Connector: conn, added: &row}
+	way, err := s.Signin.Ask(r.Context(), added.signin(), client != nil)
+	if err != nil {
+		return err
+	}
+	if err := reconcile(&conn, named, way, client); err != nil {
+		return err
+	}
+	if client != nil {
+		conn.Auth.Client, conn.Auth.Issuer = &catalog.Client{ID: *client.ID}, way.Found.Issuer
+		if row.ClientSecret, err = s.sealClient(row.ID, way.Found.TokenEndpoint, *client.Secret); err != nil {
+			return err
+		}
+	}
 	if conn.Auth.Type == catalog.AuthOAuth {
-		return apierr.Fail(apierr.CodeSignInUnsupported, "sign_in_not_available")
+		if row.SignIn, err = json.Marshal(way.Found); err != nil {
+			return apierr.Internal(err)
+		}
 	}
-	owner := ownerOf(d, req.Owner, c)
-	authDoc, err := json.Marshal(conn.Auth)
-	if err != nil {
+	if row.Auth, err = json.Marshal(conn.Auth); err != nil {
 		return apierr.Internal(err)
 	}
-	toolsDoc, err := json.Marshal(conn.Tools)
-	if err != nil {
+	if row.Tools, err = json.Marshal(conn.Tools); err != nil {
 		return apierr.Internal(err)
 	}
-	row := store.Connector{
-		ID: s.newID(id.Connector), Owner: owner, Name: conn.Name, Title: conn.Title, Description: conn.Description,
-		Icon: conn.Icon, Kind: conn.Kind, URL: conn.URL, Hosts: conn.HostPatterns(), Auth: authDoc, Tools: toolsDoc,
-	}
+	row.Name, row.Title, row.Description, row.Icon = conn.Name, conn.Title, conn.Description, conn.Icon
+	row.Kind, row.URL, row.Hosts = conn.Kind, conn.URL, conn.HostPatterns()
 	key := r.Header.Get("Idempotency-Key")
 	ctx := r.Context()
 	replayed, err := s.idempotent(r, c, key, routeAddConnector, row.ID, func(tx store.Tx) error {
@@ -218,7 +324,72 @@ func (s *Server) addConnector(w http.ResponseWriter, r *http.Request, c access.C
 	if err != nil {
 		return apierr.Internal(err)
 	}
-	return write(w, http.StatusCreated, view.view())
+	return write(w, http.StatusCreated, s.view(view))
+}
+
+// sealClient seals a vouched-for connector's client secret, bound to the
+// connector and the token endpoint its add found.
+func (s *Server) sealClient(connectorID, tokenEndpoint, secret string) (store.Sealed, error) {
+	sealed, err := s.Sealer.Seal([]byte(secret), store.ConnectorClientBinding(connectorID, tokenEndpoint))
+	switch {
+	case errors.Is(err, store.ErrNoSealingKey):
+		return store.Sealed{}, apierr.Fail(apierr.CodeSealingUnavailable, "no_sealing_key")
+	case err != nil:
+		return store.Sealed{}, apierr.Internal(err)
+	}
+	return sealed, nil
+}
+
+// checkClient holds the client an add carries to its rules: a vouched-for
+// add alone takes one, as unknown to any other; it takes an id and a
+// secret, and an add of a way other than oauth takes none.
+func checkClient(client *clientRequest, named string, vouched bool) error {
+	switch {
+	case client == nil:
+		return nil
+	case !vouched:
+		return apierr.OnField(apierr.CodeUnknownField, "auth.client", "not_vouched")
+	case named != "" && named != catalog.AuthOAuth:
+		return apierr.OnField(apierr.CodeInvalidField, "auth.client", "not_taken_by_"+named)
+	case client.ID == nil || *client.ID == "":
+		return apierr.OnField(apierr.CodeMissingField, "auth.client.id", "")
+	}
+	return checkSecret(client.Secret)
+}
+
+// checkSecret holds a client secret to the bounds of a credential.
+func checkSecret(secret *string) error {
+	switch {
+	case secret == nil || *secret == "":
+		return apierr.OnField(apierr.CodeMissingField, "auth.client.secret", "")
+	case len(*secret) < store.MinSecretBytes:
+		return apierr.OnField(apierr.CodeInvalidField, "auth.client.secret", "shorter_than_8_bytes")
+	}
+	return nil
+}
+
+// reconcile holds the way an add names to the server's answer, or takes
+// the answer's: none named for a server that asks for a credential, oauth
+// named for one that does not sign people in, and a client for one that
+// does not, are 422 auth_mismatch. A key may be named for a server that
+// answered without one, since a key may be optional, and for one that
+// signs people in, since many take a key as well.
+func reconcile(conn *catalog.Connector, named string, way signin.Way, client *clientRequest) error {
+	switch {
+	case named == "":
+		conn.Auth.Type = way.Type
+		if way.Type == catalog.AuthToken && conn.Auth.Hint == "" {
+			conn.Auth.Hint = keyHint
+		}
+	case named == catalog.AuthNone && way.Type != catalog.AuthNone:
+		return apierr.OnField(apierr.CodeAuthMismatch, "auth.type", "server_asks_"+way.Type)
+	case named == catalog.AuthOAuth && way.Type != catalog.AuthOAuth:
+		return apierr.OnField(apierr.CodeAuthMismatch, "auth.type", "server_asks_"+way.Type)
+	}
+	if client != nil && conn.Auth.Type != catalog.AuthOAuth {
+		return apierr.OnField(apierr.CodeAuthMismatch, "auth.client", "server_asks_"+way.Type)
+	}
+	return nil
 }
 
 // removeConnector is DELETE /connectors/{id}: an added connector its owner

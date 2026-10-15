@@ -37,7 +37,7 @@ func routeOf(method, path string) string {
 		return method + " /connections/{}/" + parts[3] + "/{}"
 	}
 	for i, p := range parts {
-		if strings.Contains(p, "_") || (i == 2 && parts[1] == "connectors" && p != "") {
+		if strings.Contains(p, "_") || (i == 2 && (parts[1] == "connectors" || parts[1] == "callback") && p != "") {
 			parts[i] = "{}"
 		}
 	}
@@ -60,7 +60,7 @@ func exercise(t *testing.T, s *stack, canary string) {
 	call(http.MethodGet, "/v1/connectors", "alice", nil)
 	call(http.MethodGet, "/v1/connectors/search", "alice", nil)
 	ctr := call(http.MethodPost, "/v1/connectors", "alice", map[string]any{
-		"name": "wiki", "title": "Wiki", "kind": "mcp", "url": "https://wiki.example.com/mcp", "auth": map[string]any{"type": "token"},
+		"name": "wiki", "title": "Wiki", "kind": "mcp", "url": addedURL, "auth": map[string]any{"type": "token"},
 	}).id(t)
 	keyed := call(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": "search", "credential": map[string]any{"value": canary + "-key"}}).id(t)
 	// The MCP address of the connection of kind mcp, whose key holds the
@@ -74,9 +74,17 @@ func exercise(t *testing.T, s *stack, canary string) {
 	call(http.MethodGet, mcp, "alice", nil)
 	call(http.MethodDelete, mcp, "alice", nil)
 	call(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": "warehouse", "credential": map[string]any{"client_id": "wh", "client_secret": canary + "-secret"}})
-	// A key of an added connector is probed at its url, on port 443, where
-	// no stub listens: the connect is refused and the key kept nowhere.
-	call(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": ctr, "credential": map[string]any{"value": canary + "-added"}})
+	// A key of an added connector is probed at its url, on port 443, which
+	// the front reaches; an edit, and the server's tools through it.
+	added := call(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": ctr, "credential": map[string]any{"value": canary + "-added"}}).id(t)
+	call(http.MethodPatch, "/v1/connectors/"+ctr, "alice", map[string]any{"title": "The wiki", "tools": map[string]any{"read_only": []string{"get_*"}}})
+	call(http.MethodGet, "/v1/connections/"+added+"/tools", "alice", nil)
+	// A client is taken from an add the authorizer vouched for alone, so
+	// the owner policy's refusal keeps its secret nowhere.
+	call(http.MethodPost, "/v1/connectors", "alice", map[string]any{
+		"name": "vouched", "title": "Vouched", "kind": "mcp", "url": addedURL,
+		"auth": map[string]any{"type": "oauth", "client": map[string]any{"id": "a-client", "secret": canary + "-client"}},
+	})
 	// Every refusal a credential can meet, with the canary in the request.
 	call(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": "search", "name": "search", "credential": map[string]any{"value": canary + "-taken"}})
 	call(http.MethodPost, "/v1/connections", "alice", map[string]any{"connector": "weather", "credential": map[string]any{"value": canary + "-wrong"}})
@@ -117,9 +125,11 @@ func exercise(t *testing.T, s *stack, canary string) {
 	call(http.MethodGet, "/v1/connections/"+signed+"/http/repos/acme/app/issues", "alice", nil)
 	call(http.MethodPost, "/v1/connections/"+signed+"/reconnect", "alice", map[string]any{"return_to": returnURL})
 	call(http.MethodGet, "/v1/callback?state=no-flow-has-this&code="+canary+"-code", "", nil)
+	call(http.MethodGet, "/v1/callback/0123456789abcdef?state=no-flow-has-this&code="+canary+"-code", "", nil)
 	call(http.MethodGet, "/v1/client", "", nil)
 	call(http.MethodGet, "/v1/client/"+ctr, "", nil)
 	call(http.MethodDelete, "/v1/connections/"+signed, "alice", nil)
+	call(http.MethodDelete, "/v1/connections/"+added, "alice", nil)
 	call(http.MethodDelete, "/v1/connectors/"+ctr, "alice", nil)
 }
 

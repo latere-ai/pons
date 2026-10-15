@@ -16,6 +16,7 @@ import (
 
 	"latere.ai/x/pkg/health"
 
+	"latere.ai/x/pons/authorizer"
 	"latere.ai/x/pons/internal/access"
 	"latere.ai/x/pons/internal/store"
 	"latere.ai/x/pons/internal/store/postgres"
@@ -30,7 +31,7 @@ func TestMain(m *testing.M) { pgtest.Main(m) }
 func fixture(t testing.TB, h *harness) (ctr, con string) {
 	t.Helper()
 	a := h.do(http.MethodPost, "/v1/connectors", "alice", map[string]any{
-		"name": "wiki", "title": "Wiki", "kind": "mcp", "url": "https://wiki.example.com/mcp", "auth": map[string]any{"type": "token"},
+		"name": "wiki", "title": "Wiki", "kind": "mcp", "url": addedURL, "auth": map[string]any{"type": "token"},
 	})
 	if a.status != http.StatusCreated {
 		t.Fatalf("add: %d %s", a.status, a.body)
@@ -68,8 +69,10 @@ func request(h *harness, rt Route, ctr, con string) (path string, body any, head
 		headers = []string{"Content-Type", "application/x-git-upload-pack-request"}
 	case rt.Method == http.MethodDelete && strings.HasPrefix(rt.Path, "/connectors"):
 		path = "/v1/connectors/" + ctr
+	case rt.Method == http.MethodPatch && strings.HasPrefix(rt.Path, "/connectors"):
+		path, body = "/v1/connectors/"+ctr, map[string]any{"title": "The wiki"}
 	case rt.Method == http.MethodPost && rt.Path == "/connectors":
-		body = map[string]any{"name": "other", "title": "Other", "kind": "mcp", "url": "https://other.example.com/mcp", "auth": map[string]any{"type": "none"}}
+		body = map[string]any{"name": "other", "title": "Other", "kind": "mcp", "url": addedURL, "auth": map[string]any{"type": "none"}}
 	case rt.Method == http.MethodPost && rt.Path == "/connections":
 		body = map[string]any{"connector": "weather", "name": "weather-two"}
 	case rt.Method == http.MethodPatch:
@@ -114,6 +117,14 @@ func TestEveryRouteAsksItsAction(t *testing.T) {
 			}
 			asked := h.authz.questions()[before:]
 			row, _ := access.RouteOf(rt.Method, rt.Path)
+			if rt.Method == http.MethodGet && rt.Path == "/connectors" {
+				// A list of connectors asks, once per owner on its page,
+				// whether the caller may change that owner's connectors,
+				// to show how many connections use them.
+				asked = slices.DeleteFunc(asked, func(q access.Question) bool {
+					return q.Action == authorizer.ActionConnectorUpdate && q.Resource.ID == "" && q.Resource.String(authorizer.FieldOwner) == subject("alice")
+				})
+			}
 			if len(asked) != 1 || asked[0].Action != row.Action {
 				t.Fatalf("asked %+v, want one %s", asked, row.Action)
 			}
@@ -208,12 +219,13 @@ func TestConnectorShowsNoSecretReference(t *testing.T) {
 }
 
 // An added connector of kind http, on another port, with hosts, with a
-// client or of type client_credentials is refused; one of type oauth needs
-// the sign-in; and it is the owner's alone.
+// client its add was not vouched for or of type client_credentials is
+// refused; one of type oauth needs a server that signs people in; and
+// under the owner policy it is the owner's alone.
 func TestAddedConnectorRules(t *testing.T) {
 	h := newHarness(t)
 	base := func(change func(map[string]any)) map[string]any {
-		b := map[string]any{"name": "wiki", "title": "Wiki", "kind": "mcp", "url": "https://wiki.example.com/mcp", "auth": map[string]any{"type": "none"}}
+		b := map[string]any{"name": "wiki", "title": "Wiki", "kind": "mcp", "url": addedURL, "auth": map[string]any{"type": "none"}}
 		change(b)
 		return b
 	}
@@ -229,11 +241,11 @@ func TestAddedConnectorRules(t *testing.T) {
 		{"http", func(b map[string]any) { b["url"] = "http://wiki.example.com/mcp" }, apierr.CodeInvalidField, "url"},
 		{"hosts", func(b map[string]any) { b["hosts"] = []string{"wiki.example.com"} }, apierr.CodeUnknownField, "hosts"},
 		{"a client", func(b map[string]any) {
-			b["auth"] = map[string]any{"type": "oauth", "client": map[string]any{"id": "x"}}
-		}, apierr.CodeUnknownField, "client"},
+			b["auth"] = map[string]any{"type": "oauth", "client": map[string]any{"id": "x", "secret": "the-client-secret"}}
+		}, apierr.CodeUnknownField, "auth.client"},
+		{"no auth type", func(b map[string]any) { b["auth"] = map[string]any{} }, apierr.CodeMissingField, "auth.type"},
 		{"client_credentials", func(b map[string]any) { b["auth"] = map[string]any{"type": "client_credentials"} }, apierr.CodeInvalidField, "auth.type"},
 		{"no title", func(b map[string]any) { delete(b, "title") }, apierr.CodeMissingField, "title"},
-		{"no auth", func(b map[string]any) { delete(b, "auth") }, apierr.CodeMissingField, "auth"},
 		{"a bad name", func(b map[string]any) { b["name"] = "Wiki_1" }, apierr.CodeInvalidField, "name"},
 	}
 	for _, tc := range cases {
@@ -243,15 +255,15 @@ func TestAddedConnectorRules(t *testing.T) {
 		}
 	}
 	a := h.do(http.MethodPost, "/v1/connectors", "alice", base(func(b map[string]any) { b["auth"] = map[string]any{"type": "oauth", "scopes": []string{"read"}} }))
-	if a.status != http.StatusUnprocessableEntity || a.code() != apierr.CodeSignInUnsupported {
-		t.Fatalf("oauth: %d %s", a.status, a.body)
+	if a.status != http.StatusUnprocessableEntity || a.code() != apierr.CodeAuthMismatch || a.detail("reason") != "server_asks_none" {
+		t.Fatalf("oauth for a server that signs nobody in: %d %s", a.status, a.body)
 	}
 	ok := h.do(http.MethodPost, "/v1/connectors", "alice", base(func(map[string]any) {}))
 	if ok.status != http.StatusCreated {
 		t.Fatalf("a plain add: %d %s", ok.status, ok.body)
 	}
 	got := ok.json(t)
-	if got["owner"] != subject("alice") || got["hosts"].([]any)[0] != "wiki.example.com" {
+	if got["owner"] != subject("alice") || got["hosts"].([]any)[0] != "mcp.example.com" || got["disabled"] != false || got["vouched"] != false {
 		t.Fatalf("the added connector %v", got)
 	}
 	id := got["id"].(string)

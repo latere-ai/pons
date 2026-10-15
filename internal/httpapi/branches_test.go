@@ -199,7 +199,7 @@ func TestAFailingStoreIsInternal(t *testing.T) {
 	f := &faulty{Store: memory.New(memory.Options{})}
 	h := newHarnessOn(t, f)
 	ctr, con := fixture(t, h)
-	addBody := map[string]any{"name": "x2", "title": "X", "kind": "mcp", "url": "https://x.example.com/mcp", "auth": map[string]any{"type": "none"}}
+	addBody := map[string]any{"name": "x2", "title": "X", "kind": "mcp", "url": addedURL, "auth": map[string]any{"type": "none"}}
 	cases := []struct {
 		fail         string
 		method, path string
@@ -312,7 +312,7 @@ func TestBodiesThatDoNotRead(t *testing.T) {
 func TestConnectorsPageThroughBoth(t *testing.T) {
 	h := newHarness(t, func(s *Server) { s.IDs = &id.Generator{} })
 	for _, name := range []string{"one", "two", "three"} {
-		a := h.do(http.MethodPost, "/v1/connectors", "alice", map[string]any{"name": name, "title": name, "kind": "mcp", "url": "https://" + name + ".example.com/mcp", "auth": map[string]any{"type": "none"}})
+		a := h.do(http.MethodPost, "/v1/connectors", "alice", map[string]any{"name": name, "title": name, "kind": "mcp", "url": addedURL, "auth": map[string]any{"type": "none"}})
 		if a.status != http.StatusCreated {
 			t.Fatal(a.status, string(a.body))
 		}

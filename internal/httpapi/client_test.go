@@ -30,7 +30,7 @@ func TestClientMetadataDocument(t *testing.T) {
 		t.Fatalf("client_uri %v", got)
 	}
 	ctr := idOf(t, h.do(http.MethodPost, "/v1/connectors", "alice", map[string]any{
-		"name": "wiki", "title": "Team wiki", "kind": "mcp", "url": "https://wiki.example.com/mcp", "auth": map[string]any{"type": "none"},
+		"name": "wiki", "title": "Team wiki", "kind": "mcp", "url": addedURL, "auth": map[string]any{"type": "none"},
 	}))
 	a = h.do(http.MethodGet, "/v1/client/"+ctr, "", nil)
 	if doc := a.json(t); a.status != http.StatusOK || doc["client_id"] != "https://pons.example.com/v1/client/"+ctr || doc["client_name"] != "Pons for Team wiki" {
@@ -96,7 +96,7 @@ func TestSignInRoutesRefuse(t *testing.T) {
 	}
 	// An added connector whose people sign in waits for its discovery.
 	ctr := idOf(t, h.do(http.MethodPost, "/v1/connectors", "alice", map[string]any{
-		"name": "wiki", "title": "Wiki", "kind": "mcp", "url": "https://wiki.example.com/mcp", "auth": map[string]any{"type": "none"},
+		"name": "wiki", "title": "Wiki", "kind": "mcp", "url": addedURL, "auth": map[string]any{"type": "none"},
 	}))
 	added, err := h.store.Connectors().Get(t.Context(), ctr)
 	if err != nil {

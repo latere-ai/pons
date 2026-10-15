@@ -7,7 +7,7 @@ depends_on:
 affects: [api/, catalog/, internal/store/, internal/id/]
 effort: medium
 created: 2026-10-12
-updated: 2026-10-13
+updated: 2026-10-15
 author: changkun
 ---
 
@@ -53,13 +53,14 @@ A subject is written `<iss>|<sub>` everywhere: in `owner`, in
 ### Connector
 
 What a service is. A connector comes from the catalog file or was added
-by a person by its address ([[006-catalog]]).
+by its address, for a person, an organization or everyone
+([[006-catalog]], [[016-connectors-added-for-others]]).
 
 | Field | Type | Meaning |
 |---|---|---|
 | `name` | DNS label | the catalog name; for an added connector, a label unique among its owner's |
 | `id` | `ctr_…` | present on an added connector only |
-| `owner` | subject | present on an added connector only: whose it is. Nobody else sees it |
+| `owner` | string | present on an added connector only: whose it is, the owner the authorizer named at the add. Who else sees it is the authorizer's answer ([[016-connectors-added-for-others]]) |
 | `title` | string, at most 60 | the name a person reads |
 | `description` | string, at most 200 | one sentence on what connecting it gives |
 | `icon` | https URL | optional |
@@ -68,11 +69,16 @@ by a person by its address ([[006-catalog]]).
 | `hosts` | list of host patterns | the hosts a credential of this connector may be sent to. Derived from `url` when absent |
 | `auth.type` | `oauth`, `token`, `client_credentials`, `none` | how a person gives access |
 | `auth` | object | the members of that type ([[006-catalog]]) |
+| `auth.client` | `own`, `document`, `registered` | on an added connector of type `oauth`: how Pons identifies itself at its authorization server ([[016-connectors-added-for-others]]) |
+| `auth.redirect_uri` | URL | on a vouched-for connector with a client of its own: the address that client is registered with |
 | `tools.read_only` | list of globs | the tools that only read. A tool no glob matches is treated as one that changes something |
 | `tools.hidden` | list of globs | tools a caller should not offer |
+| `disabled` | boolean | present on an added connector only: its owner turned it off, and it is connected and called by nobody until it is turned on |
+| `vouched` | boolean | present on an added connector only: the authorizer said at the add that someone the installation trusts looked at the server |
+| `connections` | integer | present on an added connector the caller may change, as the authorizer answers `connector.update`: how many connections of every owner use it |
 
 A connector read through the API never carries a client secret or a
-reference to one.
+reference to one, nor the id of a vouched-for connector's client.
 
 ### Connection
 

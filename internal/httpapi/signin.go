@@ -67,11 +67,6 @@ func (s *Server) writeStarted(w http.ResponseWriter, r *http.Request, connID, ad
 // the address to send the person to. A repeat of the request's
 // Idempotency-Key answers the same connection with a new flow.
 func (s *Server) connectBySignIn(w http.ResponseWriter, r *http.Request, c access.Caller, conn connector, row store.Connection, req connectRequest, limit int) error {
-	if conn.added != nil {
-		// A connector a person added signs in through the MCP probe, which
-		// comes with the MCP carrier.
-		return apierr.Fail(apierr.CodeSignInUnsupported, "sign_in_not_available")
-	}
 	ctx := r.Context()
 	plan, err := s.Signin.Discover(ctx, conn.signin(), req.Scopes)
 	if err != nil {
@@ -167,8 +162,8 @@ func (s *Server) reconnect(w http.ResponseWriter, r *http.Request, c access.Call
 	case err != nil:
 		return apierr.Internal(err)
 	}
-	if conn.added != nil {
-		return apierr.Fail(apierr.CodeSignInUnsupported, "sign_in_not_available")
+	if conn.added != nil && conn.added.Disabled {
+		return apierr.OnField(apierr.CodeConnectorDisabled, "connector", "")
 	}
 	plan, err := s.Signin.Reconnect(ctx, row, conn.signin(), req.Scopes)
 	if err != nil {
@@ -203,12 +198,13 @@ const expiredPage = `<!doctype html>
 <body><p>This sign-in link has expired or was already used. Start connecting again from the app you came from.</p></body></html>
 `
 
-// callback is GET /callback, where the other service returns a person's
-// browser: it needs no token, and is held by its state.
+// callback is GET /callback, and GET /callback/{key} of an issuer that
+// sends no iss, where the other service returns a person's browser: it
+// needs no token, and is held by its state and the issuer's key.
 func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	dest, err := s.Signin.Callback(r.Context(), r.URL.Query())
+	dest, err := s.Signin.CallbackAt(r.Context(), r.PathValue("key"), r.URL.Query())
 	switch {
 	case errors.Is(err, signin.ErrNoFlow):
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

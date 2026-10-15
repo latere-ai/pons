@@ -109,6 +109,7 @@ var routes = []route{
 	{http.MethodGet, "/connectors", (*Server).listConnectors},
 	{http.MethodGet, "/connectors/{ref}", (*Server).readConnector},
 	{http.MethodPost, "/connectors", (*Server).addConnector},
+	{http.MethodPatch, "/connectors/{id}", (*Server).editConnector},
 	{http.MethodDelete, "/connectors/{id}", (*Server).removeConnector},
 	{http.MethodPost, "/connections", (*Server).createConnection},
 	{http.MethodGet, "/connections", (*Server).listConnections},
@@ -119,6 +120,7 @@ var routes = []route{
 	{http.MethodPut, "/connections/{id}/credential", (*Server).replaceCredential},
 	{http.MethodDelete, "/connections/{id}", (*Server).deleteConnection},
 	{http.MethodGet, "/connections/{id}/calls", (*Server).listCalls},
+	{http.MethodGet, "/connections/{id}/tools", (*Server).listTools},
 }
 
 // Route is one route the server serves, as the contract spells it below
@@ -161,6 +163,7 @@ func Routes() []Route {
 // server, and the contract.
 var public = []Route{
 	{http.MethodGet, "/callback"},
+	{http.MethodGet, "/callback/{key}"},
 	{http.MethodGet, "/client"},
 	{http.MethodGet, "/client/{id}"},
 	{http.MethodGet, "/openapi.yaml"},
@@ -183,6 +186,7 @@ func (s *Server) Handler() http.Handler {
 		}))
 	}
 	mux.HandleFunc("GET "+b+"/callback", s.callback)
+	mux.HandleFunc("GET "+b+"/callback/{key}", s.callback)
 	mux.HandleFunc("GET "+b+"/client", s.clientDocument)
 	mux.HandleFunc("GET "+b+"/client/{id}", s.clientDocument)
 	mux.HandleFunc("GET "+b+"/openapi.yaml", func(w http.ResponseWriter, r *http.Request) {

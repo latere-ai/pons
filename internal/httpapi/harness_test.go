@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -30,19 +31,28 @@ import (
 )
 
 // upstream are the stubs a harness's server reaches: the API, the
-// authorization server, and the git host where git is installed.
+// authorization server, the connector, the git host where git is
+// installed, and the front every request leaves through, which reaches
+// the connector at port 443 as mcp.example.com, as a connector added by its
+// address names it.
 type upstream struct {
-	api  *stubs.API
-	auth *stubs.AuthServer
-	git  *stubs.GitHost
-	mcp  *stubs.Connector
+	api   *stubs.API
+	auth  *stubs.AuthServer
+	git   *stubs.GitHost
+	mcp   *stubs.Connector
+	front *stubs.Front
 }
+
+// addedURL is the address a test adds the stub connector at.
+const addedURL = "https://mcp.example.com/mcp"
 
 // newUpstream starts the stubs. A client of the example's warehouse is any
 // client named "wh", whatever its secret.
 func newUpstream(t testing.TB) *upstream {
 	t.Helper()
 	u := &upstream{api: stubs.NewAPI(t), auth: stubs.NewAuthServer(t), mcp: stubs.NewConnector(t)}
+	u.front = stubs.NewFront(t, (&net.Dialer{}).DialContext)
+	u.front.Route(u.mcp.Name(), u.mcp.Port())
 	u.auth.AddClient("wh", "")
 	if tt, ok := t.(*testing.T); ok {
 		if _, err := stubs.GitPath(); err == nil {
@@ -55,9 +65,10 @@ func newUpstream(t testing.TB) *upstream {
 	return u
 }
 
-// ports are the stubs' listeners, which the harness's dialer may reach.
+// ports are the stubs' listeners, and port 443 the front serves, which the
+// harness's dialer may reach.
 func (u *upstream) ports() []int {
-	ports := []int{u.api.Port(), u.auth.Port(), u.mcp.Port()}
+	ports := []int{443, u.api.Port(), u.auth.Port(), u.mcp.Port()}
 	if u.git != nil {
 		ports = append(ports, u.git.Port())
 	}
@@ -204,7 +215,7 @@ func newHarnessOn(t testing.TB, st store.Store, opts ...option) *harness {
 		Ready: []health.Check{{Name: "sealing", Run: func(context.Context) error { return nil }}},
 		Log:   slog.New(slog.NewJSONHandler(lockedWriter{h.logs, h.logsMu}, nil)),
 	}
-	outside := dial.New(dial.Options{Resolver: stubs.Resolver(), Roots: stubs.Roots(), Permit: stubs.Permit(h.up.ports()...)})
+	outside := dial.New(dial.Options{Resolver: stubs.Resolver(), Roots: stubs.Roots(), Permit: stubs.Permit(h.up.ports()...), Proxy: h.up.front.URL()})
 	h.srv.Signin = &signin.Signin{Store: st, Sealer: sealer, Dial: outside, Resolve: h.srv.Resolve,
 		PublicURL: h.srv.PublicURL, BasePath: h.srv.BasePath, Log: h.srv.Log, ClientName: "Pons",
 		ReturnURLs: []string{"https://app.example.com/done", "https://app.example.com/settings/"}}

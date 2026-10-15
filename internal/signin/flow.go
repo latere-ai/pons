@@ -132,10 +132,11 @@ func (s *Signin) Callback(ctx context.Context, q url.Values) (string, error) {
 	return s.callback(ctx, q, "")
 }
 
-// CallbackAt is Callback at the callback of the issuer whose key is key
-// (specs/016-connectors-added-for-others.md): the key is compared with the
-// flow's recorded issuer before the code goes anywhere, so an answer that
-// arrives at another server's address is refused.
+// CallbackAt is Callback at the callback of the issuer whose key is key,
+// or at the shared one for "" (specs/016-connectors-added-for-others.md):
+// the key is compared with the flow's recorded issuer before the code goes
+// anywhere, so an answer that arrives at another server's address is
+// refused.
 func (s *Signin) CallbackAt(ctx context.Context, key string, q url.Values) (string, error) {
 	return s.callback(ctx, q, key)
 }
