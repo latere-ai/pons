@@ -197,6 +197,13 @@ func TestEachSwitchChangesOneAnswer(t *testing.T) {
 	if a := mcpSend(t, c, http.MethodPost, "Bearer k", list); a.status != http.StatusOK {
 		t.Fatalf("a protected resource with a credential: %d", a.status)
 	}
+	set(func(sw *stubs.ConnectorSwitches) { sw.Paged = true })
+	if a := mcpSend(t, c, http.MethodPost, "", list); !strings.Contains(string(a.body), `"nextCursor":"1"`) || strings.Contains(string(a.body), "get_note") {
+		t.Fatalf("the first page: %s", a.body)
+	}
+	if a := mcpSend(t, c, http.MethodPost, "", message("tools/list", `{"cursor":"4"}`)); strings.Contains(string(a.body), "nextCursor") || !strings.Contains(string(a.body), "delete_notebook") {
+		t.Fatalf("the last page: %s", a.body)
+	}
 	set(func(sw *stubs.ConnectorSwitches) { sw.KeyOnly = true })
 	a = mcpSend(t, c, http.MethodPost, "", list)
 	if a.status != http.StatusUnauthorized || strings.Contains(a.header.Get("WWW-Authenticate"), "resource_metadata") {

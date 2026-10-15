@@ -101,6 +101,9 @@ type ConnectorSwitches struct {
 	// KeyOnly answers a request with no credential 401 with a challenge
 	// that names no metadata, as a server that takes a key does.
 	KeyOnly bool
+	// Paged lists the tools one to a page, each page naming the cursor of
+	// the next.
+	Paged bool
 	// Legacy speaks revision 2025-11-25 alone: a request of the current
 	// revision is answered 400 with no JSON-RPC error, initialize opens a
 	// session, every later request names one, GET opens a stream in it and
@@ -211,6 +214,7 @@ type rpc struct {
 	Params struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
+		Cursor    string          `json:"cursor"`
 		Meta      map[string]any  `json:"_meta"`
 	} `json:"params"`
 }
@@ -402,7 +406,15 @@ func (c *Connector) answer(w http.ResponseWriter, r *http.Request, m rpc, sw Con
 		}})
 	case "tools/list":
 		var tools []map[string]any
-		for _, name := range ConnectorTools {
+		names, next := ConnectorTools, ""
+		if sw.Paged {
+			i, _ := strconv.Atoi(m.Params.Cursor)
+			names = ConnectorTools[i : i+1]
+			if i+1 < len(ConnectorTools) {
+				next = strconv.Itoa(i + 1)
+			}
+		}
+		for _, name := range names {
 			tools = append(tools, map[string]any{
 				"name": name, "description": "The stub's " + strings.ReplaceAll(name, "_", " ") + ".",
 				"inputSchema": map[string]any{"type": "object"},
@@ -411,7 +423,11 @@ func (c *Connector) answer(w http.ResponseWriter, r *http.Request, m rpc, sw Con
 				"annotations": map[string]any{"readOnlyHint": true},
 			})
 		}
-		writeStubJSON(w, http.StatusOK, map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": map[string]any{"tools": tools}})
+		result := map[string]any{"tools": tools}
+		if next != "" {
+			result["nextCursor"] = next
+		}
+		writeStubJSON(w, http.StatusOK, map[string]any{"jsonrpc": "2.0", "id": m.ID, "result": result})
 	case "tools/call":
 		c.call(w, r, m, sw)
 	default:
