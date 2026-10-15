@@ -205,14 +205,14 @@ func TestDecodeRefusesWhatItCannotHold(t *testing.T) {
 }
 
 func isZero(l authorizer.Limits) bool {
-	return l.Owner == "" && l.MaxConnections == 0 && l.Connectors == nil && !l.ReadOnly && l.Tools == nil && l.Refs == nil && l.Requests == nil && l.CallsPerMinute == 0
+	return l.Owner == "" && !l.Vouched && l.MaxConnections == 0 && l.Connectors == nil && !l.ReadOnly && l.Tools == nil && l.Refs == nil && l.Requests == nil && l.CallsPerMinute == 0
 }
 
-// The limits object carries exactly the eight keys, and DecodeLimits reads
+// The limits object carries exactly the nine keys, and DecodeLimits reads
 // back what an authorizer renders.
 func TestTheWireNamesEveryMemberAndNoOther(t *testing.T) {
 	full := authorizer.Limits{
-		Owner: "https://issuer.example.com|team", MaxConnections: 3, Connectors: []string{"notion", "ctr_*"},
+		Owner: "https://issuer.example.com|team", Vouched: true, MaxConnections: 3, Connectors: []string{"notion", "ctr_*"},
 		ReadOnly: true, Tools: []string{"get_*"}, Refs: []string{"refs/heads/agent/*"}, CallsPerMinute: 60,
 		Requests: []string{"GET /**", "POST /repos/*/*/issues", "GET /"},
 	}
@@ -229,7 +229,7 @@ func TestTheWireNamesEveryMemberAndNoOther(t *testing.T) {
 		names = append(names, k)
 	}
 	sort.Strings(names)
-	want := []string{"calls_per_minute", "connectors", "max_connections", "owner", "read_only", "refs", "requests", "tools"}
+	want := []string{"calls_per_minute", "connectors", "max_connections", "owner", "read_only", "refs", "requests", "tools", "vouched"}
 	if !slices.Equal(names, want) {
 		t.Fatalf("the wire names %v, want %v", names, want)
 	}
@@ -237,7 +237,7 @@ func TestTheWireNamesEveryMemberAndNoOther(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if back.Owner != full.Owner || back.MaxConnections != 3 || !slices.Equal(back.Connectors, full.Connectors) ||
+	if back.Owner != full.Owner || !back.Vouched || back.MaxConnections != 3 || !slices.Equal(back.Connectors, full.Connectors) ||
 		!back.ReadOnly || !slices.Equal(back.Tools, full.Tools) || !slices.Equal(back.Refs, full.Refs) || back.CallsPerMinute != 60 ||
 		!slices.Equal(back.Requests, full.Requests) {
 		t.Fatalf("read back %+v", back)

@@ -29,11 +29,13 @@ func (c Connector) Resource(action string) authz.Resource {
 }
 
 // Connection is what a question about a connection carries: a stored one,
-// with its id, or one a connect would make, with none. A use also carries
-// what the request names: its method, the tool, a path or a git service,
-// with its effect, and the refs a push updates.
+// with its id, or one a connect would make, with none. A connect to an
+// added connector carries that connector's owner. A use also carries what
+// the request names: its method, the tool, a path or a git service, with
+// its effect, and the refs a push updates.
 type Connection struct {
 	ID, Owner, Connector, Name, Kind, Auth string
+	ConnectorOwner                         string
 	Method, Tool, Effect                   string
 	Refs                                   []string
 }
@@ -42,7 +44,7 @@ type Connection struct {
 func (c Connection) Resource(action string) authz.Resource {
 	r := build(authorizer.KindConnection, action, c.ID, map[string]string{
 		authorizer.FieldOwner: c.Owner, authorizer.FieldConnector: c.Connector, authorizer.FieldName: c.Name,
-		authorizer.FieldConnectionKind: c.Kind, authorizer.FieldAuth: c.Auth,
+		authorizer.FieldConnectionKind: c.Kind, authorizer.FieldAuth: c.Auth, authorizer.FieldConnectorOwner: c.ConnectorOwner,
 		authorizer.FieldMethod: c.Method, authorizer.FieldTool: c.Tool, authorizer.FieldEffect: c.Effect,
 	})
 	if len(c.Refs) > 0 && slices.Contains(authorizer.Fields(action), authorizer.FieldRefs) {

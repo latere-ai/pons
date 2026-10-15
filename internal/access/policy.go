@@ -30,6 +30,9 @@ const ReasonUnknownAction = "unknown_action"
 //   - a stored connection or added connector whose owner is the subject,
 //     any action: allow;
 //   - a create that names no owner, or names the subject: allow;
+//   - connector.update with no id that names the subject as owner, which a
+//     list asks to learn whether the caller may change that owner's
+//     connectors: allow;
 //   - anything else: deny, not_owner.
 //
 // The policy has no administrators and names no limit of its own. Its
@@ -96,6 +99,10 @@ func (OwnerPolicy) decide(req authz.Request) authz.Decision {
 		}
 	case req.Action == authorizer.ActionConnectionCreate || req.Action == authorizer.ActionConnectorCreate:
 		if owner == "" || owner == req.Subject {
+			return allow
+		}
+	case req.Action == authorizer.ActionConnectorUpdate:
+		if owner == req.Subject {
 			return allow
 		}
 	}

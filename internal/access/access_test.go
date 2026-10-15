@@ -126,7 +126,7 @@ func TestEveryMemberReachesTheAuthorizer(t *testing.T) {
 	s := stubs.NewAuthorizer(t)
 	az := asking(t, s, nil)
 	conn := access.Connection{
-		ID: "con_1", Owner: alice, Connector: "github", Name: "github", Kind: "http", Auth: "oauth",
+		ID: "con_1", Owner: alice, Connector: "github", Name: "github", Kind: "http", Auth: "oauth", ConnectorOwner: bob,
 		Method: http.MethodPost, Tool: "git-receive-pack", Effect: "write", Refs: []string{"refs/heads/agents/a"},
 	}
 	ctr := access.Connector{ID: "ctr_1", Owner: alice, Name: "wiki", Kind: "mcp", Host: "wiki.example.com"}
@@ -360,7 +360,7 @@ func TestWhatAnAllowHolds(t *testing.T) {
 	every := map[string]any{
 		"owner": "https://issuer.example.com|team", "max_connections": 3, "connectors": []any{"notion"},
 		"read_only": true, "tools": []any{"get_*"}, "refs": []any{"refs/heads/agent/*"}, "calls_per_minute": 5,
-		"requests": []any{"GET /**"},
+		"requests": []any{"GET /**"}, "vouched": true,
 	}
 	s.Allow(stub.Rule{Action: "*", Limits: every})
 	az := asking(t, s, nil)
@@ -371,15 +371,15 @@ func TestWhatAnAllowHolds(t *testing.T) {
 		}
 		return d.Limits
 	}
-	if l := ask(connect("")); l.Owner == "" || l.MaxConnections != 3 || len(l.Connectors) != 1 || l.ReadOnly || l.Tools != nil || l.Requests != nil || l.CallsPerMinute != 0 {
+	if l := ask(connect("")); l.Owner == "" || l.MaxConnections != 3 || len(l.Connectors) != 1 || l.ReadOnly || l.Tools != nil || l.Requests != nil || l.CallsPerMinute != 0 || l.Vouched {
 		t.Errorf("a connect holds %+v", l)
 	}
 	add := access.Question{Action: authorizer.ActionConnectorCreate, Resource: access.Connector{Kind: "mcp", Host: "wiki.example.com"}.Resource(authorizer.ActionConnectorCreate)}
-	if l := ask(add); l.Owner == "" || l.MaxConnections != 0 {
+	if l := ask(add); l.Owner == "" || !l.Vouched || l.MaxConnections != 0 {
 		t.Errorf("an add holds %+v", l)
 	}
 	use := access.Question{Action: authorizer.ActionConnectionUse, Resource: access.Connection{ID: "con_1", Owner: alice}.Resource(authorizer.ActionConnectionUse)}
-	if l := ask(use); !l.ReadOnly || len(l.Tools) != 1 || len(l.Refs) != 1 || len(l.Requests) != 1 || l.CallsPerMinute != 5 || l.Owner != "" {
+	if l := ask(use); !l.ReadOnly || len(l.Tools) != 1 || len(l.Refs) != 1 || len(l.Requests) != 1 || l.CallsPerMinute != 5 || l.Owner != "" || l.Vouched {
 		t.Errorf("a use holds %+v", l)
 	}
 	confirm := connect(alice)
@@ -528,6 +528,11 @@ func TestTheOwnerPolicy(t *testing.T) {
 		{"its added connector", alice, authorizer.ActionConnectorRead, added(authorizer.ActionConnectorRead, alice), true, "", false},
 		{"another's added connector", alice, authorizer.ActionConnectorRead, added(authorizer.ActionConnectorRead, bob), false, authz.ReasonNotOwner, false},
 		{"deletes its connector", alice, authorizer.ActionConnectorDelete, added(authorizer.ActionConnectorDelete, alice), true, "", false},
+		{"edits its connector", alice, authorizer.ActionConnectorUpdate, added(authorizer.ActionConnectorUpdate, alice), true, "", false},
+		{"edits another's connector", alice, authorizer.ActionConnectorUpdate, added(authorizer.ActionConnectorUpdate, bob), false, authz.ReasonNotOwner, false},
+		{"may change its own connectors", alice, authorizer.ActionConnectorUpdate, access.Connector{Owner: alice}.Resource(authorizer.ActionConnectorUpdate), true, "", false},
+		{"may change another's connectors", alice, authorizer.ActionConnectorUpdate, access.Connector{Owner: bob}.Resource(authorizer.ActionConnectorUpdate), false, authz.ReasonNotOwner, false},
+		{"may change nobody's connectors", alice, authorizer.ActionConnectorUpdate, access.Connector{}.Resource(authorizer.ActionConnectorUpdate), false, authz.ReasonNotOwner, false},
 		{"lists connectors", alice, authorizer.ActionConnectorList, access.List(authorizer.ActionConnectorList), true, "", true},
 		{"lists connections", alice, authorizer.ActionConnectionList, access.List(authorizer.ActionConnectionList), true, "", true},
 		{"reads its own", alice, authorizer.ActionConnectionRead, stored(authorizer.ActionConnectionRead, alice), true, "", false},

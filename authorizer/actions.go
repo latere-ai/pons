@@ -30,8 +30,14 @@ const (
 	// ActionConnectorRead is asked by a read of one connector.
 	ActionConnectorRead = "connector.read"
 	// ActionConnectorCreate is asked by adding a connector by its address.
-	// The allow's owner is whose the connector is.
+	// The allow's owner is whose the connector is, and its vouched says
+	// someone the installation trusts looked at the server.
 	ActionConnectorCreate = "connector.create"
+	// ActionConnectorUpdate is asked by an edit of an added connector, with
+	// its id and owner. A list asks it once per owner of the connectors on
+	// its page, with the owner and no id, to learn whether the caller may
+	// see how many connections use each of them.
+	ActionConnectorUpdate = "connector.update"
 	// ActionConnectorDelete is asked by removing an added connector.
 	ActionConnectorDelete = "connector.delete"
 
@@ -77,6 +83,10 @@ const (
 	// FieldConnector is a connector reference: a catalog name, or the id
 	// of an added connector.
 	FieldConnector = "connector"
+	// FieldConnectorOwner is the owner of the added connector a connect
+	// names, so an authorizer tells a connect to a person's own server from
+	// one to a server another owner added. A catalog connector has none.
+	FieldConnectorOwner = "connector_owner"
 	// FieldAuth is how a person gives access: oauth, token,
 	// client_credentials or none.
 	FieldAuth = "auth"
@@ -106,8 +116,9 @@ var table = []action{
 	{ActionConnectorList, KindConnector, nil, false},
 	{ActionConnectorRead, KindConnector, []string{FieldName, FieldOwner, FieldConnectorKind}, true},
 	{ActionConnectorCreate, KindConnector, []string{FieldOwner, FieldConnectorKind, FieldHost}, false},
+	{ActionConnectorUpdate, KindConnector, []string{FieldOwner}, true},
 	{ActionConnectorDelete, KindConnector, []string{FieldOwner}, true},
-	{ActionConnectionCreate, KindConnection, []string{FieldOwner, FieldConnector, FieldName, FieldConnectionKind, FieldAuth}, true},
+	{ActionConnectionCreate, KindConnection, []string{FieldOwner, FieldConnector, FieldName, FieldConnectionKind, FieldAuth, FieldConnectorOwner}, true},
 	{ActionConnectionRead, KindConnection, connection, true},
 	{ActionConnectionList, KindConnection, []string{FieldOwner}, false},
 	{ActionConnectionUpdate, KindConnection, connection, true},

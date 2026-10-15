@@ -82,8 +82,9 @@ asked.
 | `Connector` | `connector.list` | the list of connectors | none |
 | `Connector` | `connector.read` | a read of one connector | `name` for a catalog connector; `id` and `owner` for one a person added; `connector_kind` |
 | `Connector` | `connector.create` | adding a connector by its address | `owner` when the request names one, `connector_kind`, `host` |
+| `Connector` | `connector.update` | an edit of an added connector; and a list, once per owner on its page, with no `id` | `id`, `owner` |
 | `Connector` | `connector.delete` | removing an added connector | `id`, `owner` |
-| `Connection` | `connection.create` | a connect; and a confirm, a reconnect and a replaced key, which send the stored connection's `id` | `owner` when named or stored, `connector`, `name`, `connection_kind`, `auth`, `id` |
+| `Connection` | `connection.create` | a connect; and a confirm, a reconnect and a replaced key, which send the stored connection's `id` | `owner` when named or stored, `connector`, `name`, `connection_kind`, `auth`, `connector_owner` for an added connector, `id` |
 | `Connection` | `connection.read` | a read of a connection, and of its call records | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth` |
 | `Connection` | `connection.list` | the list of connections | `owner` when the request names one |
 | `Connection` | `connection.update` | a rename | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth` |
@@ -103,7 +104,23 @@ asked.
   one: a service connecting for a person, or a member acting in a team's
   space. You decide whether the caller may. A request that names no owner
   leaves the member out, which means the caller's own. Either way, your
-  allow may say whose the new object is, in `limits.owner`.
+  allow may say whose the new object is, in `limits.owner`. The owner is a
+  string Pons gives no meaning: use one for a person, one for an
+  organization and one for the whole installation, and the same strings
+  in your filters.
+- **A connect to an added connector** asks `connector.read` of that
+  connector first, and a deny is `404 connector_not_found`. That is how
+  you let an organization's members connect the servers its
+  administrators added: allow them to read those connectors. The
+  `connection.create` that follows carries `connector_owner`, the owner of
+  the connector, so you can tell a connect to a person's own server from
+  one to a server added for them.
+- **`connector.update`** is asked by an edit of an added connector. A
+  list of connectors also asks it once for each owner of the added
+  connectors on its page, with that `owner` and no `id`, and a read of
+  one added connector asks it after `connector.read`: an allow shows the
+  caller how many connections use each of that owner's connectors. Allow
+  it to the people who administer that owner's servers.
 - **`connection.use`** names what the request does. On the MCP address,
   `method` is the protocol method, such as `tools/list` or `tools/call`,
   or `GET` or `DELETE` for a server of an earlier revision, and is left
@@ -127,6 +144,7 @@ others:
 | Member | Read from the allow of | Holds |
 |---|---|---|
 | `owner` | `connection.create` with no `id`, `connector.create` | whose the new object is. Without it, the owner the request named, or the caller |
+| `vouched` | `connector.create` | `true` says someone you trust looked at the server being added. Pons stores it with the connector and shows it, and only a vouched-for add may carry a client registered at the server, `auth.client` with its `id` and `secret`. Send it for an administrator's add, never for a person's |
 | `max_connections` | `connection.create` with no `id` | how many connections the owner may hold. It lowers the installation's `PONS_MAX_CONNECTIONS_PER_OWNER` and never raises it. Past it, `403 forbidden` on `owner` |
 | `connectors` | `connection.create` with no `id` | globs of the connector references the caller may connect. `ctr_*` admits every added connector, and a list of catalog names admits none. Outside them, `403 forbidden` on `connector` |
 | `read_only` | `connection.use` | `true` refuses a request whose effect is `write`: `403 forbidden` on `tool`. On the MCP address it holds `tools/call` alone, so a list of tools passes |
@@ -204,7 +222,9 @@ With `PONS_AUTHORIZER_URL` unset, the owner policy answers, and
 6. A stored connection or added connector whose owner is the caller,
    any action: allow.
 7. A create that names no owner, or names the caller: allow.
-8. Anything else: deny.
+8. `connector.update` with no `id` that names the caller as `owner`:
+   allow.
+9. Anything else: deny.
 
 It has no administrators and sets no limits; the installation's own
 limits of [Configuration](configuration.md#limits) still hold. A token

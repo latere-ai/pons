@@ -8,7 +8,7 @@ depends_on:
 affects: [authorizer/, internal/access/, internal/httpapi/, internal/carry/]
 effort: medium
 created: 2026-10-12
-updated: 2026-10-14
+updated: 2026-10-15
 author: changkun
 ---
 
@@ -93,8 +93,9 @@ sends, and `SendsID` for whether it sends the id of a stored object.
 | `Connector` | `connector.list` | none |
 | `Connector` | `connector.read` | `name` for a catalog connector; `id` and `owner` for an added one; `connector_kind` |
 | `Connector` | `connector.create` | `owner`, `connector_kind`, `host` |
+| `Connector` | `connector.update` | `id` and `owner`; a list asks it with `owner` alone ([[016-connectors-added-for-others]]) |
 | `Connector` | `connector.delete` | `id`, `owner` |
-| `Connection` | `connection.create` | `owner`, `connector`, `name`, `connection_kind`, `auth`, and `id` when a confirm, a reconnect or a replaced key asks |
+| `Connection` | `connection.create` | `owner`, `connector`, `name`, `connection_kind`, `auth`, `connector_owner` for an added connector, and `id` when a confirm, a reconnect or a replaced key asks |
 | `Connection` | `connection.read` | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth` |
 | `Connection` | `connection.list` | `owner` when the request names one |
 | `Connection` | `connection.update` | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth` |
@@ -208,6 +209,7 @@ package authorizer
 
 type Limits struct {
     Owner          string   // whose a created connection or connector is; empty is the caller's subject
+    Vouched        bool     // on an add: someone the installation trusts looked at the server
     MaxConnections int      // connections one owner may hold; 0 leaves the installation's cap
     Connectors     []string // globs of connector references the caller may connect; empty is all
     ReadOnly       bool     // on a use: only tools whose effect is read
@@ -219,7 +221,7 @@ type Limits struct {
 ```
 
 The JSON form has every member optional and exactly these keys:
-`owner`, `max_connections`, `connectors`, `read_only`, `tools`,
+`owner`, `vouched`, `max_connections`, `connectors`, `read_only`, `tools`,
 `refs`, `requests`, `calls_per_minute`. `DecodeLimits(authz.Decision)` reads it. An object
 that does not parse, a key this version does not know, a figure below
 zero, an empty glob and an entry of `requests` that is not a method and
@@ -231,6 +233,7 @@ catalog's tool marks ([[006-catalog]]).
 | Member | Read from the allow of | Held |
 |---|---|---|
 | `owner` | `connection.create` with no `id`, `connector.create` | the create records it, and every question after carries it |
+| `vouched` | `connector.create` | stored with the connector and shown in its view; it lets the add carry a client registered at the server ([[016-connectors-added-for-others]]) |
 | `max_connections` | `connection.create` with no `id` | counted with the insert, under one lock on the owner ([[005-store-and-sealing]]): `403 forbidden` on `owner` |
 | `connectors` | `connection.create` with no `id` | before anything is stored: `403 forbidden` on `connector` |
 | `read_only` | `connection.use` | a `tools/call` whose effect is `write`: `403 forbidden` on `tool` |
@@ -305,6 +308,7 @@ decides itself. The rows, in the order they are tried:
 | `connector.list`, `connection.list` | allow, with a filter that narrows the list to the subject's own |
 | a stored connection or added connector whose owner is the subject, any action | allow |
 | a create that names no owner, or names the subject | allow |
+| `connector.update` with no `id` that names the subject as `owner` | allow |
 | anything else | deny, `not_owner` |
 
 A caller creates under its own subject only; reads, uses, updates and

@@ -24,6 +24,11 @@ type Limits struct {
 	// owner the request named, or the caller's subject. Read from the allow
 	// of a connect and of an add.
 	Owner string `json:"owner,omitempty"`
+	// Vouched says someone the installation trusts looked at the server a
+	// connector is added for, which lets the add carry a client registered
+	// at that server. Read from the allow of an add, and stored with the
+	// connector; Pons never sets it itself.
+	Vouched bool `json:"vouched,omitempty"`
 	// MaxConnections is how many connections one owner may hold; 0 leaves
 	// the installation's cap, and so does a figure above it. Read from the
 	// allow of a connect.
@@ -104,7 +109,7 @@ func DecodeLimits(d authz.Decision) (Limits, error) {
 }
 
 // wireNames are the keys of the limits object.
-var wireNames = []string{"owner", "max_connections", "connectors", "read_only", "tools", "refs", "requests", "calls_per_minute"}
+var wireNames = []string{"owner", "vouched", "max_connections", "connectors", "read_only", "tools", "refs", "requests", "calls_per_minute"}
 
 // validRequest reports whether an entry of Requests is a method of capital
 // letters, one space, and a pattern that starts with `/` whose segments are

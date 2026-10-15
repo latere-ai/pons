@@ -121,9 +121,10 @@ type Decision struct {
 	// reads.
 	Reason string
 	// Limits are what the request is held to, read from the allow of the
-	// actions that carry them: a connect and an add (the owner, the cap,
-	// the connectors), and a use (read only, tools, refs, the rate). Every
-	// other action's limits are not read and are zero here.
+	// actions that carry them: a connect (the owner, the cap, the
+	// connectors), an add (the owner, vouched), and a use (read only,
+	// tools, refs, the rate). Every other action's limits are not read and
+	// are zero here.
 	Limits authorizer.Limits
 	// Filter narrows a list to owners. Nil on an allow of a list is the
 	// caller's own.
@@ -206,7 +207,7 @@ func held(q Question, l authorizer.Limits) authorizer.Limits {
 	case authorizer.ActionConnectionCreate:
 		return authorizer.Limits{Owner: l.Owner, MaxConnections: l.MaxConnections, Connectors: l.Connectors}
 	case authorizer.ActionConnectorCreate:
-		return authorizer.Limits{Owner: l.Owner}
+		return authorizer.Limits{Owner: l.Owner, Vouched: l.Vouched}
 	}
 	return authorizer.Limits{ReadOnly: l.ReadOnly, Tools: l.Tools, Refs: l.Refs, Requests: l.Requests, CallsPerMinute: l.CallsPerMinute}
 }
