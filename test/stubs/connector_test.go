@@ -197,6 +197,14 @@ func TestEachSwitchChangesOneAnswer(t *testing.T) {
 	if a := mcpSend(t, c, http.MethodPost, "Bearer k", list); a.status != http.StatusOK {
 		t.Fatalf("a protected resource with a credential: %d", a.status)
 	}
+	set(func(sw *stubs.ConnectorSwitches) { sw.KeyOnly = true })
+	a = mcpSend(t, c, http.MethodPost, "", list)
+	if a.status != http.StatusUnauthorized || strings.Contains(a.header.Get("WWW-Authenticate"), "resource_metadata") {
+		t.Fatalf("a server that takes a key: %d %v", a.status, a.header)
+	}
+	if a := mcpSend(t, c, http.MethodPost, "Bearer k", list); a.status != http.StatusOK {
+		t.Fatalf("a server that takes a key, with one: %d", a.status)
+	}
 
 	// A stream that never ends, and one that waits for the test, each end
 	// when their caller goes away.

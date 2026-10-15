@@ -46,6 +46,7 @@ var ConnectorTools = []string{"search_notes", "get_note", "count", "create_note"
 // revision 2025-11-25 with its initialize handshake, its sessions, GET and
 // DELETE.
 type Connector struct {
+	name string
 	url  string
 	port int
 	// steps release the events of a stepped stream, one each.
@@ -93,9 +94,13 @@ type ConnectorSwitches struct {
 	// Servers and Scopes make the stub a protected resource (RFC 9728),
 	// while Servers is not nil: a request with no credential is answered
 	// 401 with a challenge naming its metadata and the scopes, and the
-	// metadata names the authorization servers.
+	// metadata names the authorization servers. The resource is the
+	// address the request reached the stub at.
 	Servers []string
 	Scopes  []string
+	// KeyOnly answers a request with no credential 401 with a challenge
+	// that names no metadata, as a server that takes a key does.
+	KeyOnly bool
 	// Legacy speaks revision 2025-11-25 alone: a request of the current
 	// revision is answered 400 with no JSON-RPC error, initialize opens a
 	// session, every later request names one, GET opens a stream in it and
@@ -116,15 +121,33 @@ type ConnectorRequest struct {
 	Body    []byte
 }
 
+// ConnectorOption configures NewConnector.
+type ConnectorOption func(*connectorConfig)
+
+type connectorConfig struct{ name string }
+
+// WithConnectorName is the name the stub is reached under,
+// mcp.example.com by default; its certificate covers it.
+func WithConnectorName(name string) ConnectorOption {
+	return func(c *connectorConfig) { c.name = name }
+}
+
 // NewConnector starts a stub connector for the test, at mcp.example.com.
-func NewConnector(t TB) *Connector {
+func NewConnector(t TB, opts ...ConnectorOption) *Connector {
 	t.Helper()
-	c := &Connector{sessions: map[string]bool{}, steps: make(chan struct{}, 64)}
-	srv := serveTLS(t, http.HandlerFunc(c.serve), "mcp."+Domain)
+	cfg := connectorConfig{name: "mcp." + Domain}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	c := &Connector{name: cfg.name, sessions: map[string]bool{}, steps: make(chan struct{}, 64)}
+	srv := serveTLS(t, http.HandlerFunc(c.serve), cfg.name)
 	c.port = portOf(srv.URL)
-	c.url = named("mcp."+Domain, c.port) + "/mcp"
+	c.url = named(cfg.name, c.port) + "/mcp"
 	return c
 }
+
+// Name is the name the stub is reached under.
+func (c *Connector) Name() string { return c.name }
 
 // URL is the server's MCP address, by its name: the value of a catalog
 // entry's url.
@@ -224,8 +247,11 @@ func (c *Connector) serve(w http.ResponseWriter, r *http.Request) {
 	if sw.HugeHeaders {
 		w.Header().Set("X-Stub-Padding", strings.Repeat("h", 65<<10))
 	}
+	// The resource is the address the request reached the stub at: its
+	// own port, or port 443 through a front.
+	origin := "https://" + r.Host
 	if r.URL.Path == "/.well-known/oauth-protected-resource/mcp" && sw.Servers != nil {
-		writeStubJSON(w, http.StatusOK, map[string]any{"resource": c.url, "authorization_servers": sw.Servers, "scopes_supported": sw.Scopes})
+		writeStubJSON(w, http.StatusOK, map[string]any{"resource": origin + "/mcp", "authorization_servers": sw.Servers, "scopes_supported": sw.Scopes})
 		return
 	}
 	switch {
@@ -234,8 +260,12 @@ func (c *Connector) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	case sw.Servers != nil && credential == "" && r.Header.Get("X-Api-Key") == "":
 		w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer resource_metadata=%q, scope=%q`,
-			named("mcp."+Domain, c.port)+"/.well-known/oauth-protected-resource/mcp", strings.Join(sw.Scopes, " ")))
+			origin+"/.well-known/oauth-protected-resource/mcp", strings.Join(sw.Scopes, " ")))
 		writeStubJSON(w, http.StatusUnauthorized, map[string]any{"message": "Requires authentication"})
+		return
+	case sw.KeyOnly && credential == "" && r.Header.Get("X-Api-Key") == "":
+		w.Header().Set("WWW-Authenticate", `Bearer realm="stub"`)
+		writeStubJSON(w, http.StatusUnauthorized, map[string]any{"message": "An API key is required"})
 		return
 	case sw.RefuseAll || (credential != "" && slices.Contains(sw.Refuse, credential)):
 		w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token", resource_metadata="https://elsewhere.example.net/.well-known/oauth-protected-resource"`)
@@ -374,7 +404,8 @@ func (c *Connector) answer(w http.ResponseWriter, r *http.Request, m rpc, sw Con
 		var tools []map[string]any
 		for _, name := range ConnectorTools {
 			tools = append(tools, map[string]any{
-				"name": name, "inputSchema": map[string]any{"type": "object"},
+				"name": name, "description": "The stub's " + strings.ReplaceAll(name, "_", " ") + ".",
+				"inputSchema": map[string]any{"type": "object"},
 				// A server's own hint, which a caller does not trust: it
 				// calls every tool read-only.
 				"annotations": map[string]any{"readOnlyHint": true},
