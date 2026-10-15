@@ -26,8 +26,9 @@ var (
 	ErrNotFound = errors.New("store: not found")
 	// ErrNameTaken is a name the owner already holds.
 	ErrNameTaken = errors.New("store: the owner holds that name")
-	// ErrLimitReached is a connection past its owner's cap.
-	ErrLimitReached = errors.New("store: the owner holds as many connections as the cap allows")
+	// ErrLimitReached is a connection or an added connector past its
+	// owner's cap.
+	ErrLimitReached = errors.New("store: the owner holds as many as the cap allows")
 	// ErrIllegalMove is a pair of states that is not an edge of the
 	// connection's state machine. It is answered before any statement.
 	ErrIllegalMove = errors.New("store: the move is not an edge of the state machine")
@@ -106,8 +107,9 @@ func Legal(from, to State) bool {
 	return false
 }
 
-// Connector is a connector a person added (specs/006-catalog.md). A
-// catalog connector has no row.
+// Connector is a connector added by its address (specs/006-catalog.md,
+// specs/016-connectors-added-for-others.md). A catalog connector has no
+// row.
 type Connector struct {
 	ID          string
 	Owner       string
@@ -120,9 +122,22 @@ type Connector struct {
 	Hosts       []string
 	// Auth and Tools are the members of the connector's auth and tools,
 	// as the catalog package encodes them.
-	Auth      json.RawMessage
-	Tools     json.RawMessage
-	CreatedAt time.Time
+	Auth  json.RawMessage
+	Tools json.RawMessage
+	// SignIn is what the add found of how the server signs people in, as
+	// internal/signin encodes it, and empty for a server that signs nobody
+	// in.
+	SignIn json.RawMessage
+	// Vouched is the authorizer's word, at the add, that someone the
+	// installation trusts looked at the server. Disabled is a connector
+	// its owner turned off: listed, and connected or called by nobody.
+	Vouched  bool
+	Disabled bool
+	// ClientSecret is the secret of the client registered at the server
+	// for a vouched-for connector, sealed under ConnectorClientBinding,
+	// and zero when it has none.
+	ClientSecret Sealed
+	CreatedAt    time.Time
 }
 
 // Connection is one owner's link to one connector (specs/002-objects.md).
@@ -172,8 +187,15 @@ type Page struct {
 // Connectors are the connectors people added.
 type Connectors interface {
 	// Create inserts an added connector: ErrNameTaken when its owner holds
-	// one of that name.
-	Create(ctx context.Context, c Connector) error
+	// one of that name, and ErrLimitReached when its owner holds max
+	// already. max of 0 is no cap. The count and the insert are made under
+	// one transaction-level lock on the owner.
+	Create(ctx context.Context, c Connector, max int) error
+	// Update writes what an edit changes: the title, the description, the
+	// icon, auth, tools, disabled and the client secret. The owner, the
+	// name, the kind, the url, the hosts, vouched and what the add found
+	// stay: ErrNotFound.
+	Update(ctx context.Context, c Connector) error
 	// Get reads one by id: ErrNotFound.
 	Get(ctx context.Context, id string) (Connector, error)
 	// List is the connectors of the owners, newest first. An empty owners
@@ -216,6 +238,10 @@ type Connections interface {
 	CountByState(ctx context.Context) (map[State]int64, error)
 	// InUse reports whether a connection names the connector reference.
 	InUse(ctx context.Context, connector string) (bool, error)
+	// CountByConnector counts the connections of every owner that name
+	// each connector reference, in one statement; a reference no
+	// connection names is left out.
+	CountByConnector(ctx context.Context, connectors []string) (map[string]int64, error)
 }
 
 // Credential kinds.
@@ -385,10 +411,11 @@ const (
 	TableCredentials   = "credentials"
 	TableFlows         = "flows"
 	TableRegistrations = "registrations"
+	TableConnectors    = "connectors"
 )
 
 // SealedTables lists them in the order a rotation walks them.
-var SealedTables = []string{TableCredentials, TableFlows, TableRegistrations}
+var SealedTables = []string{TableCredentials, TableFlows, TableRegistrations, TableConnectors}
 
 // Rotation reads and rewrites the sealed values of every table by key.
 type Rotation interface {

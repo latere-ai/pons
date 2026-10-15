@@ -63,28 +63,87 @@ func raw(text string) json.RawMessage {
 
 type connectors struct{ v *view }
 
-const connectorCols = `id, owner, name, title, description, icon, kind, url, hosts::text, auth::text, tools::text, created_at`
+const connectorCols = `id, owner, name, title, description, icon, kind, url, hosts::text, auth::text, tools::text,
+       sign_in::text, vouched, disabled,
+       client_secret_key_id, client_secret_wrapped_key, client_secret_key_nonce, client_secret_ciphertext, client_secret_nonce,
+       created_at`
 
 func scanConnector(row pgx.Row) (store.Connector, error) {
 	var c store.Connector
-	var hosts, auth, tools string
+	var hosts, auth, tools, signIn string
+	s := &c.ClientSecret
 	if err := row.Scan(&c.ID, &c.Owner, &c.Name, &c.Title, &c.Description, &c.Icon, &c.Kind, &c.URL,
-		&hosts, &auth, &tools, &c.CreatedAt); err != nil {
+		&hosts, &auth, &tools, &signIn, &c.Vouched, &c.Disabled,
+		&s.KeyID, &s.WrappedKey, &s.KeyNonce, &s.Ciphertext, &s.Nonce, &c.CreatedAt); err != nil {
 		return store.Connector{}, err
 	}
 	h, err := list(hosts)
 	if err != nil {
 		return store.Connector{}, err
 	}
-	c.Hosts, c.Auth, c.Tools, c.CreatedAt = h, raw(auth), raw(tools), c.CreatedAt.UTC()
+	c.Hosts, c.Auth, c.Tools, c.SignIn, c.CreatedAt = h, raw(auth), raw(tools), raw(signIn), c.CreatedAt.UTC()
 	return c, nil
 }
 
-func (x connectors) Create(ctx context.Context, c store.Connector) error {
-	hosts, err := jsonText(c.Hosts, "[]")
+// documents are a connector's json columns as text.
+func documents(c store.Connector) (hosts, auth, tools, signIn string, err error) {
+	if hosts, err = jsonText(c.Hosts, "[]"); err != nil {
+		return
+	}
+	if auth, err = jsonText(c.Auth, "{}"); err != nil {
+		return
+	}
+	if tools, err = jsonText(c.Tools, "{}"); err != nil {
+		return
+	}
+	signIn, err = jsonText(c.SignIn, "{}")
+	return
+}
+
+func (x connectors) Create(ctx context.Context, c store.Connector, max int) error {
+	hosts, auth, tools, signIn, err := documents(c)
 	if err != nil {
 		return err
 	}
+	s := c.ClientSecret
+	insert := func(q querier) error {
+		_, err := q.Exec(ctx, `
+INSERT INTO connectors (id, owner, name, title, description, icon, kind, url, hosts, auth, tools, sign_in, vouched, disabled,
+                        client_secret_key_id, client_secret_wrapped_key, client_secret_key_nonce, client_secret_ciphertext,
+                        client_secret_nonce, created_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb, $13, $14,
+        $15, $16, $17, $18, $19, coalesce($20::timestamptz, $21::timestamptz, now()))`,
+			c.ID, c.Owner, c.Name, c.Title, c.Description, c.Icon, c.Kind, c.URL, hosts, auth, tools, signIn, c.Vouched, c.Disabled,
+			nullable(s.KeyID), nullable(s.WrappedKey), nullable(s.KeyNonce), nullable(s.Ciphertext), nullable(s.Nonce),
+			nullTime(c.CreatedAt), x.v.at())
+		if name, ok := violation(err, uniqueViolation); ok && name == "connectors_owner_name_key" {
+			return store.ErrNameTaken
+		}
+		return err
+	}
+	if max <= 0 {
+		return insert(x.v.q)
+	}
+	// The count and the insert are made under one lock on the owner, so
+	// two adds at one remaining place yield one connector. The key is
+	// apart from a connection's, so an add and a connect of one owner do
+	// not wait on each other.
+	return x.v.atomic(ctx, func(q querier) error {
+		if _, err := q.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 1))`, c.Owner); err != nil {
+			return err
+		}
+		var held int
+		if err := q.QueryRow(ctx, `SELECT count(*) FROM connectors WHERE owner = $1`, c.Owner).Scan(&held); err != nil {
+			return err
+		}
+		if held >= max {
+			return store.ErrLimitReached
+		}
+		return insert(q)
+	})
+}
+
+func (x connectors) Update(ctx context.Context, c store.Connector) error {
 	auth, err := jsonText(c.Auth, "{}")
 	if err != nil {
 		return err
@@ -93,14 +152,14 @@ func (x connectors) Create(ctx context.Context, c store.Connector) error {
 	if err != nil {
 		return err
 	}
-	_, err = x.v.q.Exec(ctx, `
-INSERT INTO connectors (id, owner, name, title, description, icon, kind, url, hosts, auth, tools, created_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11::jsonb, coalesce($12::timestamptz, $13::timestamptz, now()))`,
-		c.ID, c.Owner, c.Name, c.Title, c.Description, c.Icon, c.Kind, c.URL, hosts, auth, tools, nullTime(c.CreatedAt), x.v.at())
-	if name, ok := violation(err, uniqueViolation); ok && name == "connectors_owner_name_key" {
-		return store.ErrNameTaken
-	}
-	return err
+	s := c.ClientSecret
+	tag, err := x.v.q.Exec(ctx, `
+UPDATE connectors SET title = $2, description = $3, icon = $4, auth = $5::jsonb, tools = $6::jsonb, disabled = $7,
+       client_secret_key_id = $8, client_secret_wrapped_key = $9, client_secret_key_nonce = $10,
+       client_secret_ciphertext = $11, client_secret_nonce = $12
+ WHERE id = $1`, c.ID, c.Title, c.Description, c.Icon, auth, tools, c.Disabled,
+		nullable(s.KeyID), nullable(s.WrappedKey), nullable(s.KeyNonce), nullable(s.Ciphertext), nullable(s.Nonce))
+	return affected(tag.RowsAffected(), err)
 }
 
 func (x connectors) Get(ctx context.Context, id string) (store.Connector, error) {
@@ -349,6 +408,27 @@ func (x connections) InUse(ctx context.Context, connector string) (bool, error) 
 	var used bool
 	err := x.v.q.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM connections WHERE connector = $1)`, connector).Scan(&used)
 	return used, err
+}
+
+func (x connections) CountByConnector(ctx context.Context, refs []string) (map[string]int64, error) {
+	out := map[string]int64{}
+	if len(refs) == 0 {
+		return out, nil
+	}
+	rows, err := x.v.q.Query(ctx, `SELECT connector, count(*) FROM connections WHERE connector = ANY($1) GROUP BY connector`, refs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var ref string
+		var n int64
+		if err := rows.Scan(&ref, &n); err != nil {
+			return nil, err
+		}
+		out[ref] = n
+	}
+	return out, rows.Err()
 }
 
 // --- credentials ----------------------------------------------------------

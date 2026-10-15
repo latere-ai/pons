@@ -100,3 +100,11 @@ func VerifierBinding(flowID, connectionID string) Binding {
 func RegistrationBinding(issuer, redirectURI string) Binding {
 	return Binding{"registration", issuer, redirectURI}
 }
+
+// ConnectorClientBinding is what the client secret of a vouched-for added
+// connector is bound to: the connector and the token endpoint its add
+// found. A secret copied to another connector, or asked for at another
+// token endpoint, does not open.
+func ConnectorClientBinding(connectorID, tokenEndpoint string) Binding {
+	return Binding{"connector_client", connectorID, tokenEndpoint}
+}

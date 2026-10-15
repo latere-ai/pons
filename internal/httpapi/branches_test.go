@@ -75,11 +75,18 @@ type connectorsF struct {
 	f *faulty
 }
 
-func (c connectorsF) Create(ctx context.Context, row store.Connector) error {
+func (c connectorsF) Create(ctx context.Context, row store.Connector, max int) error {
 	if err := c.f.failing("connectors.create"); err != nil {
 		return err
 	}
-	return c.Connectors.Create(ctx, row)
+	return c.Connectors.Create(ctx, row, max)
+}
+
+func (c connectorsF) Update(ctx context.Context, row store.Connector) error {
+	if err := c.f.failing("connectors.update"); err != nil {
+		return err
+	}
+	return c.Connectors.Update(ctx, row)
 }
 
 func (c connectorsF) Get(ctx context.Context, id string) (store.Connector, error) {
@@ -113,6 +120,13 @@ func (c connectionsF) Create(ctx context.Context, row store.Connection, max int)
 		return err
 	}
 	return c.Connections.Create(ctx, row, max)
+}
+
+func (c connectionsF) CountByConnector(ctx context.Context, refs []string) (map[string]int64, error) {
+	if err := c.f.failing("connections.count"); err != nil {
+		return nil, err
+	}
+	return c.Connections.CountByConnector(ctx, refs)
 }
 
 func (c connectionsF) Get(ctx context.Context, id string) (store.Connection, error) {

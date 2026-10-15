@@ -34,6 +34,7 @@ var sealedTables = map[string]struct {
 	store.TableCredentials:   {key: "connection", sets: []sealedSet{{""}}},
 	store.TableFlows:         {key: "id", sets: []sealedSet{{"verifier_"}, {"pending_"}}},
 	store.TableRegistrations: {key: "issuer || chr(31) || redirect_uri", sets: []sealedSet{{"secret_"}}},
+	store.TableConnectors:    {key: "id", sets: []sealedSet{{"client_secret_"}}},
 }
 
 // others are the listed keys other than the first.

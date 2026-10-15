@@ -6,6 +6,7 @@ package postgres_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -53,10 +54,11 @@ func TestSchemaGuards(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = postgres.Migrate(ctx, direct)
-	if err == nil || !strings.Contains(err.Error(), "version 2") || !strings.Contains(err.Error(), "carries 1") {
+	ahead, carried := fmt.Sprintf("version %d", highest+1), fmt.Sprintf("carries %d", highest)
+	if err == nil || !strings.Contains(err.Error(), ahead) || !strings.Contains(err.Error(), carried) {
 		t.Fatalf("a schema ahead of the binary: %v", err)
 	}
-	if _, err := postgres.Open(ctx, direct, postgres.Options{}); err == nil || !strings.Contains(err.Error(), "version 2") {
+	if _, err := postgres.Open(ctx, direct, postgres.Options{}); err == nil || !strings.Contains(err.Error(), ahead) {
 		t.Fatalf("opening a schema ahead of the binary: %v", err)
 	}
 
@@ -65,7 +67,7 @@ func TestSchemaGuards(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = postgres.Migrate(ctx, dirty)
-	if err == nil || !strings.Contains(err.Error(), "dirty at version 1") {
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("dirty at version %d", highest)) {
 		t.Fatalf("a dirty migration: %v", err)
 	}
 	if _, err := postgres.Open(ctx, dirty, postgres.Options{}); err == nil || !strings.Contains(err.Error(), "dirty: true") {
@@ -150,7 +152,9 @@ func TestEveryMethodFailsOnAClosedPool(t *testing.T) {
 	errs := map[string]error{}
 	add := func(name string, err error) { errs[name] = err }
 	add("tx", s.Tx(ctx, func(store.Tx) error { return nil }))
-	add("connector create", s.Connectors().Create(ctx, store.Connector{ID: "ctr_x", Owner: "a", Name: "n"}))
+	add("connector create", s.Connectors().Create(ctx, store.Connector{ID: "ctr_x", Owner: "a", Name: "n"}, 0))
+	add("connector create capped", s.Connectors().Create(ctx, store.Connector{ID: "ctr_x", Owner: "a", Name: "n"}, 1))
+	add("connector update", s.Connectors().Update(ctx, store.Connector{ID: "ctr_x"}))
 	_, err := s.Connectors().Get(ctx, "ctr_x")
 	add("connector get", err)
 	_, _, err = s.Connectors().List(ctx, []string{"a"}, store.Page{})
@@ -171,6 +175,8 @@ func TestEveryMethodFailsOnAClosedPool(t *testing.T) {
 	add("count", err)
 	_, err = s.Connections().InUse(ctx, "notion")
 	add("in use", err)
+	_, err = s.Connections().CountByConnector(ctx, []string{"notion"})
+	add("count by connector", err)
 	_, err = s.Credentials().Put(ctx, c.ID, cred)
 	add("credential put", err)
 	_, _, err = s.Credentials().Get(ctx, c.ID)
@@ -223,13 +229,17 @@ func TestJSONIsCheckedBeforeItIsBound(t *testing.T) {
 	storetest.Create(t, s, c)
 	bad := store.Connector{ID: "ctr_x", Owner: "a", Name: "n", Hosts: []string{"h.example.com"}}
 	for name, x := range map[string]func(*store.Connector){
-		"auth":  func(c *store.Connector) { c.Auth = []byte("{") },
-		"tools": func(c *store.Connector) { c.Tools = []byte("{") },
+		"auth":    func(c *store.Connector) { c.Auth = []byte("{") },
+		"tools":   func(c *store.Connector) { c.Tools = []byte("{") },
+		"sign_in": func(c *store.Connector) { c.SignIn = []byte("{") },
 	} {
 		b := bad
 		x(&b)
-		if err := s.Connectors().Create(ctx, b); err == nil {
+		if err := s.Connectors().Create(ctx, b, 0); err == nil {
 			t.Errorf("a connector whose %s is not JSON was written", name)
+		}
+		if err := s.Connectors().Update(ctx, b); err == nil && name != "sign_in" {
+			t.Errorf("an edit whose %s is not JSON was written", name)
 		}
 	}
 	f := storetest.Flow(t, storetest.Sealer(t, 1), c, time.Now())

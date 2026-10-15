@@ -14,8 +14,12 @@ import (
 
 type connectors struct{ s *Store }
 
-func (x connectors) Create(ctx context.Context, c store.Connector) error {
-	return x.s.one(ctx, func(v *view) error { return v.Connectors().Create(ctx, c) })
+func (x connectors) Create(ctx context.Context, c store.Connector, max int) error {
+	return x.s.one(ctx, func(v *view) error { return v.Connectors().Create(ctx, c, max) })
+}
+
+func (x connectors) Update(ctx context.Context, c store.Connector) error {
+	return x.s.one(ctx, func(v *view) error { return v.Connectors().Update(ctx, c) })
 }
 
 func (x connectors) Get(ctx context.Context, id string) (out store.Connector, err error) {
@@ -70,6 +74,11 @@ func (x connections) Delete(ctx context.Context, id string) error {
 
 func (x connections) CountByState(ctx context.Context) (out map[store.State]int64, err error) {
 	err = x.s.one(ctx, func(v *view) error { out, err = v.Connections().CountByState(ctx); return err })
+	return out, err
+}
+
+func (x connections) CountByConnector(ctx context.Context, refs []string) (out map[string]int64, err error) {
+	err = x.s.one(ctx, func(v *view) error { out, err = v.Connections().CountByConnector(ctx, refs); return err })
 	return out, err
 }
 

@@ -64,6 +64,8 @@ func Run(t *testing.T, open Open) {
 		run  func(*testing.T, env)
 	}{
 		{"Connectors", testConnectors},
+		{"ConnectorEdits", testConnectorEdits},
+		{"ConnectorCap", testConnectorCap},
 		{"Connections", testConnections},
 		{"Names", testNames},
 		{"Cap", testCap},
@@ -212,7 +214,7 @@ func testConnectors(t *testing.T, e env) {
 		Hosts: []string{"wiki.example.com"}, Auth: json.RawMessage(`{"type":"token"}`),
 		Tools: json.RawMessage(`{"read_only":["get_*"]}`),
 	}
-	ok(t, cs.Create(ctx, wiki))
+	ok(t, cs.Create(ctx, wiki, 0))
 	got, err := cs.Get(ctx, wiki.ID)
 	ok(t, err)
 	if !got.CreatedAt.Equal(e.clock.Now()) || got.Title != wiki.Title || got.URL != wiki.URL ||
@@ -222,14 +224,14 @@ func testConnectors(t *testing.T, e env) {
 	}
 	again := wiki
 	again.ID = id.New(id.Connector)
-	is(t, cs.Create(ctx, again), store.ErrNameTaken)
+	is(t, cs.Create(ctx, again, 0), store.ErrNameTaken)
 	again.Owner = "bob"
-	ok(t, cs.Create(ctx, again))
+	ok(t, cs.Create(ctx, again, 0))
 	_, err = cs.Get(ctx, id.New(id.Connector))
 	is(t, err, store.ErrNotFound)
 	bad := wiki
 	bad.ID, bad.Name, bad.Auth = id.New(id.Connector), "bad", json.RawMessage(`{`)
-	if err := cs.Create(ctx, bad); err == nil {
+	if err := cs.Create(ctx, bad, 0); err == nil {
 		t.Fatal("a connector whose auth is not JSON was created")
 	}
 
@@ -238,7 +240,7 @@ func testConnectors(t *testing.T, e env) {
 	for i := range 3 {
 		c := wiki
 		c.ID, c.Owner, c.Name = id.New(id.Connector), "carol", fmt.Sprintf("c%d", i)
-		ok(t, cs.Create(ctx, c))
+		ok(t, cs.Create(ctx, c, 0))
 		made = append(made, c.ID)
 	}
 	first, next, err := cs.List(ctx, []string{"carol"}, store.Page{Limit: 2})
@@ -267,6 +269,111 @@ func testConnectors(t *testing.T, e env) {
 	ok(t, cs.Delete(ctx, wiki.ID))
 	_, err = cs.Get(ctx, wiki.ID)
 	is(t, err, store.ErrNotFound)
+}
+
+// testConnectorEdits holds what an add records beside the catalog's
+// members, what an edit changes and what it keeps, and the count of the
+// connections that use a connector.
+func testConnectorEdits(t *testing.T, e env) {
+	ctx := context.Background()
+	cs := e.st.Connectors()
+	sealer := Sealer(t, 1)
+	secret, err := sealer.Seal([]byte("client-secret-of-the-wiki"), store.ConnectorClientBinding("ctr_wiki", "https://auth.example.com/token"))
+	ok(t, err)
+	wiki := store.Connector{
+		ID: "ctr_wiki", Owner: "org", Name: "wiki", Title: "Team wiki", Kind: "mcp", URL: "https://wiki.example.com/mcp",
+		Hosts: []string{"wiki.example.com"}, Auth: json.RawMessage(`{"type":"oauth"}`),
+		SignIn:  json.RawMessage(`{"issuer":"https://auth.example.com","client":"own"}`),
+		Vouched: true, ClientSecret: secret,
+	}
+	ok(t, cs.Create(ctx, wiki, 0))
+	got, err := cs.Get(ctx, wiki.ID)
+	ok(t, err)
+	failIf(t, !got.Vouched || got.Disabled || !sameJSON(got.SignIn, wiki.SignIn) || !bytes.Equal(got.ClientSecret.Ciphertext, secret.Ciphertext) ||
+		!bytes.Equal(got.ClientSecret.KeyID, secret.KeyID), "read back %+v", got)
+	plain := wiki
+	plain.ID, plain.Name, plain.SignIn, plain.Vouched, plain.ClientSecret = "ctr_plain", "plain", nil, false, store.Sealed{}
+	ok(t, cs.Create(ctx, plain, 0))
+	got, err = cs.Get(ctx, plain.ID)
+	ok(t, err)
+	failIf(t, got.Vouched || len(got.SignIn) != 0 || !got.ClientSecret.Zero(), "a plain add read back %+v", got)
+
+	// An edit writes what may change and keeps the rest.
+	rotated, err := sealer.Seal([]byte("rotated-client-secret"), store.ConnectorClientBinding("ctr_wiki", "https://auth.example.com/token"))
+	ok(t, err)
+	edit := wiki
+	edit.Title, edit.Description, edit.Icon = "Wiki", "The team's wiki.", "https://wiki.example.com/icon.svg"
+	edit.Auth, edit.Tools, edit.Disabled, edit.ClientSecret = json.RawMessage(`{"type":"oauth","scopes":["read"]}`), json.RawMessage(`{"hidden":["delete_*"]}`), true, rotated
+	edit.Owner, edit.Name, edit.URL, edit.Vouched, edit.SignIn = "mallory", "other", "https://other.example.com/mcp", false, json.RawMessage(`{}`)
+	ok(t, cs.Update(ctx, edit))
+	got, err = cs.Get(ctx, wiki.ID)
+	ok(t, err)
+	failIf(t, got.Title != "Wiki" || got.Description != edit.Description || got.Icon != edit.Icon || !got.Disabled ||
+		!sameJSON(got.Auth, edit.Auth) || !sameJSON(got.Tools, edit.Tools) || !bytes.Equal(got.ClientSecret.Ciphertext, rotated.Ciphertext),
+		"the edit was not written: %+v", got)
+	failIf(t, got.Owner != "org" || got.Name != "wiki" || got.URL != wiki.URL || !got.Vouched || !sameJSON(got.SignIn, wiki.SignIn) ||
+		!got.CreatedAt.Equal(e.clock.Now()), "the edit changed what stays: %+v", got)
+	edit.Disabled = false
+	ok(t, cs.Update(ctx, edit))
+	got, err = cs.Get(ctx, wiki.ID)
+	ok(t, err)
+	failIf(t, got.Disabled, "a connector turned on again reads off")
+	missing := edit
+	missing.ID = id.New(id.Connector)
+	is(t, cs.Update(ctx, missing), store.ErrNotFound)
+	bad := edit
+	bad.Tools = json.RawMessage(`{`)
+	if err := cs.Update(ctx, bad); err == nil {
+		t.Fatal("an edit whose tools are not JSON was written")
+	}
+
+	// The connections of every owner that use a connector are counted.
+	for i, owner := range []string{"alice", "bob", "bob"} {
+		c := Connection(owner, fmt.Sprintf("wiki-%d", i), store.StateConnected)
+		c.Connector = wiki.ID
+		Create(t, e.st, c)
+	}
+	other := Connection("carol", "plain", store.StatePending)
+	other.Connector = plain.ID
+	Create(t, e.st, other)
+	counts, err := e.st.Connections().CountByConnector(ctx, []string{wiki.ID, plain.ID, "ctr_none"})
+	ok(t, err)
+	failIf(t, counts[wiki.ID] != 3 || counts[plain.ID] != 1 || len(counts) != 2, "counted %v", counts)
+	counts, err = e.st.Connections().CountByConnector(ctx, nil)
+	ok(t, err)
+	failIf(t, len(counts) != 0, "a count of no connector answered %v", counts)
+}
+
+// testConnectorCap holds an owner to its cap of added connectors, under
+// one lock, and leaves another owner's adds alone.
+func testConnectorCap(t *testing.T, e env) {
+	ctx := context.Background()
+	cs := e.st.Connectors()
+	add := func(owner, name string, max int) error {
+		return cs.Create(ctx, store.Connector{
+			ID: id.New(id.Connector), Owner: owner, Name: name, Title: name, Kind: "mcp",
+			URL: "https://" + name + ".example.com/mcp", Auth: json.RawMessage(`{"type":"none"}`),
+		}, max)
+	}
+	ok(t, add("alice", "a", 2))
+	ok(t, add("alice", "b", 2))
+	is(t, add("alice", "c", 2), store.ErrLimitReached)
+	is(t, add("alice", "a", 2), store.ErrLimitReached)
+	ok(t, add("bob", "a", 2))
+	ok(t, add("alice", "c", 0))
+
+	// 8 adds racing at one remaining place yield one connector.
+	errs := race(8, func(i int) error { return add("carol", fmt.Sprintf("race-%d", i), 1) })
+	made := 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			made++
+		case !errors.Is(err, store.ErrLimitReached):
+			t.Fatalf("a racing add: %v", err)
+		}
+	}
+	failIf(t, made != 1, "%d racing adds made a connector at one remaining place", made)
 }
 
 func testConnections(t *testing.T, e env) {
@@ -1076,6 +1183,16 @@ func testRotation(t *testing.T, e env) {
 	ok(t, err)
 	_, err = e.st.Registrations().Put(ctx, store.Registration{Issuer: "https://public.example.com", RedirectURI: "cb", ClientID: "p"})
 	ok(t, err)
+	clientSecret, err := old.Seal([]byte("client-secret-2"), store.ConnectorClientBinding("ctr_vouched", "https://auth.example.com/token"))
+	ok(t, err)
+	ok(t, e.st.Connectors().Create(ctx, store.Connector{
+		ID: "ctr_vouched", Owner: "org", Name: "vouched", Title: "Vouched", Kind: "mcp", URL: "https://mcp.example.com/mcp",
+		Auth: json.RawMessage(`{"type":"oauth"}`), Vouched: true, ClientSecret: clientSecret,
+	}, 0))
+	ok(t, e.st.Connectors().Create(ctx, store.Connector{
+		ID: "ctr_plain", Owner: "org", Name: "plain", Title: "Plain", Kind: "mcp", URL: "https://mcp.example.com/mcp",
+		Auth: json.RawMessage(`{"type":"none"}`),
+	}, 0))
 
 	counts, err := store.Remaining(ctx, e.st, rotated)
 	ok(t, err)
@@ -1083,6 +1200,7 @@ func testRotation(t *testing.T, e env) {
 		store.TableCredentials:   {NotFirst: 1, NoKey: 1},
 		store.TableFlows:         {NotFirst: 2},
 		store.TableRegistrations: {NotFirst: 1},
+		store.TableConnectors:    {NotFirst: 1},
 	}
 	failIf(t, !reflect.DeepEqual(counts, want), "before the rewrap %v, want %v", counts, want)
 	if _, err := e.st.Rotation().RewrapBatch(ctx, "connections", rotated.Keys(), 1, rotated.Rewrap); err == nil {
@@ -1096,13 +1214,14 @@ func testRotation(t *testing.T, e env) {
 	failIf(t, n != 0, "a sealer with one key rewrapped %d", n)
 	n, err = store.Rewrap(ctx, e.st, rotated, 1)
 	ok(t, err)
-	failIf(t, n != 2, "the rewrap moved %d rows, want the flow and the registration", n)
+	failIf(t, n != 3, "the rewrap moved %d rows, want the flow, the registration and the connector", n)
 	counts, err = store.Remaining(ctx, e.st, rotated)
 	ok(t, err)
 	want = map[string]store.KeyCount{
 		store.TableCredentials:   {NoKey: 1},
 		store.TableFlows:         {},
 		store.TableRegistrations: {},
+		store.TableConnectors:    {},
 	}
 	failIf(t, !reflect.DeepEqual(counts, want), "after the rewrap %v, want %v", counts, want)
 
@@ -1123,6 +1242,11 @@ func testRotation(t *testing.T, e env) {
 	r, err := e.st.Registrations().Get(ctx, "https://auth.example.com", "cb")
 	ok(t, err)
 	_, err = newOnly.Open(r.Secret, store.RegistrationBinding("https://auth.example.com", "cb"))
+	ok(t, err)
+	vouched, err := e.st.Connectors().Get(ctx, "ctr_vouched")
+	ok(t, err)
+	failIf(t, !bytes.Equal(vouched.ClientSecret.Ciphertext, clientSecret.Ciphertext), "the rewrap changed a connector's ciphertext")
+	_, err = newOnly.Open(vouched.ClientSecret, store.ConnectorClientBinding("ctr_vouched", "https://auth.example.com/token"))
 	ok(t, err)
 	n, err = store.Rewrap(ctx, e.st, store.Sealer(must(store.NewSealer())), 1)
 	ok(t, err)

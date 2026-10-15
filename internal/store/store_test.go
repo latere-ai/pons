@@ -89,7 +89,7 @@ func dumpPostgres(t *testing.T, dsn string) []byte {
 		fmt.Fprintf(&out, "%s: %d rows\n", table, n)
 	}
 	// The text form as well, in case a column is sent as text.
-	for _, table := range []string{"credentials", "flows", "registrations"} {
+	for _, table := range []string{"credentials", "flows", "registrations", "connectors"} {
 		var text string
 		if err := conn.QueryRow(ctx, `SELECT coalesce(string_agg(t::text, E'\n'), '') FROM `+table+` t`).Scan(&text); err != nil {
 			t.Fatal(err)
@@ -218,6 +218,63 @@ func TestNoPlaintextAtRest(t *testing.T) {
 		}
 		if bytes.Contains(dump, []byte(canary)) {
 			t.Fatal("a canary is at rest in the clear")
+		}
+	})
+}
+
+// The client secret of a vouched-for connector is sealed at rest in both
+// adapters, opens under its own connector and token endpoint alone, and is
+// rewrapped with every other sealed value.
+func TestAConnectorsSecretIsSealed(t *testing.T) {
+	const canary = "canary-client-secret-5d1e"
+	both(t, func(t *testing.T, a adapter) {
+		ctx := context.Background()
+		s := storetest.Sealer(t, 1)
+		const endpoint = "https://auth.example.com/token"
+		secret, err := s.Seal([]byte(canary), store.ConnectorClientBinding("ctr_vouched", endpoint))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := a.st.Connectors().Create(ctx, store.Connector{
+			ID: "ctr_vouched", Owner: "org", Name: "wiki", Title: "Wiki", Kind: "mcp", URL: "https://wiki.example.com/mcp",
+			Auth: []byte(`{"type":"oauth","client":{"id":"wiki-client"}}`), Vouched: true, ClientSecret: secret,
+		}, 0); err != nil {
+			t.Fatal(err)
+		}
+		dump := a.dump(t)
+		if !bytes.Contains(dump, []byte("ctr_vouched")) || !bytes.Contains(dump, secret.Ciphertext) {
+			t.Fatal("the dump does not hold what was stored, so it proves nothing")
+		}
+		if bytes.Contains(dump, []byte(canary)) {
+			t.Fatal("a connector's client secret is at rest in the clear")
+		}
+		got, err := a.st.Connectors().Get(ctx, "ctr_vouched")
+		if err != nil {
+			t.Fatal(err)
+		}
+		plain, err := s.Open(got.ClientSecret, store.ConnectorClientBinding("ctr_vouched", endpoint))
+		if err != nil || string(plain) != canary {
+			t.Fatalf("the secret does not open under its own binding: %v", err)
+		}
+		for name, b := range map[string]store.Binding{
+			"another connector":      store.ConnectorClientBinding("ctr_other", endpoint),
+			"another token endpoint": store.ConnectorClientBinding("ctr_vouched", "https://elsewhere.example.net/token"),
+			"a registration":         store.RegistrationBinding("https://auth.example.com", endpoint),
+		} {
+			if _, err := s.Open(got.ClientSecret, b); !errors.Is(err, store.ErrNotOpened) {
+				t.Errorf("the secret opens under %s: %v", name, err)
+			}
+		}
+		rotated := storetest.Sealer(t, 2, 1)
+		if n, err := store.Rewrap(ctx, a.st, rotated, store.RewrapBatchSize); err != nil || n != 1 {
+			t.Fatalf("the rewrap moved %d: %v", n, err)
+		}
+		got, err = a.st.Connectors().Get(ctx, "ctr_vouched")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := storetest.Sealer(t, 2).Open(got.ClientSecret, store.ConnectorClientBinding("ctr_vouched", endpoint)); err != nil {
+			t.Fatalf("the rewrapped secret does not open under the new key: %v", err)
 		}
 	})
 }

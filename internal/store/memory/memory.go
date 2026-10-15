@@ -229,28 +229,55 @@ func cloneConnector(c store.Connector) store.Connector {
 	c.Hosts = slices.Clone(c.Hosts)
 	c.Auth = bytes.Clone(c.Auth)
 	c.Tools = bytes.Clone(c.Tools)
+	c.SignIn = bytes.Clone(c.SignIn)
+	c.ClientSecret = cloneSealed(c.ClientSecret)
 	return c
 }
 
 type viewConnectors struct{ v *view }
 
-func (x viewConnectors) Create(_ context.Context, c store.Connector) error {
+func (x viewConnectors) Create(_ context.Context, c store.Connector, max int) error {
 	v := x.v
 	if _, ok := v.d.connectors[c.ID]; ok {
 		return fmt.Errorf("store: the connector id %s is taken", c.ID)
 	}
+	// The cap is counted before the name is compared, as Postgres counts
+	// before its insert meets the unique key.
+	held, taken := 0, false
 	for _, other := range v.d.connectors {
-		if other.Owner == c.Owner && other.Name == c.Name {
-			return store.ErrNameTaken
+		if other.Owner == c.Owner {
+			held++
+			taken = taken || other.Name == c.Name
 		}
 	}
-	if err := checkJSON(c.Auth, c.Tools); err != nil {
+	switch {
+	case max > 0 && held >= max:
+		return store.ErrLimitReached
+	case taken:
+		return store.ErrNameTaken
+	}
+	if err := checkJSON(c.Auth, c.Tools, c.SignIn); err != nil {
 		return err
 	}
 	if c.CreatedAt.IsZero() {
 		c.CreatedAt = v.now()
 	}
 	put(v, v.d.connectors, c.ID, cloneConnector(c))
+	return nil
+}
+
+func (x viewConnectors) Update(_ context.Context, c store.Connector) error {
+	v := x.v
+	row, ok := v.d.connectors[c.ID]
+	if !ok {
+		return store.ErrNotFound
+	}
+	if err := checkJSON(c.Auth, c.Tools); err != nil {
+		return err
+	}
+	row.Title, row.Description, row.Icon = c.Title, c.Description, c.Icon
+	row.Auth, row.Tools, row.Disabled, row.ClientSecret = c.Auth, c.Tools, c.Disabled, c.ClientSecret
+	put(v, v.d.connectors, c.ID, cloneConnector(row))
 	return nil
 }
 
@@ -443,6 +470,16 @@ func (x viewConnections) CountByState(context.Context) (map[store.State]int64, e
 	out := map[store.State]int64{}
 	for _, c := range x.v.d.connections {
 		out[c.State]++
+	}
+	return out, nil
+}
+
+func (x viewConnections) CountByConnector(_ context.Context, refs []string) (map[string]int64, error) {
+	out := map[string]int64{}
+	for _, c := range x.v.d.connections {
+		if slices.Contains(refs, c.Connector) {
+			out[c.Connector]++
+		}
 	}
 	return out, nil
 }
@@ -861,6 +898,21 @@ func (x viewRotation) RewrapBatch(_ context.Context, table string, keys store.Ke
 				n++
 			}
 		}
+	case store.TableConnectors:
+		for _, id := range sortedKeys(v.d.connectors) {
+			if n == limit {
+				break
+			}
+			c := cloneConnector(v.d.connectors[id])
+			did, err := rewrapOne(&c.ClientSecret, keys, rewrap)
+			if err != nil {
+				return n, err
+			}
+			if did {
+				put(v, v.d.connectors, id, c)
+				n++
+			}
+		}
 	default:
 		return 0, fmt.Errorf("store: %q is not a table with sealed values", table)
 	}
@@ -904,6 +956,9 @@ func (x viewRotation) CountNotFirst(_ context.Context, keys store.KeyIDs) (map[s
 	}
 	for _, r := range v.d.registrations {
 		count(store.TableRegistrations, r.Secret)
+	}
+	for _, c := range v.d.connectors {
+		count(store.TableConnectors, c.ClientSecret)
 	}
 	return out, nil
 }
