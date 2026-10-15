@@ -1,6 +1,6 @@
 ---
 title: "Connectors added for others: an owner the authorizer names, a connection to another owner's connector, edits without a restart, a vouched-for server with a registered client, and sign-in at the server an added connector names"
-status: drafted
+status: testing
 track: core
 depends_on:
   - specs/003-api.md
@@ -40,19 +40,11 @@ document or, where the server takes only that, by dynamic registration.
 
 ## Current state
 
-- **What an added connector holds.** It is a row in `connectors` with
-  an owner, which the allow's `Limits.Owner` names
-  (`httpapi/connectors.go`, `ownerOf`). The list reads the rows of the
-  owners the allow's filter names (`owner = ANY($1)`), so an authorizer
-  could already list one owner's connector to another.
-- **What stops a connection to it.** A connect whose owner differs from
-  the connector's is `404 connector_not_found`
-  (`httpapi/connections.go`, "An added connector is its owner's alone").
-- **What the routes allow.** There is no update route. `auth.client` is
-  refused on an added connector (`catalog.Validate`), and so is
-  `auth.type: oauth`: an add answers `422 sign_in_unsupported`.
-- **Tool marks.** An added connector takes them, and a `tools/call`
-  through it is held to them ([[008-carrying-a-call]]).
+Built on 2026-10-15; see Implementation status and Outcome. Before it,
+an added connector was its owner's alone: a connect by another owner
+was `404 connector_not_found`, no route changed one, `auth.client` was
+refused, and an add of `auth.type` `oauth` answered `422
+sign_in_unsupported`.
 
 ## Design
 
@@ -207,6 +199,65 @@ its marks give it. It asks `connection.read`, so the owner reads it,
 and it records no call. An administrator uses it to choose tool marks
 from the tools a server really has.
 
+```json
+GET /connections/{id}/tools
+{ "items": [
+  { "name": "get_note", "description": "Reads a note.", "effect": "read" },
+  { "name": "delete_notebook", "description": "Deletes a notebook.", "effect": "write", "hidden": true } ] }
+```
+
+### How many connections use an added connector
+
+An administrator's screen says "15 people connected" beside each server
+and explains a removal by it. An added connector's view carries
+`connections`, how many connections of every owner use it, to a caller
+the authorizer lets change it, as it answers `connector.update`, and to
+no other caller.
+
+The count is asked as `connector.update`, the question an edit asks,
+so an authorizer keeps one answer for who administers an owner's
+servers. A read of one added connector asks it after `connector.read`,
+with the id and the owner. A list asks it once for each owner of the
+added connectors on its page, with that `owner` and no id, and counts
+the connections of the allowed owners' connectors in one statement, so
+a page of fifty rows of three owners asks three questions, not fifty.
+An edit's answer carries the count, since its caller was just allowed
+to change it. A deny shows no count, and so does an authorizer that
+gives no decision: the read or the list it rides on still answers, and
+the outage is logged. The owner policy allows `connector.update` with
+no id that names the caller as `owner`, so a person sees the count of
+their own connectors.
+
+### What an added connector's view carries
+
+A client draws an added connector from its view alone:
+
+| Member | What it is |
+|---|---|
+| `id`, `owner` | the connector's id, and whose it is, as the authorizer named it at the add |
+| `name`, `title`, `description`, `icon` | its label and presentation |
+| `kind`, `url`, `hosts` | `mcp`, the server's address, and the one host a credential goes to |
+| `auth.type` | `none`, `oauth` or `token` |
+| `auth.scopes` | for `oauth`, what a sign-in asks for |
+| `auth.inject`, `auth.hint` | for `token`, where the key goes, and "API key" when the add found the server takes one |
+| `auth.client` | for `oauth`, how Pons identifies itself: `own`, the client registered at the server; `document`, the connector's client metadata document; `registered`, a registration the installation keeps |
+| `auth.redirect_uri` | with `auth.client` `own`, the address to register that client with: the shared callback, or the issuer's own when the server sends no `iss` |
+| `tools.read_only`, `tools.hidden` | its tool marks |
+| `disabled`, `vouched` | whether its owner turned it off, and whether the authorizer vouched for it at the add |
+| `connections` | to a caller who may change it, how many connections use it |
+
+It never carries the client's id or secret.
+
+```json
+{ "name": "wiki", "id": "ctr_01jb…", "owner": "org:acme",
+  "title": "Team wiki", "description": "The team's notes.", "icon": "https://wiki.example.com/icon.svg",
+  "kind": "mcp", "url": "https://wiki.example.com/mcp", "hosts": ["wiki.example.com"],
+  "auth": { "type": "oauth", "scopes": ["notes:read"], "client": "own",
+            "redirect_uri": "https://pons.example.com/v1/callback/3f9c2a1b7d4e5f60" },
+  "tools": { "read_only": ["get_*"], "hidden": [] },
+  "disabled": false, "vouched": true, "connections": 15 }
+```
+
 ## Decisions
 
 | Decision | Why | Not chosen |
@@ -218,6 +269,16 @@ from the tools a server really has.
 | `vouched` is the authorizer's to set, and unlocks a registered client alone | Who has looked at a server is the installation's knowledge. An organization's administrator vouches to the organization, so vouching cannot also stand in for the mix-up defense | Vouching by the owner's kind: Pons would read meaning into an owner. Accepting a missing `iss` from a vouched-for server: a hostile organization server could receive another server's answer at the shared callback |
 | Dynamic registration for added servers | Many MCP servers take no client metadata document yet, and an address alone must be enough | The document alone: most servers could not be added |
 | A redirect address per issuer when `iss` is missing | RFC 9700 names it as the alternative defense, and many servers send no `iss` | Refusing those servers: the add a person expects would fail for reasons they cannot see |
+| The count of a connector's connections is asked as `connector.update`: once per owner on a list's page with no id, and with the id on a read | One answer for who administers an owner's servers, which the edit already needs, and a question per owner, not per row. An authorizer that answers nothing shows no count and fails nothing | A limit on the allow of `connector.list` and `connector.read` naming the owners the caller may change: one question per route, but a second answer the authorizer keeps in step with `connector.update`. A question per row: fifty questions for one page |
+| What the add found is stored with the connector, as `sign_in`: the issuer, its token endpoint, whether it sends `iss`, and how Pons identifies itself | The view, the client metadata document's redirect address and the binding of a client's secret need it with no request; a sign-in still discovers afresh | Discovering again at a read or an edit: a request to the server for a page of a list |
+| The client's secret is the five sealed columns of [[005-store-and-sealing]], prefixed `client_secret_` | Every sealed value is stored so, and a rotation rewraps it with the others | One column `client_secret_sealed`, a second shape for one value |
+| The add's first request is the one discovery and the key probe make: a `tools/list` of the current revision, and `initialize` for a server of an earlier one | A server answers the add as it answers a sign-in and a probe, and the current revision lists with no handshake | `initialize` alone: a second request shape for one question |
+| `auth_mismatch` for `none` named for a server that asks for a credential, `oauth` for one that does not sign people in, and a client for one that does not | Each would store a connector no connect can use | A key named for a server that answered without one, or one that signs people in: a key may be optional, and many servers take a key beside a sign-in |
+| `server_unreachable` beside `connector_unreachable` | At the add there is no connector yet, and the server did not answer as one that can be connected; a failure reading its authorization server after it did is `connector_unreachable`, as at a sign-in | One code for both: a client could not tell a wrong address from a broken authorization server |
+| `connector.read` is asked at a connect of an added connector alone | A catalog connector is the installation's, held by the allow's `connectors`, and its connect keeps its one question | Asking it for every connect: a question per connect that every authorizer answers yes |
+| An edit that names a fixed member with its stored value changes nothing | A client may send back the form it drew | Refusing every fixed member named: a client strips them first |
+| A connector turned off refuses a reconnect and a replaced key as well as a connect | Each sends a request to the server, which nobody reaches through a connector turned off | Refusing a connect alone |
+| A connection's tools carry `hidden` beside the effect | An administrator choosing marks sees which the marks already hide | The effect alone |
 
 ## Not in this spec
 
@@ -244,7 +305,71 @@ from the tools a server really has.
 | An added `oauth` connector signs in by a registered client, a client metadata document or a registration, in that order | `signin.TestAnAddedConnectorIdentifiesItself` |
 | An added server without `iss`, vouched for or not, signs in at its own callback address, and an answer at another issuer's address is refused | `signin.TestACallbackOfItsOwnPerIssuer` |
 | `GET /connections/{id}/tools` answers the tools with their effects to the owner, and is `404` to anyone else | `TestAConnectionsTools` |
+| A caller the authorizer lets change an added connector sees how many connections of every owner use it, on a read, in a list and in an edit's answer, with one question per owner on a list's page; nobody else does, and an authorizer that gives no decision hides it and fails nothing | `TestWhoMayChangeAConnectorSeesItsConnections` |
+| An added connector's view carries its owner, url, presentation, tool marks, `auth.type`, how Pons identifies itself, `disabled`, `vouched` and, for its own client, the redirect address to register; never the client's id or secret | `TestAnAddedConnectorsView` |
+| An authorizer that does not know `connector.update` answers an edit with no decision, so it fails closed | `access.TestAnAuthorizerOfAnEarlierVocabularyFailsClosed` |
 
 ## Implementation status
 
-Drafted. Nothing is built.
+Built, and every criterion above has its test. The tests reach an added
+connector at port 443 through `stubs.Front`, a proxy that ends a tunnel
+to port 443 at the stub its TLS handshake names. Waiting: a check
+against a real MCP server and its authorization server, of each way
+Pons identifies itself.
+
+## Outcome
+
+Built on 2026-10-15.
+
+- **Owners and lists.** An add stores the owner its allow names, and the
+  list reads the added connectors of every owner the filter names.
+  `PONS_MAX_ADDED_CONNECTORS`, 50 by default, is counted under a
+  transaction-level lock on the owner with the insert, as a connection's
+  cap is, and one more is `409 connector_limit`.
+- **A connect to another owner's connector** asks `connector.read`
+  first, and `connection.create` carries `connector_owner`. A catalog
+  connector's connect still asks one question.
+- **Edits.** `PATCH /connectors/{id}` asks `connector.update` and holds
+  the table above. A member named with its stored value is no change.
+  `disabled` refuses a connect, a reconnect and a replaced key with
+  `409 connector_disabled`, and a call and a list of tools with `409
+  connection_not_connected`, reason `connector_disabled`.
+- **Vouched for.** `vouched` is read from the allow of
+  `connector.create` alone, stored and shown. A vouched-for add takes
+  `auth.client` with its `id` and `secret`; the secret is sealed in the
+  five columns `client_secret_key_id` to `client_secret_nonce`, the
+  convention of [[005-store-and-sealing]], not one column
+  `client_secret_sealed`, bound to the connector's id and the token
+  endpoint the add found, and rewrapped by a rotation as every sealed
+  value is. A sign-in whose authorization server moved its token
+  endpoint is `422 sign_in_unsupported`, `token_endpoint_changed`, and
+  the secret goes nowhere else.
+- **The add asks the server.** The first request is discovery's own,
+  `tools/list` of the current revision and `initialize` of an earlier
+  one, not `initialize` alone. What the add finds of a server that signs
+  people in is stored with the connector as `sign_in`: the issuer, the
+  token endpoint, whether it sends `iss`, and the client. The cap is
+  counted at the insert, after the server was asked.
+- **Sign-in.** An added server identifies Pons by its own client, its
+  document or a registration, kept per issuer and redirect address. One
+  whose authorization server does not say it sends `iss` signs in at
+  `/callback/{key}`; the callback compares the key with the flow's
+  issuer and the flow's recorded redirect address before the code goes
+  anywhere, so an answer at the shared callback or another issuer's is
+  refused.
+- **The count and the view** were added to this spec on 2026-10-15,
+  after the screens that show them were approved; the Decisions table
+  records how the count is asked.
+- **Tools.** `GET /connections/{id}/tools` follows the server's pages,
+  up to ten, speaks an earlier revision's session and ends it, refreshes
+  a refused token once, and carries `hidden` beside the effect.
+
+The authorizer rolls before Pons. An authorizer built on
+`latere.ai/x/pkg/authz/server` that does not know `connector.update`
+answers it `400`, which Pons reads as no decision: an edit is `503
+authorizer_unavailable`, and a read or a list shows no count. One that
+does not read `connector_owner` answers a connect as before, and a
+connect to another owner's connector stays closed until it allows
+`connector.read` of it. An allow of `connector.create` that carries
+`vouched` sent to a Pons that predates it is a key that Pons does not
+know, and every add fails closed with `503` until Pons rolls.

@@ -6,6 +6,80 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+- Added: MCP servers added by their address for others. The owner of an
+  added connector is the one your authorizer's allow of
+  `connector.create` names, a string Pons gives no meaning: use one for
+  a person, one for an organization and one for the whole installation.
+  A list of connectors shows the added connectors of every owner the
+  allow's filter names, and a connect to another owner's connector asks
+  `connector.read` of it first, so an organization's members connect
+  the servers its administrators added when you let them read those
+  connectors. Under the owner policy an added connector stays its
+  owner's alone.
+
+- Added: for your authorizer, the action `connector.update`, asked by an
+  edit with the connector's `id` and `owner`, and by a list once for each
+  owner on its page with that `owner` and no `id`, to show how many
+  connections use each of that owner's connectors. `connection.create`
+  of a connect to an added connector sends `connector_owner`. The allow
+  of `connector.create` may carry the limit `vouched: true`, which says
+  someone you trust looked at the server; send it for an administrator's
+  add alone. Roll your authorizer before this Pons: one built on
+  `latere.ai/x/pkg/authz/server` that does not know `connector.update`
+  answers it `400`, and an edit fails closed with `503
+  authorizer_unavailable`. Do not send `vouched` to a Pons before this
+  one: it does not know the key, and every add fails closed with `503`.
+
+- Added: `PATCH /connectors/{id}` changes an added connector in place,
+  holding from the next request on every replica with no restart: its
+  `title`, `description`, `icon`, tool marks, `auth.scopes`, a
+  vouched-for connector's `auth.client.secret`, and `disabled`. Its
+  `name`, `kind`, `url`, `auth.type` and client id are
+  `400 immutable_field`. A connector turned off stays listed; a connect
+  to it is `409 connector_disabled`, a call through a connection to it
+  is `409 connection_not_connected` with `details.reason`
+  `connector_disabled`, and its connections and their credentials are
+  kept until it is turned on. A removal is still `409 connector_in_use`
+  while a connection uses it.
+
+- Added: an add needs only the address. `auth` is optional on
+  `POST /connectors`: Pons asks the server with no credential, after
+  the authorizer's question and within `PONS_CREATES_PER_MINUTE`, and
+  stores `none`, `oauth` or `token` from its answer, with the hint "API
+  key" for a server that takes a key. An `auth` the answer does not
+  admit is `422 auth_mismatch`, and a server that does not answer as one
+  that can be connected is `422 server_unreachable`, with the status or
+  the failure and never the address. Every add now makes these
+  requests, so an address whose server does not answer can no longer be
+  added.
+
+- Added: a server added by its address signs people in. Pons identifies
+  itself by a vouched-for connector's own client, `auth.client` with its
+  `id` and `secret`, sealed and never answered; else by the connector's
+  client metadata document; else by registering at the server, which the
+  installation keeps per issuer and reuses for a second connector there.
+  A server whose authorization server does not say it sends `iss` signs
+  in at `/v1/callback/{key}`, its issuer's own redirect address, which
+  refuses an answer meant for another server. An added connector's view
+  says `auth.client` (`own`, `document` or `registered`), `disabled`,
+  `vouched`, and, for its own client, `auth.redirect_uri`, the address to
+  register that client with.
+
+- Added: `GET /connections/{id}/tools`, the tools a connection's server
+  lists through it, with the effect the connector's marks give each and
+  whether they hide it, asked each time and recorded as no call. And
+  `connections` on an added connector's view, to a caller your
+  authorizer lets change it: how many connections of every owner use
+  it.
+
+- Added: `PONS_MAX_ADDED_CONNECTORS`, 50 by default: how many connectors
+  one owner may add. One more is `409 connector_limit`, and other
+  owners' adds go on.
+
+- Changed: the store's schema moves to version 2, which adds columns to
+  `connectors`. It runs at start as every migration does; a binary
+  before this one refuses a schema at version 2.
+
 ## v0.2.0 - 2026-10-14
 
 - Added: the MCP address. A connection of kind `mcp` is used at its

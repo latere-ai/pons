@@ -69,8 +69,13 @@ refusal of an authorization server at an address the outbound rules
 refuse answered as row 3 of 012 says, `connector_unreachable` with the
 rule's name.
 
-What remains is a connector a person adds that signs people in, whose
-add and connect are not built (003, 006, 007); the count of denied calls
+Since 2026-10-15 main carries 016: connectors added for a person, an
+organization or everyone, as the authorizer names their owner, edited
+and turned off without a restart, a vouched-for server's own client, and
+sign-in at a server added by its address, at the issuer's own callback
+when it sends no `iss`.
+
+What remains is the count of denied calls
 and the other metrics and spans of 010; a check of the MCP address
 against a real MCP server (008); `deploy/`, the generated configuration
 reference and the release workflow's test of 011; the threat model's own
@@ -81,7 +86,8 @@ Specs 013 and 014 are `complete` and archived: every criterion has its
 test, and the check against the real GitHub passed. Specs 002 and 008
 are `testing`: built, and every one of their criteria has its test; 008
 waits for the count of 010's metrics and a check against a real MCP
-server. The other specs are `in-progress`: each says under
+server. 016 is `testing` too, waiting for a check against a real MCP
+server and its authorization server. The other specs are `in-progress`: each says under
 Implementation status what is built and which of its criteria wait.
 
 ## Index
@@ -103,7 +109,7 @@ Implementation status what is built and which of its criteria wait.
 | [013](.archive/013-github-connector.md) | A code host's connector: GitHub through a GitHub App, signed in like any connector, with git and the REST API carried through Pons | medium | complete | 006, 007, 014 |
 | [014](.archive/014-http-forwarding.md) | Plain HTTP and git through a connection: a forwarding address and a git address, the credential added, a path held to its connector, and a push held to the refs an allow names | large | complete | 002, 003, 004, 006, 008, 009 |
 | [015](015-google-connectors.md) | Google's connectors: Gmail, Google Calendar and Google Drive, each signed in with Google on its own and carried as Google's REST APIs | small | in-progress | 006, 007, 013, 014 |
-| [016](016-connectors-added-for-others.md) | Connectors added for others: an owner the authorizer names, a connection to another owner's connector, edits without a restart, a vouched-for server with a registered client, and sign-in at the server an added connector names | large | drafted | 003, 004, 005, 006, 007, 012 |
+| [016](016-connectors-added-for-others.md) | Connectors added for others: an owner the authorizer names, a connection to another owner's connector, edits without a restart, a vouched-for server with a registered client, and sign-in at the server an added connector names | large | testing | 003, 004, 005, 006, 007, 012 |
 
 ## Build order
 
