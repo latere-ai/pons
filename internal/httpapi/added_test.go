@@ -308,14 +308,35 @@ func (h *harness) browser(t testing.TB, authorizationURL string) (landed, back *
 	if landed, err = url.Parse(resp.Header.Get("Location")); err != nil || resp.StatusCode != http.StatusFound {
 		t.Fatalf("the authorization request answered %d %v", resp.StatusCode, err)
 	}
-	a := h.do(http.MethodGet, landed.Path+"?"+landed.RawQuery, "", nil)
-	if a.status != http.StatusFound {
-		t.Fatalf("the callback answered %d %s", a.status, a.body)
-	}
-	if back, err = url.Parse(a.header.Get("Location")); err != nil {
+	back = h.callback(t, landed)
+	return landed, back
+}
+
+// callback brings the answer at an address of the harness's callback to
+// it, and answers where the harness sent the browser on.
+func (h *harness) callback(t testing.TB, landed *url.URL) *url.URL {
+	t.Helper()
+	client := *h.http.Client()
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, h.http.URL+landed.Path+"?"+landed.RawQuery, nil)
+	if err != nil {
 		t.Fatal(err)
 	}
-	return landed, back
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("the callback at %s answered %d", landed.Path, resp.StatusCode)
+	}
+	back, err := url.Parse(resp.Header.Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return back
 }
 
 // signIn connects a connector whose people sign in, follows the sign-in,
