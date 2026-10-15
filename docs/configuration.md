@@ -61,6 +61,7 @@ start.
 | Variable | Default | What it is |
 |---|---|---|
 | `PONS_MAX_CONNECTIONS_PER_OWNER` | `100` | how many connections one owner may hold. An authorizer's allow may lower it for an owner and never raise it. A connect past it is `403 forbidden` |
+| `PONS_MAX_ADDED_CONNECTORS` | `50` | how many connectors one owner may add by address: a person, an organization, or the owner an authorizer uses for the whole installation. An add past it is `409 connector_limit`, and other owners' adds go on |
 | `PONS_CREATES_PER_MINUTE` | `10` | how many connects, reconnects and connector additions one caller may make in a minute, per replica. Past it, `429 rate_limited` |
 | `PONS_MAX_INFLIGHT_PER_SUBJECT` | `32` | how many requests one caller may have in flight at a connection's addresses, per replica |
 | `PONS_MAX_INFLIGHT` | `1024` | how many requests all callers may have in flight at the addresses, per replica |

@@ -186,7 +186,7 @@ func (srv *server) api(hooks Hooks) *httpapi.Server {
 		Store: srv.store, Sealer: srv.sealer, Catalog: srv.catalog,
 		Auth: srv.access.Authenticator, Authz: srv.access.Authorizer,
 		PublicURL: s.PublicURL, BasePath: s.BasePath,
-		MaxConnectionsPerOwner: s.MaxConnectionsPerOwner, CreatesPerMinute: s.CreatesPerMinute,
+		MaxConnectionsPerOwner: s.MaxConnectionsPerOwner, MaxAddedConnectors: s.MaxAddedConnectors, CreatesPerMinute: s.CreatesPerMinute,
 		Ready: []health.Check{
 			{Name: "sealing", Run: sealing},
 			// A catalog that does not read stops the start, so a server

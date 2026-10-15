@@ -164,6 +164,7 @@ binary reads a variable the table lacks.
 | `PONS_CLIENT_URI` | none: the member is left out | [[007-sign-in]] |
 | `PONS_RECORDS_RETENTION` | `720h` | [[010-records-and-observability]] |
 | `PONS_MAX_CONNECTIONS_PER_OWNER` | 100 | [[004-identity-and-authorization]] |
+| `PONS_MAX_ADDED_CONNECTORS` | 50 | [[016-connectors-added-for-others]] |
 | `PONS_CREATES_PER_MINUTE` | 10 | [[004-identity-and-authorization]] |
 | `PONS_MAX_INFLIGHT_PER_SUBJECT` | 32 | [[008-carrying-a-call]] |
 | `PONS_MAX_INFLIGHT` | 1024 | [[008-carrying-a-call]] |

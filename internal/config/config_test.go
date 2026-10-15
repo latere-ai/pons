@@ -132,7 +132,7 @@ func TestDefaults(t *testing.T) {
 		Addr: ":8080", PublicURL: "http://localhost:8080", BasePath: "/v1",
 		OIDCIssuers: []string{"https://issuer.example.com"}, OIDCAudiences: []string{"pons"},
 		ClientName: "Pons", RecordsRetention: 720 * time.Hour,
-		MaxConnectionsPerOwner: 100, CreatesPerMinute: 10, MaxInflightPerSubject: 32, MaxInflight: 1024,
+		MaxConnectionsPerOwner: 100, MaxAddedConnectors: 50, CreatesPerMinute: 10, MaxInflightPerSubject: 32, MaxInflight: 1024,
 		MaxRequestBytes: 4 << 20, MaxForwardBytes: 2 << 30, CallHeaderTimeout: 30 * time.Second, StreamIdleTimeout: 5 * time.Minute,
 	}
 	if fmt.Sprint(s) != fmt.Sprint(want) {
@@ -167,6 +167,7 @@ func TestEveryVariableIsRead(t *testing.T) {
 		"PONS_CLIENT_URI":                "https://www.example.com",
 		"PONS_RECORDS_RETENTION":         "24h",
 		"PONS_MAX_CONNECTIONS_PER_OWNER": "5",
+		"PONS_MAX_ADDED_CONNECTORS":      "6",
 		"PONS_CREATES_PER_MINUTE":        "2",
 		"PONS_MAX_INFLIGHT_PER_SUBJECT":  "3",
 		"PONS_MAX_INFLIGHT":              "4",
@@ -196,7 +197,7 @@ func TestEveryVariableIsRead(t *testing.T) {
 		t.Errorf("the token file was not read")
 	case len(s.ReturnURLs) != 2 || s.ClientName != "Example" || s.ClientURI == "" || s.CatalogFile == "":
 		t.Errorf("sign-in settings %+v", s)
-	case s.RecordsRetention != 24*time.Hour || s.MaxConnectionsPerOwner != 5 || s.CreatesPerMinute != 2 ||
+	case s.RecordsRetention != 24*time.Hour || s.MaxConnectionsPerOwner != 5 || s.MaxAddedConnectors != 6 || s.CreatesPerMinute != 2 ||
 		s.MaxInflightPerSubject != 3 || s.MaxInflight != 4 || s.MaxRequestBytes != 1024 || s.MaxForwardBytes != 4096 ||
 		s.CallHeaderTimeout != 5*time.Second || s.StreamIdleTimeout != time.Minute:
 		t.Errorf("limits %+v", s)

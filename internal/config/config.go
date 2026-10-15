@@ -32,6 +32,7 @@ const (
 	DefaultClientName             = "Pons"
 	DefaultRecordsRetention       = 720 * time.Hour
 	DefaultMaxConnectionsPerOwner = 100
+	DefaultMaxAddedConnectors     = 50
 	DefaultCreatesPerMinute       = 10
 	DefaultMaxInflightPerSubject  = 32
 	DefaultMaxInflight            = 1024
@@ -88,6 +89,7 @@ type Settings struct {
 	RecordsRetention time.Duration // PONS_RECORDS_RETENTION
 
 	MaxConnectionsPerOwner int // PONS_MAX_CONNECTIONS_PER_OWNER
+	MaxAddedConnectors     int // PONS_MAX_ADDED_CONNECTORS
 	CreatesPerMinute       int // PONS_CREATES_PER_MINUTE
 	MaxInflightPerSubject  int // PONS_MAX_INFLIGHT_PER_SUBJECT
 	MaxInflight            int // PONS_MAX_INFLIGHT
@@ -161,7 +163,8 @@ func FromEnv(getenv func(string) string) (Settings, error) {
 		Addr: DefaultAddr, BasePath: DefaultBasePath,
 		OIDCAudiences: []string{DefaultAudience}, ClientName: DefaultClientName,
 		RecordsRetention:       DefaultRecordsRetention,
-		MaxConnectionsPerOwner: DefaultMaxConnectionsPerOwner, CreatesPerMinute: DefaultCreatesPerMinute,
+		MaxConnectionsPerOwner: DefaultMaxConnectionsPerOwner, MaxAddedConnectors: DefaultMaxAddedConnectors,
+		CreatesPerMinute:      DefaultCreatesPerMinute,
 		MaxInflightPerSubject: DefaultMaxInflightPerSubject, MaxInflight: DefaultMaxInflight,
 		MaxRequestBytes: DefaultMaxRequestBytes, MaxForwardBytes: DefaultMaxForwardBytes,
 		CallHeaderTimeout: DefaultCallHeaderTimeout,
@@ -193,6 +196,7 @@ func FromEnv(getenv func(string) string) (Settings, error) {
 	s.ClientURI = r.httpURL("PONS_CLIENT_URI")
 	r.duration("PONS_RECORDS_RETENTION", &s.RecordsRetention)
 	r.count("PONS_MAX_CONNECTIONS_PER_OWNER", &s.MaxConnectionsPerOwner)
+	r.count("PONS_MAX_ADDED_CONNECTORS", &s.MaxAddedConnectors)
 	r.count("PONS_CREATES_PER_MINUTE", &s.CreatesPerMinute)
 	r.count("PONS_MAX_INFLIGHT_PER_SUBJECT", &s.MaxInflightPerSubject)
 	r.count("PONS_MAX_INFLIGHT", &s.MaxInflight)

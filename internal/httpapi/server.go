@@ -55,9 +55,11 @@ type Server struct {
 	PublicURL string
 	BasePath  string
 
-	// MaxConnectionsPerOwner and CreatesPerMinute are the installation's
-	// limits, which hold whatever the authorizer answers.
+	// MaxConnectionsPerOwner, MaxAddedConnectors and CreatesPerMinute are
+	// the installation's limits, which hold whatever the authorizer
+	// answers.
 	MaxConnectionsPerOwner int
+	MaxAddedConnectors     int
 	CreatesPerMinute       int
 
 	// Ready are the readiness checks of /readyz beside the store's:
