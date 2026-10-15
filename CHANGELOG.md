@@ -6,6 +6,8 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+## v0.3.0 - 2026-10-15
+
 - Added: a list of connectors takes `owner`, as a list of connections
   does, and sends it in its `connector.list` question, so your
   authorizer can let a service list one person's servers, for instance
