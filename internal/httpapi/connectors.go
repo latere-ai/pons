@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"latere.ai/x/pons/internal/apierr"
@@ -199,11 +200,13 @@ func (s *Server) addConnector(w http.ResponseWriter, r *http.Request, c access.C
 	key := r.Header.Get("Idempotency-Key")
 	ctx := r.Context()
 	replayed, err := s.idempotent(r, c, key, routeAddConnector, row.ID, func(tx store.Tx) error {
-		return tx.Connectors().Create(ctx, row)
+		return tx.Connectors().Create(ctx, row, s.MaxAddedConnectors)
 	})
 	switch {
 	case errors.Is(err, store.ErrNameTaken):
 		return apierr.OnField(apierr.CodeNameTaken, "name", "")
+	case errors.Is(err, store.ErrLimitReached):
+		return apierr.OnField(apierr.CodeConnectorLimit, "owner", "max_added_connectors="+strconv.Itoa(s.MaxAddedConnectors))
 	case err != nil:
 		return err
 	}
