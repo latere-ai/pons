@@ -145,10 +145,10 @@ call is recorded at most once a minute per caller and connection
 | **A connector of kind `http`**: any HTTP API, with a git host beside it when the entry names one, through the forwarding and git addresses | works |
 | **A pasted key** (`token`) | works; for kind `http` the key is tried against the service before it is kept |
 | **Client credentials** (`client_credentials`): the connection holds its owner's client id and secret, and Pons mints a token at use | works |
-| **A sign-in** (`oauth`) for a catalog connector, with refresh by one writer across replicas | works |
+| **A sign-in** (`oauth`) for a catalog connector or a server added by its address, with refresh by one writer across replicas | works |
 | **A push held to the branches your authorizer names** | works; a push to another branch is refused before any of it reaches the service, and git prints the rule as the reason |
 | **The MCP address** of a connector of kind `mcp`, for Model Context Protocol clients: each tool call asked about by its tool, held to the tools your authorizer names and to the ones the catalog marks as only reading, and recorded | on main, not yet in a release; checked against a stub server of the current protocol revision and of the earlier ones with their sessions, not yet against a real one |
-| **A connector a person adds by its address** | partly. One that takes a key or no credential can be added, connected and called through its MCP address; one whose people sign in is refused with `422 sign_in_unsupported` |
+| **An MCP server added by its address**, for a person, an organization or everyone, as your authorizer names its owner: Pons asks the server how to sign in, and the server is changed or turned off without a restart | on main, not yet in a release; checked against stub servers and authorization servers, not yet against a real one |
 | **Kubernetes manifests** | not in the repository yet; [Install](docs/install.md) lists what a deployment needs |
 
 ## Try it

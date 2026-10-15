@@ -7,7 +7,7 @@ depends_on:
 affects: [catalog/, internal/config/, internal/httpapi/, internal/store/]
 effort: medium
 created: 2026-10-12
-updated: 2026-10-14
+updated: 2026-10-15
 author: changkun
 ---
 
@@ -16,8 +16,9 @@ author: changkun
 ## Overview
 
 The catalog is the set of connectors an installation offers, written
-by its operator as one YAML file and read at start. A person may also
-add a connector of their own by its address, which is theirs alone.
+by its operator as one YAML file and read at start. A connector may
+also be added by its address, for a person, an organization or everyone,
+as the authorizer names its owner ([[016-connectors-added-for-others]]).
 This spec fixes the file and its validation, the members of each way
 to give access, how a secret is named without being written, the hosts
 a credential may be sent to, the marks that say which tools only read,
@@ -181,22 +182,26 @@ it is held to more than a catalog entry:
 
 - `kind` is `mcp`. A connector of kind `http` comes from the catalog
   alone, since its paths and headers are the operator's to judge.
-- `auth.type` is `oauth`, `token` or `none`. For `oauth`, discovery is
-  `resource`, the request names the server, there is no registered
-  client, and `auth` takes `scopes` alone. Pons identifies itself by
-  the connector's own client metadata document alone, and the
-  authorization server's metadata must set
-  `authorization_response_iss_parameter_supported` to `true`, since no
-  operator vetted that server ([[007-sign-in]]); otherwise the add is
-  `422 sign_in_unsupported`. For `token`, it takes `inject` and `hint`.
+- `auth.type` is `oauth`, `token` or `none`, or left out for the
+  server's own answer ([[016-connectors-added-for-others]]). For
+  `oauth`, discovery is `resource`, the request names the server, and
+  `auth` takes `scopes`, and a client registered at the server only on
+  an add the authorizer vouched for. Pons identifies itself by that
+  client, else the connector's own client metadata document, else a
+  registration the installation keeps per issuer; an authorization
+  server that does not say it sends `iss` signs in at a redirect
+  address of its issuer's own ([[007-sign-in]]). With no way to identify
+  itself the add is `422 sign_in_unsupported`. For `token`, it takes
+  `inject` and `hint`.
 - `url` is https on port 443, with no user part and no fragment, and
   its host passes the host rule. `hosts` is not taken: it is the host
   of `url`. `tools` is taken.
 
 Anything else is `400 invalid_field` or `400 unknown_field`. Its name
 is unique among its owner's connectors, and a reference to it is its
-id, so it may spell a catalog name without shadowing it. To anyone but
-its owner it is `404 connector_not_found`, in a list and by id.
+id, so it may spell a catalog name without shadowing it. To anyone the
+authorizer does not let read it, it is `404 connector_not_found`, in a
+list and by id; under the owner policy that is anyone but its owner.
 
 ### A connector that is gone
 
@@ -295,10 +300,8 @@ The tool marks hold a call at the MCP address: the effect a
 `tools/call` is asked and recorded with, and a call of a hidden tool
 refused ([[008-carrying-a-call]]).
 
-Remains: a connector a person adds of type `oauth`, which answers `422
-sign_in_unsupported` until its add checks its server's metadata and its
-connect signs in ([[003-api]]); the first request of its discovery, the
-MCP probe, is built.
+A connector added by its address of type `oauth` is added and signs
+people in ([[016-connectors-added-for-others]]).
 
 | Criterion | State |
 |---|---|

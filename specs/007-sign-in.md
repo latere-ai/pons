@@ -11,7 +11,7 @@ depends_on:
 affects: [internal/signin/, internal/httpapi/, internal/store/]
 effort: xlarge
 created: 2026-10-12
-updated: 2026-10-14
+updated: 2026-10-15
 author: changkun
 ---
 
@@ -169,12 +169,14 @@ In the protocol's priority order:
    ```
 
    The consent page then names that connector, and a consent a person
-   gave another connector at the same server is not reused for it. This
-   document is the only way Pons identifies itself for an added
-   connector ([[006-catalog]]).
-3. **Dynamic registration** (RFC 7591), for a catalog connector, which
-   the protocol deprecates and keeps for servers without the document,
-   when the metadata has a `registration_endpoint`. Pons registers the
+   gave another connector at the same server is not reused for it. Its
+   `redirect_uris` names the address its sign-ins use, the issuer's own
+   when the server sends no `iss` (below). A vouched-for added
+   connector's own client comes before it, and a registration after it
+   ([[016-connectors-added-for-others]]).
+3. **Dynamic registration** (RFC 7591), which the protocol deprecates
+   and keeps for servers without the document, when the metadata has a
+   `registration_endpoint`. Pons registers the
    shared document's members less `client_id`, plus `application_type`:
    `web`, or `native` when the host of `PONS_PUBLIC_URL` is loopback. The answer is a Registration
    ([[002-objects]]) keyed by issuer and redirect address, its secret
@@ -196,7 +198,7 @@ members.
 | Member | Value |
 |---|---|
 | `response_type` | `code` |
-| `client_id`, `redirect_uri` | as identified above, and `{PONS_PUBLIC_URL}{base}/callback` |
+| `client_id`, `redirect_uri` | as identified above, and `{PONS_PUBLIC_URL}{base}/callback`, or the issuer's own callback for an added server that sends no `iss` (below) |
 | `code_challenge`, `code_challenge_method` | the SHA-256 of a verifier of 32 random bytes, and `S256`. The verifier is sealed with the flow |
 | `state` | 32 random bytes, base64url. Only its SHA-256 is stored, so a copy of the database starts no callback |
 | `resource` | the `resource` of the validated protected resource metadata, the server's canonical address (RFC 8707). Sent here and in every token request |
@@ -234,7 +236,7 @@ browser to it.
    | `true` | present | compares it with the recorded issuer |
    | `true` | absent | refuses the answer |
    | `false` or absent | present | compares it with the recorded issuer |
-   | `false` or absent | absent | goes on when the catalog names the flow's authorization server, and refuses the answer otherwise |
+   | `false` or absent | absent | goes on when the catalog names the flow's authorization server, or the answer arrived at the callback of the flow's own issuer, and refuses the answer otherwise |
 
    The catalog names it when the connection's catalog entry names its
    `issuer`, or gives its endpoints under `discovery: none`. Without
@@ -242,10 +244,15 @@ browser to it.
    every server returns to the one callback: a hostile server a person
    added could send the person on to an honest one, and receive at its
    own token endpoint the code the honest one issued, with its verifier
-   (RFC 9700, section 4.4). A connector a person adds is therefore
-   accepted only when its server says it sends `iss`
-   ([[006-catalog]]). A flow whose connector left the catalog is ended
-   the same way, with `error=sign_in_failed`.
+   (RFC 9700, section 4.4). An added server whose authorization server
+   does not say it sends `iss` therefore signs in at a redirect address
+   of its issuer's own, `{PONS_PUBLIC_URL}{base}/callback/{key}`, with
+   `key` the first 16 hex digits of the SHA-256 of the issuer, the
+   other defense the RFC names: the callback compares `key` with the
+   flow's recorded issuer, and an answer that arrived anywhere but the
+   flow's own address is refused before the code goes anywhere
+   ([[016-connectors-added-for-others]]). A flow whose connector left
+   the catalog is ended the same way, with `error=sign_in_failed`.
 
    The comparison is of strings (RFC 3986, section 6.2.1), with no case
    folding, port, slash or percent normalization after the form
@@ -531,17 +538,18 @@ probe's `tools/list` of [[008-carrying-a-call]], a `POST` with no
 credential, and its challenge names the protected resource metadata
 (`signin.TestAnMCPConnectorIsFoundThroughItsProbe`).
 
-Remains: a connector a person adds of type `oauth`, which answers `422
-sign_in_unsupported` with `sign_in_not_available` until its add checks
-that its server takes a client metadata document and says it sends
-`iss`, and its connect and reconnect run the sign-in; and the metrics
-`pons.refreshes` and `pons.signins` ([[010-records-and-observability]]).
+A connector added by its address of type `oauth` signs in by its own
+client, its document or a registration, at the issuer's own callback
+when its server sends no `iss` ([[016-connectors-added-for-others]]).
+
+Remains: the metrics `pons.refreshes` and `pons.signins`
+([[010-records-and-observability]]).
 
 | Criterion | State |
 |---|---|
 | `signin.TestProtectedResourceDiscovery` | written, with `signin.TestAnMCPConnectorIsFoundThroughItsProbe` for kind `mcp` |
 | `signin.TestAuthorizationServerMetadata` | written, with `signin.TestDocumentsThatCannotBeUsed` |
-| `signin.TestClientSelection` | written; the added connector's own document is held at the plan, and its add and connect wait |
+| `signin.TestClientSelection` | written, with `signin.TestAnAddedConnectorIdentifiesItself` for an added connector |
 | `httpapi.TestClientMetadataDocument`, `signin.TestRegistrationIsKeptPerIssuer` | written |
 | `signin.TestAuthorizationRequest`, `signin.TestScopeSelection` | written |
 | `signin.TestIssuerValidation`, `signin.TestCallbackIsOnce` | written |

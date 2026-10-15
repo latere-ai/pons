@@ -57,23 +57,71 @@ named by its `name`.
 
 | Route | What it does | Asks |
 |---|---|---|
-| `GET /connectors` | the catalog in the order of its file, then the connectors the caller may see that people added; `kind`, `limit`, `cursor` | `connector.list` |
+| `GET /connectors` | the catalog in the order of its file, then the added connectors the caller may see; `kind`, `limit`, `cursor` | `connector.list` |
 | `GET /connectors/{ref}` | one connector, by catalog name or id | `connector.read` |
 | `POST /connectors` | add a connector by its address | `connector.create` |
-| `DELETE /connectors/{id}` | remove a connector the caller added; `409 connector_in_use` while a connection uses it | `connector.delete` |
+| `PATCH /connectors/{id}` | change an added connector, or turn it off and on | `connector.update` |
+| `DELETE /connectors/{id}` | remove an added connector; `409 connector_in_use` while a connection uses it | `connector.delete` |
 
 A connector reads as its `name`, `title`, `description`, `icon`, `kind`,
 `url`, `hosts`, its tool marks, and of `auth` only `type`, `scopes`,
-`inject` and `hint`, with `inject` for a pasted key alone. One a person
-added also carries its `id` and `owner`. Its `git`, `http` and `links`
-are not shown.
+`inject` and `hint`, with `inject` for a pasted key alone. An added
+connector also carries its `id`, its `owner`, `disabled`, `vouched`,
+and for one that signs people in `auth.client`: `own`, `document` or
+`registered`, how Pons identifies itself at the server. Its `git`,
+`http` and `links` are not shown.
 
-A person may add a connector of their own by its address, which is
-theirs alone and `404` to everyone else. It is of kind `mcp`, its `url`
-is `https` on port 443 and a public name, and its credential goes to
-that host alone. It takes `auth.type` `token` or `none`; one whose
-people sign in, `oauth`, is refused with `422 sign_in_unsupported` in
-this release. A connection to it is used through its MCP address, below.
+### Adding a server by its address
+
+Anyone your authorizer allows may add an MCP server by its address. The
+owner of the new connector is the one the authorizer's allow names: a
+person's own, an organization's, or one that stands for the whole
+installation. Who sees it, connects it and changes it is the
+authorizer's answer too ([The authorizer](authorizer.md)). It is of
+kind `mcp`, its `url` is `https` on port 443 and a public name, and its
+credential goes to that host alone.
+
+The address is enough:
+
+```sh
+curl -s http://localhost:8080/v1/connectors \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"name": "wiki", "title": "Team wiki", "kind": "mcp", "url": "https://wiki.example.com/mcp"}'
+```
+
+Pons asks the server how to sign in before it answers, with no
+credential. A server that answers is `none`. One that refuses and names
+its protected resource metadata is `oauth`: Pons reads the metadata of
+its authorization server and identifies itself there by the connector's
+own client metadata document or, where the server takes only that, by
+registering itself, which the installation keeps and reuses at that
+server. One that refuses with no metadata is `token`, and the connector
+asks for an "API key" at connect. A server that does not answer as one
+that can be connected is `422 server_unreachable`, and the answer never
+repeats the address. Name `auth.type` yourself and the server's answer
+must admit it: `none` for a server that asks for sign-in is `422
+auth_mismatch`. An owner holds at most `PONS_MAX_ADDED_CONNECTORS`
+added connectors; one more is `409 connector_limit`.
+
+An add your authorizer marks as vouched for, someone you trust having
+looked at the server, may carry a client registered at the server,
+`auth.client` with its `id` and `secret`. The secret is sealed and never
+shown, and the connector's view names the address to register that
+client with, `auth.redirect_uri`.
+
+`PATCH /connectors/{id}` changes the `title`, `description`, `icon`,
+tool marks, `auth.scopes`, a vouched-for connector's
+`auth.client.secret`, and `disabled`. The `name`, `kind`, `url`,
+`auth.type` and client id never change, `400 immutable_field`; a changed
+address is a new connector. A change holds from the next request on
+every replica. A connector turned off stays listed: a connect to it is
+`409 connector_disabled`, a call through a connection to it is `409
+connection_not_connected` with `details.reason` `connector_disabled`,
+and its connections and their credentials are kept until it is turned
+on. Turn a connector in use off rather than removing it.
+
+A caller your authorizer lets change a connector sees how many
+connections use it, `connections`, in the list and on a read.
 
 ## Connecting
 
@@ -188,6 +236,7 @@ a connection that needed reconnecting back to `connected`, and answers
 | `PATCH /connections/{id}` | rename, with `{"name": "..."}` | `connection.update` |
 | `DELETE /connections/{id}` | disconnect: the connection and its credential go in one transaction, and the credential is revoked where it recorded a revocation endpoint, from the entry or the server's metadata, once no other connection holds the same grant: the same authorization server, client and account, of any owner, a sign-in waiting for its confirm included. A service may end every token of a grant at one revocation, so the last of those connections revokes. `204` | `connection.delete` |
 | `GET /connections/{id}/calls` | the connection's call records | `connection.read` |
+| `GET /connections/{id}/tools` | the tools the connector's server lists through the connection, each with its `name`, `description`, the `effect` the connector's tool marks give it, and `hidden` when a mark hides it. Asked of the server each time, and recorded as no call, so an administrator chooses marks from the tools a server has | `connection.read` |
 
 `owner` narrows a list to one owner the caller may see, and never widens
 it.
@@ -429,6 +478,7 @@ the errors below are Pons's.
 | `unknown_field` | 400 | a member the API does not describe |
 | `invalid_field` | 400 | a member has a value it cannot take |
 | `missing_field` | 400 | a required member is absent |
+| `immutable_field` | 400 | an edit names another value for a member of a connector that never changes: `name`, `kind`, `url`, `auth.type` or the client's id |
 | `invalid_code` | 400 | the confirm's code is wrong; the sign-in is spent |
 | `missing_token` | 401 | no bearer |
 | `invalid_token` | 401 | the bearer was refused; `details.reason` says why, such as `expired` or `audience` |
@@ -436,13 +486,17 @@ the errors below are Pons's.
 | `connector_not_found` | 404 | no such connector, or one the caller may not see |
 | `connection_not_found` | 404 | no such connection, or one the caller may not use |
 | `name_taken` | 409 | the owner already holds one of that name |
-| `connector_in_use` | 409 | a connection still uses the connector |
+| `connector_in_use` | 409 | a connection still uses the connector; turn it off instead |
+| `connector_limit` | 409 | the owner holds `PONS_MAX_ADDED_CONNECTORS` added connectors already |
+| `connector_disabled` | 409 | the connector is turned off; its connections are kept |
 | `connection_not_connected` | 409 | the connection cannot be used now; see below |
 | `wrong_kind` | 409 | the connection does not take this request: an address its kind lacks, or a credential its `auth` does not take |
 | `flow_expired` | 410 | the sign-in ran out; start it again |
 | `request_too_large` | 413 | the body is over its limit |
 | `connector_unreachable` | 422 | the service could not be reached or used to try a credential or start a sign-in |
+| `server_unreachable` | 422 | no server that can be connected answered at the address an add names; `details.reason` is the status or the failure, never the address |
 | `sign_in_unsupported` | 422 | the service cannot be connected by signing in; `details.reason` names the step |
+| `auth_mismatch` | 422 | the way to connect an add names is not one the server takes, such as `none` for a server that asks for sign-in; `details.reason` names what it asks for |
 | `credential_refused` | 422 | the service refused the key or the client |
 | `rate_limited` | 429 | too many requests; retryable, with `Retry-After` |
 | `internal` | 500 | something failed inside Pons |
@@ -455,6 +509,8 @@ the errors below are Pons's.
 acts on. `details.state` is the connection's state, and
 `details.reason` is the connection's own reason when it has one,
 `not_confirmed` for a sign-in not yet confirmed, `connector_removed`
-when its catalog entry is gone, or `scope_insufficient` when the service
-asked for more scopes, which `details.scopes` names. In each case, offer
-the person to reconnect, or to give a new key.
+when its catalog entry is gone, `connector_disabled` when the connector
+is turned off, or `scope_insufficient` when the service asked for more
+scopes, which `details.scopes` names. For `connector_disabled`, tell the
+person the server is turned off; in each other case, offer the person to
+reconnect, or to give a new key.
