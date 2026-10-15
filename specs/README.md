@@ -103,6 +103,7 @@ Implementation status what is built and which of its criteria wait.
 | [013](.archive/013-github-connector.md) | A code host's connector: GitHub through a GitHub App, signed in like any connector, with git and the REST API carried through Pons | medium | complete | 006, 007, 014 |
 | [014](.archive/014-http-forwarding.md) | Plain HTTP and git through a connection: a forwarding address and a git address, the credential added, a path held to its connector, and a push held to the refs an allow names | large | complete | 002, 003, 004, 006, 008, 009 |
 | [015](015-google-connectors.md) | Google's connectors: Gmail, Google Calendar and Google Drive, each signed in with Google on its own and carried as Google's REST APIs | small | in-progress | 006, 007, 013, 014 |
+| [016](016-connectors-added-for-others.md) | Connectors added for others: an owner the authorizer names, a connection to another owner's connector, edits without a restart, a vouched-for server with a registered client, and sign-in at the server an added connector names | large | drafted | 003, 004, 005, 006, 007, 012 |
 
 ## Build order
 
