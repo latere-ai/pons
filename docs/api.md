@@ -233,7 +233,7 @@ a connection that needed reconnecting back to `connected`, and answers
 |---|---|---|
 | `GET /connections` | the connections the caller may see; `owner`, `connector`, `state`, `limit`, `cursor` | `connection.list` |
 | `GET /connections/{id}` | one connection | `connection.read` |
-| `PATCH /connections/{id}` | rename, with `{"name": "..."}` | `connection.update` |
+| `PATCH /connections/{id}` | rename, with `{"name": "..."}`; a name the installation keeps connections from is `403 forbidden` with `details.reason` `name_unusable` and `details.field` `name`, and the connection keeps its name | `connection.update` |
 | `DELETE /connections/{id}` | disconnect: the connection and its credential go in one transaction, and the credential is revoked where it recorded a revocation endpoint, from the entry or the server's metadata, once no other connection holds the same grant: the same authorization server, client and account, of any owner, a sign-in waiting for its confirm included. A service may end every token of a grant at one revocation, so the last of those connections revokes. `204` | `connection.delete` |
 | `GET /connections/{id}/calls` | the connection's call records | `connection.read` |
 | `GET /connections/{id}/tools` | the tools the connector's server lists through the connection, each with its `name`, `description`, the `effect` the connector's tool marks give it, and `hidden` when a mark hides it. Asked of the server each time, and recorded as no call, so an administrator chooses marks from the tools a server has | `connection.read` |

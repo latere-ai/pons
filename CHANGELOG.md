@@ -10,9 +10,16 @@ here is refused before it is pushed.
   asked by `PATCH /connections/{id}`, carries `new_name`, the name the
   rename gives the connection, beside `name`, the one it has. An
   authorizer that keeps connection names to a rule of its own can now
-  refuse a rename to a name outside it, as it refuses such a connect. A
-  deny is answered `404 connection_not_found`, as before. An authorizer
-  that does not read `new_name` decides a rename as it did.
+  refuse a rename to a name outside it, as it refuses such a connect. An
+  authorizer that does not read `new_name` decides a rename as it did.
+
+- Added: a rename refused for its name says why. When your authorizer
+  denies a rename with `name_unusable`, Pons answers `403 forbidden` with
+  that reason in `details.reason` and `name` in `details.field`, and the
+  connection keeps its name. Send this reason only to a caller you would
+  let rename the connection otherwise. Every other deny of a rename is
+  still `404 connection_not_found`, as is this reason on any other
+  question.
 
 ## v0.3.0 - 2026-10-15
 

@@ -119,8 +119,8 @@ asked.
   connection has, and `new_name` the one the rename gives it. Pons
   holds a name to a lowercase DNS label and nothing more, so if your
   clients address a connection by its name under a rule of their own,
-  refuse a rename by `new_name` as you refuse a connect by `name`. A
-  deny is `404 connection_not_found`, like every deny of a change.
+  refuse a rename by `new_name` as you refuse a connect by `name`, with
+  the reason `name_unusable` (see Denies).
 - **`connector.update`** is asked by an edit of an added connector. A
   list of connectors also asks it once for each owner of the added
   connectors on its page, with that `owner` and no `id`, and a read of
@@ -204,6 +204,15 @@ connectors and a server someone added. Pons answers it `409
 connection_not_connected` with that reason, so the session can tell
 the person to start a new conversation. Answer it only for a
 connection the session holds, since the answer says the id exists.
+
+One reason of a deny of `connection.update` is told to the caller:
+`name_unusable`, for a rename whose `new_name` your installation keeps
+connections from. Pons answers it `403 forbidden` with that reason and
+`details.field` `name`, and the connection keeps its name. Answer it
+only to a caller you would let rename the connection with another name,
+after you decided whose the rename is, since the answer says the id
+exists. Every other deny of a rename, and this reason on any other
+question, is `404 connection_not_found`.
 
 ## Failing closed
 
