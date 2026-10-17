@@ -6,6 +6,8 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+## v0.4.0 - 2026-10-17
+
 - Added: the rename question names the new name. `connection.update`,
   asked by `PATCH /connections/{id}`, carries `new_name`, the name the
   rename gives the connection, beside `name`, the one it has. An
