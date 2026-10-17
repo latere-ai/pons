@@ -5,6 +5,7 @@ package carry
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -513,4 +514,31 @@ func countPath(requests []stubs.APIRequest, path string) int {
 		}
 	}
 	return n
+}
+
+// endsOnCancel is an answer that sends nothing until it is cancelled and then
+// reports the end of the body, as a transport may for a cancelled read.
+type endsOnCancel struct{ ctx context.Context }
+
+func (b endsOnCancel) Read([]byte) (int, error) {
+	<-b.ctx.Done()
+	return 0, io.EOF
+}
+
+func (endsOnCancel) Close() error { return nil }
+
+// A stream the idle bound ended is recorded as a timeout whatever error the
+// cancelled read returns, never as an answer that ended whole.
+func TestAStreamEndedByTheIdleBoundIsATimeout(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := &Carrier{IdleTimeout: 20 * time.Millisecond}
+	resp := &http.Response{StatusCode: http.StatusOK, Body: endsOnCancel{ctx}}
+	call := &call{}
+	if err := c.stream(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/", nil), call, resp, cancel); err != nil {
+		t.Fatal(err)
+	}
+	if call.outcome != OutcomeTimeout {
+		t.Fatalf("outcome %q, want %q", call.outcome, OutcomeTimeout)
+	}
 }

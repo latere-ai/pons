@@ -272,13 +272,16 @@ func (c *Carrier) stream(w http.ResponseWriter, r *http.Request, call *call, res
 				return nil
 			}
 		}
+		// Once the idle bound has cancelled the read, the stream timed out,
+		// however the cancelled read ends: a transport may report it as the
+		// end of the body.
 		switch {
 		case err == nil:
 			continue
-		case errors.Is(err, io.EOF):
-			call.outcome = OutcomeOK
 		case idle.Load():
 			call.outcome = OutcomeTimeout
+		case errors.Is(err, io.EOF):
+			call.outcome = OutcomeOK
 		case r.Context().Err() != nil:
 			call.outcome = OutcomeCanceled
 		default:

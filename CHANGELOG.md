@@ -6,6 +6,13 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+### Fixed
+
+- A streamed answer ended by `PONS_STREAM_IDLE_TIMEOUT` is recorded with
+  outcome `timeout` however the cancelled read ends. A transport that
+  reported the cancelled read as the end of the body left it recorded as
+  `ok`.
+
 ## v0.4.0 - 2026-10-17
 
 - Added: the rename question names the new name. `connection.update`,
