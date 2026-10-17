@@ -87,7 +87,7 @@ asked.
 | `Connection` | `connection.create` | a connect; and a confirm, a reconnect and a replaced key, which send the stored connection's `id` | `owner` when named or stored, `connector`, `name`, `connection_kind`, `auth`, `connector_owner` for an added connector, `id` |
 | `Connection` | `connection.read` | a read of a connection, and of its call records | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth` |
 | `Connection` | `connection.list` | the list of connections | `owner` when the request names one |
-| `Connection` | `connection.update` | a rename | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth` |
+| `Connection` | `connection.update` | a rename | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth`, `new_name` |
 | `Connection` | `connection.delete` | a disconnect | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth` |
 | `Connection` | `connection.use` | every request to a connection's address | `id`, `owner`, `connector`, `name`, `connection_kind`, `method`, `tool`, `effect`, and `refs` for a push |
 
@@ -115,6 +115,12 @@ asked.
   `connection.create` that follows carries `connector_owner`, the owner of
   the connector, so you can tell a connect to a person's own server from
   one to a server added for them.
+- **`connection.update`** is asked by a rename. `name` is the name the
+  connection has, and `new_name` the one the rename gives it. Pons
+  holds a name to a lowercase DNS label and nothing more, so if your
+  clients address a connection by its name under a rule of their own,
+  refuse a rename by `new_name` as you refuse a connect by `name`. A
+  deny is `404 connection_not_found`, like every deny of a change.
 - **`connector.update`** is asked by an edit of an added connector. A
   list of connectors also asks it once for each owner of the added
   connectors on its page, with that `owner` and no `id`, and a read of

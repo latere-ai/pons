@@ -6,6 +6,14 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+- Added: the rename question names the new name. `connection.update`,
+  asked by `PATCH /connections/{id}`, carries `new_name`, the name the
+  rename gives the connection, beside `name`, the one it has. An
+  authorizer that keeps connection names to a rule of its own can now
+  refuse a rename to a name outside it, as it refuses such a connect. A
+  deny is answered `404 connection_not_found`, as before. An authorizer
+  that does not read `new_name` decides a rename as it did.
+
 ## v0.3.0 - 2026-10-15
 
 - Added: a list of connectors takes `owner`, as a list of connections
