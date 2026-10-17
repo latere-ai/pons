@@ -218,19 +218,33 @@ func TestADenyDoesNotConfirmAnId(t *testing.T) {
 
 // A rename asks connection.update with the connection's name and the one
 // the rename gives it, so an authorizer that keeps names to a rule of its
-// own decides the rename by the new name. Its deny is answered as every
-// deny of a change is, byte for byte the 404 of an id that names nothing,
-// and the connection keeps its name.
+// own decides the rename by the new name. A deny of an owner's rename for
+// its name is 403 forbidden on name with the reason name_unusable, and the
+// connection keeps its name. Every other deny of a rename, a non-owner's
+// among them, and a deny of any other change that carries the same reason,
+// is byte for byte the 404 of an id that names nothing.
 func TestARenameNamesTheNewName(t *testing.T) {
 	iss := stubs.NewIssuer(t)
-	// An authorizer with a naming rule of its own: no name starts with x-.
-	rule := func(req authz.Request) any {
-		if strings.HasPrefix(req.Resource.String(authorizer.FieldNewName), "x-") {
-			return authz.Decision{Allow: false, Reason: "name_rule"}
+	alice := iss.Subject("alice")
+	// An authorizer that decides whose the rename is first, and then holds
+	// the name to a rule of its own: no name starts with x-.
+	rename := func(req authz.Request) any {
+		switch {
+		case req.Subject != alice:
+			return authz.Decision{Allow: false, Reason: "not_owner"}
+		case strings.HasPrefix(req.Resource.String(authorizer.FieldNewName), "x-"):
+			return authz.Decision{Allow: false, Reason: authorizer.ReasonNameUnusable}
 		}
 		return authz.Decision{Allow: true}
 	}
-	az, over := withAuthorizer(t, nil, stub.WithAction(authorizer.ActionConnectionUpdate, rule))
+	// One that answers the same reason to a disconnect, where it says
+	// nothing about a name.
+	disconnect := func(authz.Request) any {
+		return authz.Decision{Allow: false, Reason: authorizer.ReasonNameUnusable}
+	}
+	az, over := withAuthorizer(t, nil,
+		stub.WithAction(authorizer.ActionConnectionUpdate, rename),
+		stub.WithAction(authorizer.ActionConnectionDelete, disconnect))
 	az.Allow(stub.Rule{})
 	s := startStack(t, iss, over)
 	con := s.connect("alice", "search", "", map[string]any{"value": "a-key-of-alice-0009"}).id(t)
@@ -247,14 +261,36 @@ func TestARenameNamesTheNewName(t *testing.T) {
 	if len(asked) != 1 || asked[0].ID != con || asked[0].String(authorizer.FieldName) != "search" || asked[0].String(authorizer.FieldNewName) != "notes" {
 		t.Fatalf("a rename asked %+v, want one question naming the name it has and the one it takes", asked)
 	}
-	missing := "con_01jb2m6x8q3v7k9n4w5t0zr1ya"
-	denied := s.do(http.MethodPatch, "/v1/connections/"+con, "alice", map[string]any{"name": "x-notes"})
-	absent := s.do(http.MethodPatch, "/v1/connections/"+missing, "alice", map[string]any{"name": "x-notes"})
-	if denied.status != http.StatusNotFound || !bytes.Equal(denied.body, absent.body) {
-		t.Fatalf("a rename the rule refuses: denied %d %s, absent %d %s", denied.status, denied.body, absent.status, absent.body)
+
+	// The owner's rename to a name the rule refuses says why.
+	refused := s.do(http.MethodPatch, "/v1/connections/"+con, "alice", map[string]any{"name": "x-notes"})
+	if refused.status != http.StatusForbidden || refused.code() != "forbidden" ||
+		refused.detail("reason") != authorizer.ReasonNameUnusable || refused.detail("field") != "name" {
+		t.Fatalf("an owner's rename refused for its name: %d %s", refused.status, refused.body)
 	}
 	if got := s.do(http.MethodGet, "/v1/connections/"+con, "alice", nil).json(t)["name"]; got != "notes" {
 		t.Fatalf("a refused rename changed the name to %v", got)
+	}
+
+	// Another's rename, to the same name, is the 404 of an id that names
+	// nothing, as is the same reason on a disconnect.
+	missing := "con_01jb2m6x8q3v7k9n4w5t0zr1ya"
+	for _, r := range []struct {
+		method, sub string
+		body        any
+	}{
+		{http.MethodPatch, "bob", map[string]any{"name": "x-notes"}},
+		{http.MethodPatch, "bob", map[string]any{"name": "notes-2"}},
+		{http.MethodDelete, "alice", nil},
+	} {
+		denied := s.do(r.method, "/v1/connections/"+con, r.sub, r.body)
+		absent := s.do(r.method, "/v1/connections/"+missing, r.sub, r.body)
+		if denied.status != http.StatusNotFound || !bytes.Equal(denied.body, absent.body) {
+			t.Errorf("%s by %s: denied %d %s, absent %d %s", r.method, r.sub, denied.status, denied.body, absent.status, absent.body)
+		}
+	}
+	if got := s.do(http.MethodGet, "/v1/connections/"+con, "alice", nil).json(t)["name"]; got != "notes" {
+		t.Fatalf("a refused change moved the name to %v", got)
 	}
 }
 

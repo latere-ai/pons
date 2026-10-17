@@ -138,8 +138,10 @@ name the rename gives it. Pons holds a name to the DNS label rule of
 [[002-objects]] and to nothing else, so an authorizer that keeps names
 to a rule of its own, for the clients that address a connection by its
 name, refuses a rename by `new_name` as it refuses a connect by `name`.
-Its deny is answered like every deny of a change, as the `404` of a
-connection that is not there. An authorizer that does not read
+A deny whose reason is `name_unusable` (`authorizer.ReasonNameUnusable`)
+is answered `403 forbidden` on `name` with that reason, and the
+connection keeps its name; every other deny of a rename is the `404` of
+a connection that is not there. An authorizer that does not read
 `new_name` decides a rename as it did before the field.
 
 `connection.use` is asked for every request to a connection's address
@@ -197,6 +199,15 @@ missing object's `404` does not. That covers a read, a change, a
 delete, a use, a confirm and a reconnect. It holds for a subject that
 may read the object and may not change it: a route asks one question,
 and its deny does not say which it was.
+
+One reason of a deny of a change is told to the caller, as one of a use
+is ([[008-carrying-a-call]]): `name_unusable` on a rename, which says
+the name the rename gives is one the installation keeps connections
+from. It is about the name and not the connection, and the authorizer
+answers it only to a caller it would let rename the connection with
+another name, so the `403` confirms nothing the caller could not
+already change. The same reason on any other question about a stored
+object is the `404` like any other.
 
 An id that names nothing is `404` before any question is asked, so
 during an outage an id that exists answers `503` and one that does not
@@ -386,7 +397,9 @@ A rename sends `new_name` on `connection.update` since 2026-10-17, so an
 authorizer decides it by the name it gives as well as by the connection;
 `access.TestEveryMemberReachesTheAuthorizer` carries it to the stub
 authorizer, and `TestARenameNamesTheNewName` shows the question a
-rename asks and a deny of it answered as a missing connection.
+rename asks, an owner's rename refused for its name answered `403
+forbidden` with `name_unusable`, and a non-owner's rename and a
+disconnect denied with the same reason answered as a missing connection.
 
 | Criterion | State |
 |---|---|
@@ -428,6 +441,7 @@ rename asks and a deny of it answered as a missing connection.
 | The client holds an allow for its `ttl`, a deny briefly and an outage never, asks a create and a list every time, and retries once on a connection failure | `access.TestWhatTheClientRemembers`, `access.TestACreateIsAlwaysAsked`, `access.TestOneRetryOnAConnectionFailure` |
 | An allow of a use is remembered per tool: a second call of the same tool asks nothing within the `ttl`, a call of another tool asks, and a deny at the authorizer holds once the `ttl` has passed | `carry.TestAnAllowIsRememberedPerTool` |
 | A deny of a read, a change, a delete, a use, a confirm and a reconnect is the `404` of its kind, byte for byte the answer of an id that names nothing; a deny of a create or a list is `403 forbidden` | `TestADenyDoesNotConfirmAnId` |
+| A rename denied with `name_unusable` is `403 forbidden` on `name` with that reason and changes nothing; a rename denied with another reason, and a disconnect denied with that one, is the `404` of an id that names nothing | `TestARenameNamesTheNewName` |
 | Another status, a body with no `allow`, a late answer, limits with an unknown key, a negative figure, an empty glob or an entry of `requests` that is not a method and a pattern, and a filter with labels are each `503 authorizer_unavailable` with nothing done | `access.TestTheClientFailsClosed`, `authorizer.TestDecodeRefusesWhatItCannotHold` |
 | `requests` admits a request by its method and its path's segments, `*` one segment and a last `**` the rest; a forwarding request outside it is `403 forbidden` on `tool` with the reason `requests`, reaches no connector and is recorded `denied`, and the git address is not held by it | `authorizer.TestWhatRequestsAdmit`, `carry.TestARequestOutsideRequestsIsForbidden` |
 | The limits object carries exactly the 7 keys above, and `DecodeLimits` reads back what an authorizer renders | `authorizer.TestTheWireNamesEveryMemberAndNoOther` |

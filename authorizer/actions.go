@@ -96,7 +96,7 @@ const (
 	// the connection, beside FieldName, the name it has. Pons holds a name
 	// to the DNS label rule alone, so an authorizer that keeps names to a
 	// rule of its own refuses a rename by this field, as it refuses a
-	// connect by FieldName.
+	// connect by FieldName, with ReasonNameUnusable.
 	FieldNewName = "new_name"
 	// FieldMethod, FieldTool and FieldEffect are a use's: the protocol
 	// method, the tool's name and read or write. FieldRefs is a push's:
@@ -206,3 +206,15 @@ func SendsID(name string) bool {
 // it 409 connection_not_connected with this reason; every other deny of a
 // use is 404 connection_not_found.
 const ReasonKeptApartFromGoogle = "kept_apart_from_google"
+
+// ReasonNameUnusable is the one reason of a deny of connection.update that
+// Pons tells the caller: the rename is the caller's to make, and the name
+// it gives the connection, FieldNewName, is one the installation keeps
+// connections from, because the clients that address a connection by its
+// name could not use it. The reason is about the name, not the
+// connection, and an authorizer answers it only to a caller it would let
+// rename the connection otherwise, so nothing about the id is learned from
+// it. Pons answers it 403 forbidden on name with this reason, and the
+// connection keeps its name; every other deny of a rename is 404
+// connection_not_found.
+const ReasonNameUnusable = "name_unusable"

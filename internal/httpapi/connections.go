@@ -302,8 +302,12 @@ func (s *Server) stored(r *http.Request, c access.Caller, action string) (store.
 	if err != nil {
 		return store.Connection{}, err
 	}
-	if err := s.admitStored(r, c, action, asked(row)); err != nil {
+	d, err := s.ask(r, c, action, asked(row).Resource(action))
+	if err != nil {
 		return store.Connection{}, err
+	}
+	if !d.Allow {
+		return store.Connection{}, apierr.Fail(apierr.CodeConnectionNotFound, "")
 	}
 	return row, nil
 }
@@ -326,17 +330,16 @@ func asked(row store.Connection) access.Connection {
 	return access.Connection{ID: row.ID, Owner: row.Owner, Connector: row.Connector, Name: row.Name, Kind: row.Kind, Auth: row.Auth}
 }
 
-// admitStored asks the action about a stored connection, and answers a deny
-// as the 404 of a connection that is not there.
-func (s *Server) admitStored(r *http.Request, c access.Caller, action string, q access.Connection) error {
-	d, err := s.ask(r, c, action, q.Resource(action))
-	if err != nil {
-		return err
+// renameRefused answers a deny of a rename: the 404 of a connection that is
+// not there, as for every deny of a change, but for the one deny that is
+// about the name the rename gives rather than the connection,
+// authorizer.ReasonNameUnusable, which is 403 forbidden on name with that
+// reason, so the caller can tell the person which names to choose from.
+func renameRefused(d access.Decision) error {
+	if d.Reason == authorizer.ReasonNameUnusable {
+		return apierr.OnField(apierr.CodeForbidden, "name", d.Reason)
 	}
-	if !d.Allow {
-		return apierr.Fail(apierr.CodeConnectionNotFound, "")
-	}
-	return nil
+	return apierr.Fail(apierr.CodeConnectionNotFound, "")
 }
 
 // listConnections is GET /connections: the connections of the owners the
@@ -415,8 +418,12 @@ func (s *Server) renameConnection(w http.ResponseWriter, r *http.Request, c acce
 	}
 	q := asked(row)
 	q.NewName = req.Name
-	if err := s.admitStored(r, c, authorizer.ActionConnectionUpdate, q); err != nil {
+	d, err := s.ask(r, c, authorizer.ActionConnectionUpdate, q.Resource(authorizer.ActionConnectionUpdate))
+	if err != nil {
 		return err
+	}
+	if !d.Allow {
+		return renameRefused(d)
 	}
 	switch err := s.Store.Connections().Rename(r.Context(), row.ID, req.Name); {
 	case errors.Is(err, store.ErrNameTaken):
