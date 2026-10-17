@@ -6,6 +6,8 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+## v0.4.1 - 2026-10-17
+
 ### Fixed
 
 - A connector's answer cut by a time bound is a timeout, and one its caller
