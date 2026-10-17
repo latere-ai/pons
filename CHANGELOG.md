@@ -8,10 +8,12 @@ here is refused before it is pushed.
 
 ### Fixed
 
-- A streamed answer ended by `PONS_STREAM_IDLE_TIMEOUT` is recorded with
-  outcome `timeout`, and one its caller left with `canceled`, however the
-  cancelled read ends. A transport that reported the cancelled read as the
-  end of the body left either recorded as `ok`.
+- A connector's answer cut by a time bound is a timeout, and one its caller
+  left is a cancel, however the cancelled read ends. A transport may report
+  a cancelled read as the end of the body: a body read past its request's
+  bound then came back whole and short, and a streamed answer ended by
+  `PONS_STREAM_IDLE_TIMEOUT`, or left by its caller, was recorded as `ok`
+  where it is now `timeout` or `canceled`.
 
 ## v0.4.0 - 2026-10-17
 

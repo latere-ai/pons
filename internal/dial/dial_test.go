@@ -945,3 +945,27 @@ func TestAForwardedCallIsTheCarriers(t *testing.T) {
 		}
 	}
 }
+
+// A read the request's bound ended is a timeout, and one its caller ended is
+// a cancel, even when the transport reports the cancelled read as the end of
+// the body; a body read to its end before either is whole.
+func TestAReadEndedByItsBoundIsATimeoutHoweverItEnds(t *testing.T) {
+	expired, stop := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer stop()
+	<-expired.Done()
+	body := &classified{rc: io.NopCloser(strings.NewReader("")), caller: context.Background(), req: expired}
+	_, err := io.ReadAll(body)
+	refused(t, err, Timeout)
+
+	caller, leave := context.WithCancel(context.Background())
+	leave()
+	body = &classified{rc: io.NopCloser(strings.NewReader("")), caller: caller, req: caller}
+	if _, err := io.ReadAll(body); !errors.Is(err, context.Canceled) {
+		t.Fatalf("a read its caller ended: %v, want context.Canceled", err)
+	}
+
+	body = &classified{rc: io.NopCloser(strings.NewReader("whole")), caller: context.Background(), req: context.Background()}
+	if got, err := io.ReadAll(body); err != nil || string(got) != "whole" {
+		t.Fatalf("a body read to its end: %q, %v", got, err)
+	}
+}

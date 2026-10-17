@@ -243,7 +243,7 @@ func (c *Client) Do(ctx context.Context, r Request) (*http.Response, error) {
 		cancel()
 		return nil, refuse(RedirectRefused)
 	}
-	body := io.ReadCloser(&classified{rc: resp.Body, caller: ctx})
+	body := io.ReadCloser(&classified{rc: resp.Body, caller: ctx, req: reqCtx})
 	if r.MaxBody > 0 {
 		body = bounded(resp, body, r.MaxBody)
 	}
@@ -479,11 +479,22 @@ func (l *limited) Close() error { return l.closer.Close() }
 type classified struct {
 	rc     io.ReadCloser
 	caller context.Context
+	// req is the request's own context, which its bound ends.
+	req context.Context
 }
 
+// Read names what ended a read. A read that the request's bound or its
+// caller cancelled can end as the end of the body; it is that cancellation,
+// a timeout or a cancel, and never a body read whole.
 func (c *classified) Read(p []byte) (int, error) {
 	n, err := c.rc.Read(p)
-	if err != nil && !errors.Is(err, io.EOF) {
+	switch {
+	case err == nil:
+	case errors.Is(err, io.EOF):
+		if cause := c.req.Err(); cause != nil {
+			err = classify(c.caller, cause)
+		}
+	default:
 		err = classify(c.caller, err)
 	}
 	return n, err
