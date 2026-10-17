@@ -542,3 +542,20 @@ func TestAStreamEndedByTheIdleBoundIsATimeout(t *testing.T) {
 		t.Fatalf("outcome %q, want %q", call.outcome, OutcomeTimeout)
 	}
 }
+
+// A stream its caller left is recorded as cancelled whatever error the
+// cancelled read returns.
+func TestAStreamItsCallerLeftIsCanceled(t *testing.T) {
+	ctx, leave := context.WithCancel(context.Background())
+	c := &Carrier{IdleTimeout: time.Minute}
+	resp := &http.Response{StatusCode: http.StatusOK, Body: endsOnCancel{ctx}}
+	r := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
+	call := &call{}
+	time.AfterFunc(20*time.Millisecond, leave)
+	if err := c.stream(httptest.NewRecorder(), r, call, resp, func() {}); err != nil {
+		t.Fatal(err)
+	}
+	if call.outcome != OutcomeCanceled {
+		t.Fatalf("outcome %q, want %q", call.outcome, OutcomeCanceled)
+	}
+}

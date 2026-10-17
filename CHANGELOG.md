@@ -9,9 +9,9 @@ here is refused before it is pushed.
 ### Fixed
 
 - A streamed answer ended by `PONS_STREAM_IDLE_TIMEOUT` is recorded with
-  outcome `timeout` however the cancelled read ends. A transport that
-  reported the cancelled read as the end of the body left it recorded as
-  `ok`.
+  outcome `timeout`, and one its caller left with `canceled`, however the
+  cancelled read ends. A transport that reported the cancelled read as the
+  end of the body left either recorded as `ok`.
 
 ## v0.4.0 - 2026-10-17
 
