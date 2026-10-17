@@ -298,6 +298,19 @@ func (s *Server) writeConnection(w http.ResponseWriter, r *http.Request, connID 
 // deny answers as a missing connection does, byte for byte, and an id that
 // names nothing is answered before any question is asked.
 func (s *Server) stored(r *http.Request, c access.Caller, action string) (store.Connection, error) {
+	row, err := s.load(r)
+	if err != nil {
+		return store.Connection{}, err
+	}
+	if err := s.admitStored(r, c, action, asked(row)); err != nil {
+		return store.Connection{}, err
+	}
+	return row, nil
+}
+
+// load reads the connection the route's id names, answering one that is
+// not there with its 404.
+func (s *Server) load(r *http.Request) (store.Connection, error) {
 	row, err := s.Store.Connections().Get(r.Context(), r.PathValue("id"))
 	switch {
 	case errors.Is(err, store.ErrNotFound):
@@ -305,15 +318,25 @@ func (s *Server) stored(r *http.Request, c access.Caller, action string) (store.
 	case err != nil:
 		return store.Connection{}, apierr.Internal(err)
 	}
-	res := access.Connection{ID: row.ID, Owner: row.Owner, Connector: row.Connector, Name: row.Name, Kind: row.Kind, Auth: row.Auth}
-	d, err := s.ask(r, c, action, res.Resource(action))
+	return row, nil
+}
+
+// asked is a stored connection as a question about it carries it.
+func asked(row store.Connection) access.Connection {
+	return access.Connection{ID: row.ID, Owner: row.Owner, Connector: row.Connector, Name: row.Name, Kind: row.Kind, Auth: row.Auth}
+}
+
+// admitStored asks the action about a stored connection, and answers a deny
+// as the 404 of a connection that is not there.
+func (s *Server) admitStored(r *http.Request, c access.Caller, action string, q access.Connection) error {
+	d, err := s.ask(r, c, action, q.Resource(action))
 	if err != nil {
-		return store.Connection{}, err
+		return err
 	}
 	if !d.Allow {
-		return store.Connection{}, apierr.Fail(apierr.CodeConnectionNotFound, "")
+		return apierr.Fail(apierr.CodeConnectionNotFound, "")
 	}
-	return row, nil
+	return nil
 }
 
 // listConnections is GET /connections: the connections of the owners the
@@ -372,7 +395,9 @@ type renameRequest struct {
 	Name string `json:"name"`
 }
 
-// renameConnection is PATCH /connections/{id}.
+// renameConnection is PATCH /connections/{id}. Its question names the
+// connection's name and the one the rename gives it, so an authorizer that
+// holds names to a rule of its own decides the rename by the new name.
 func (s *Server) renameConnection(w http.ResponseWriter, r *http.Request, c access.Caller) error {
 	var req renameRequest
 	if err := decode(r, &req); err != nil {
@@ -384,8 +409,13 @@ func (s *Server) renameConnection(w http.ResponseWriter, r *http.Request, c acce
 	if !catalog.IsLabel(req.Name) {
 		return apierr.OnField(apierr.CodeInvalidField, "name", "not_a_dns_label")
 	}
-	row, err := s.stored(r, c, authorizer.ActionConnectionUpdate)
+	row, err := s.load(r)
 	if err != nil {
+		return err
+	}
+	q := asked(row)
+	q.NewName = req.Name
+	if err := s.admitStored(r, c, authorizer.ActionConnectionUpdate, q); err != nil {
 		return err
 	}
 	switch err := s.Store.Connections().Rename(r.Context(), row.ID, req.Name); {

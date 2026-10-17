@@ -126,7 +126,7 @@ func TestEveryMemberReachesTheAuthorizer(t *testing.T) {
 	s := stubs.NewAuthorizer(t)
 	az := asking(t, s, nil)
 	conn := access.Connection{
-		ID: "con_1", Owner: alice, Connector: "github", Name: "github", Kind: "http", Auth: "oauth", ConnectorOwner: bob,
+		ID: "con_1", Owner: alice, Connector: "github", Name: "github", Kind: "http", Auth: "oauth", ConnectorOwner: bob, NewName: "github-work",
 		Method: http.MethodPost, Tool: "git-receive-pack", Effect: "write", Refs: []string{"refs/heads/agents/a"},
 	}
 	ctr := access.Connector{ID: "ctr_1", Owner: alice, Name: "wiki", Kind: "mcp", Host: "wiki.example.com"}

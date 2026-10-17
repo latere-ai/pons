@@ -8,7 +8,7 @@ depends_on:
 affects: [authorizer/, internal/access/, internal/httpapi/, internal/carry/]
 effort: medium
 created: 2026-10-12
-updated: 2026-10-15
+updated: 2026-10-17
 author: changkun
 ---
 
@@ -98,7 +98,7 @@ sends, and `SendsID` for whether it sends the id of a stored object.
 | `Connection` | `connection.create` | `owner`, `connector`, `name`, `connection_kind`, `auth`, `connector_owner` for an added connector, and `id` when a confirm, a reconnect or a replaced key asks |
 | `Connection` | `connection.read` | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth` |
 | `Connection` | `connection.list` | `owner` when the request names one |
-| `Connection` | `connection.update` | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth` |
+| `Connection` | `connection.update` | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth`, and `new_name`, the name a rename gives it |
 | `Connection` | `connection.delete` | `id`, `owner`, `connector`, `name`, `connection_kind`, `auth` |
 | `Connection` | `connection.use` | `id`, `owner`, `connector`, `name`, `connection_kind`, `method`, and `tool` and `effect` when the request names a tool, a path or a git service, and `refs` for a push ([[014-http-forwarding]]) |
 
@@ -131,6 +131,16 @@ A confirm, a reconnect and a replaced key send the stored connection's
 credential must be allowed to act for the owner the connection already
 has ([[007-sign-in]]). An allow about a stored connection never moves
 it to another owner.
+
+`connection.update` is asked by a rename. It sends the stored
+connection's fields, its current `name` among them, and `new_name`, the
+name the rename gives it. Pons holds a name to the DNS label rule of
+[[002-objects]] and to nothing else, so an authorizer that keeps names
+to a rule of its own, for the clients that address a connection by its
+name, refuses a rename by `new_name` as it refuses a connect by `name`.
+Its deny is answered like every deny of a change, as the `404` of a
+connection that is not there. An authorizer that does not read
+`new_name` decides a rename as it did before the field.
 
 `connection.use` is asked for every request to a connection's address
 ([[008-carrying-a-call]]), before the credential is opened.
@@ -371,6 +381,12 @@ use of the MCP address asks with the protocol method, and for a
 to `tools/call` alone, beside the tool marks' `hidden`, the rate and
 the counts in flight ([[008-carrying-a-call]]). No question or field of
 the contract changed for it.
+
+A rename sends `new_name` on `connection.update` since 2026-10-17, so an
+authorizer decides it by the name it gives as well as by the connection;
+`access.TestEveryMemberReachesTheAuthorizer` carries it to the stub
+authorizer, and `TestARenameNamesTheNewName` shows the question a
+rename asks and a deny of it answered as a missing connection.
 
 | Criterion | State |
 |---|---|

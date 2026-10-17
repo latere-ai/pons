@@ -53,7 +53,9 @@ const (
 	// narrows the list to owners. A list that names an owner sends it, so
 	// an authorizer can answer a service that lists one owner's
 	// connections with a filter naming that owner.
-	ActionConnectionList   = "connection.list"
+	ActionConnectionList = "connection.list"
+	// ActionConnectionUpdate is asked by a rename, with the stored
+	// connection and the name the rename gives it.
 	ActionConnectionUpdate = "connection.update"
 	ActionConnectionDelete = "connection.delete"
 	// ActionConnectionUse is asked for every request to a connection's
@@ -90,6 +92,12 @@ const (
 	// FieldAuth is how a person gives access: oauth, token,
 	// client_credentials or none.
 	FieldAuth = "auth"
+	// FieldNewName is a rename's: the name connection.update would give
+	// the connection, beside FieldName, the name it has. Pons holds a name
+	// to the DNS label rule alone, so an authorizer that keeps names to a
+	// rule of its own refuses a rename by this field, as it refuses a
+	// connect by FieldName.
+	FieldNewName = "new_name"
 	// FieldMethod, FieldTool and FieldEffect are a use's: the protocol
 	// method, the tool's name and read or write. FieldRefs is a push's:
 	// the full names of the refs it updates.
@@ -121,7 +129,7 @@ var table = []action{
 	{ActionConnectionCreate, KindConnection, []string{FieldOwner, FieldConnector, FieldName, FieldConnectionKind, FieldAuth, FieldConnectorOwner}, true},
 	{ActionConnectionRead, KindConnection, connection, true},
 	{ActionConnectionList, KindConnection, []string{FieldOwner}, false},
-	{ActionConnectionUpdate, KindConnection, connection, true},
+	{ActionConnectionUpdate, KindConnection, []string{FieldOwner, FieldConnector, FieldName, FieldConnectionKind, FieldAuth, FieldNewName}, true},
 	{ActionConnectionDelete, KindConnection, connection, true},
 	{ActionConnectionUse, KindConnection, []string{FieldOwner, FieldConnector, FieldName, FieldConnectionKind, FieldMethod, FieldTool, FieldEffect, FieldRefs}, true},
 }

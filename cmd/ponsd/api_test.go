@@ -216,6 +216,48 @@ func TestADenyDoesNotConfirmAnId(t *testing.T) {
 	}
 }
 
+// A rename asks connection.update with the connection's name and the one
+// the rename gives it, so an authorizer that keeps names to a rule of its
+// own decides the rename by the new name. Its deny is answered as every
+// deny of a change is, byte for byte the 404 of an id that names nothing,
+// and the connection keeps its name.
+func TestARenameNamesTheNewName(t *testing.T) {
+	iss := stubs.NewIssuer(t)
+	// An authorizer with a naming rule of its own: no name starts with x-.
+	rule := func(req authz.Request) any {
+		if strings.HasPrefix(req.Resource.String(authorizer.FieldNewName), "x-") {
+			return authz.Decision{Allow: false, Reason: "name_rule"}
+		}
+		return authz.Decision{Allow: true}
+	}
+	az, over := withAuthorizer(t, nil, stub.WithAction(authorizer.ActionConnectionUpdate, rule))
+	az.Allow(stub.Rule{})
+	s := startStack(t, iss, over)
+	con := s.connect("alice", "search", "", map[string]any{"value": "a-key-of-alice-0009"}).id(t)
+	az.ClearRequests()
+	if a := s.do(http.MethodPatch, "/v1/connections/"+con, "alice", map[string]any{"name": "notes"}); a.status != http.StatusOK || a.json(t)["name"] != "notes" {
+		t.Fatalf("a rename the rule takes: %d %s", a.status, a.body)
+	}
+	var asked []authz.Resource
+	for _, q := range az.Requests() {
+		if q.Action == authorizer.ActionConnectionUpdate {
+			asked = append(asked, q.Resource)
+		}
+	}
+	if len(asked) != 1 || asked[0].ID != con || asked[0].String(authorizer.FieldName) != "search" || asked[0].String(authorizer.FieldNewName) != "notes" {
+		t.Fatalf("a rename asked %+v, want one question naming the name it has and the one it takes", asked)
+	}
+	missing := "con_01jb2m6x8q3v7k9n4w5t0zr1ya"
+	denied := s.do(http.MethodPatch, "/v1/connections/"+con, "alice", map[string]any{"name": "x-notes"})
+	absent := s.do(http.MethodPatch, "/v1/connections/"+missing, "alice", map[string]any{"name": "x-notes"})
+	if denied.status != http.StatusNotFound || !bytes.Equal(denied.body, absent.body) {
+		t.Fatalf("a rename the rule refuses: denied %d %s, absent %d %s", denied.status, denied.body, absent.status, absent.body)
+	}
+	if got := s.do(http.MethodGet, "/v1/connections/"+con, "alice", nil).json(t)["name"]; got != "notes" {
+		t.Fatalf("a refused rename changed the name to %v", got)
+	}
+}
+
 // A create is recorded under the owner its allow names, else the owner the
 // request named, else the caller's subject.
 func TestWhoseACreateIs(t *testing.T) {
