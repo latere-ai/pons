@@ -6,6 +6,14 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+### Added
+
+- With `OTEL_EXPORTER_OTLP_ENDPOINT` set, the server also exports the Go
+  runtime's metrics: memory, goroutines, GOGC, GOMAXPROCS and scheduling
+  latency, as `go.memory.*`, `go.goroutine.count`, `go.config.gogc`,
+  `go.processor.limit` and `go.schedule.duration`, through
+  `latere.ai/x/pkg` v0.106.0.
+
 ## v0.4.1 - 2026-10-17
 
 ### Fixed
