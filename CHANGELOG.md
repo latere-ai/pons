@@ -6,6 +6,12 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+### Fixed
+
+- **The release is published.** v0.5.0 stopped before it published anything,
+  so it has no image tag and no GitHub release. This release carries what
+  v0.5.0 lists.
+
 ## v0.5.0 - 2026-11-01
 
 ### Changed
