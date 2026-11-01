@@ -385,6 +385,13 @@ func TestTimeoutsAndCancel(t *testing.T) {
 		t.Fatalf("a silent stream: %d %s", a.status, a.body)
 	}
 	r.serving.Wait()
+	// The cut silent stream already counts as a stream whose caller went
+	// away; the canceled call below has to add exactly one more.
+	deadline = time.Now().Add(5 * time.Second)
+	for r.mcp.Left() < 1 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	before := r.mcp.Left()
 	r.c.IdleTimeout = 5 * time.Second
 	r.mcp.Set(func(sw *stubs.ConnectorSwitches) { sw.Gap, sw.Endless = 0, true })
 	ctx, cancel = context.WithCancel(context.Background())
@@ -404,11 +411,11 @@ func TestTimeoutsAndCancel(t *testing.T) {
 	cancel()
 	closeBody(resp)
 	deadline = time.Now().Add(5 * time.Second)
-	for r.mcp.Left() == 0 && time.Now().Before(deadline) {
+	for r.mcp.Left() == before && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
-	if r.mcp.Left() != 1 {
-		t.Fatal("the connector's request outlived its caller")
+	if left := r.mcp.Left(); left != before+1 {
+		t.Fatalf("the connector saw %d streams lose their caller after the cancel, want 1", left-before)
 	}
 	got = r.calls(n)
 	if len(got) != 3 || got[0].Outcome != OutcomeTimeout || got[1].Outcome != OutcomeTimeout || got[2].Outcome != OutcomeCanceled {
