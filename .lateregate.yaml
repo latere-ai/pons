@@ -66,3 +66,20 @@ identity:
 postgres:
   role: pooled
   prefix: PONS
+
+# The server image is built, started and probed the way production runs it:
+# the memory store and an issuer that is never asked. The probes need no
+# token, and an issuer that does not answer at start is named and the server
+# starts.
+image:
+  images:
+    - name: ponsd
+      version_args: [version]
+      version_expect: "ponsd "
+      max_mib: 40
+      start_args: [serve]
+      env:
+        PONS_PUBLIC_URL: http://localhost:8080
+        PONS_OIDC_ISSUERS: https://issuer.example.com
+      port: 8080
+      probe: /livez
