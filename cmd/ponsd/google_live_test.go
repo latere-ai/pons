@@ -26,8 +26,8 @@ import (
 // The variables that carry what this check needs from the operator: a
 // real Google OAuth client of specs/015-google-connectors.md's shape, and
 // a refresh token already granted the union of the three entries' scopes
-// by a real Google account. docs/local.md and the spec name where each
-// comes from.
+// by a real Google account. CONTRIBUTING.md's "A further check against
+// the real Google" and the spec name where each comes from.
 const (
 	envGoogleLiveClientID     = "GOOGLE_LIVE_CLIENT_ID"
 	envGoogleLiveClientSecret = "GOOGLE_LIVE_CLIENT_SECRET"
