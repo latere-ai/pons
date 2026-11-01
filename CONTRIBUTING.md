@@ -85,6 +85,41 @@ and a git host, each on loopback over TLS with a certificate from one
 authority the package makes. The package is public, so a consumer's own
 tests can start them.
 
+### A further check against the real Google
+
+`TestGoogleRealForwarding` (`cmd/ponsd/google_live_test.go`) runs the
+Gmail, Google Calendar and Google Drive entries of
+[`specs/015-google-connectors.md`](specs/015-google-connectors.md)
+against the real Google instead of a stub. It is skipped unless
+`GOOGLE_LIVE_CLIENT_ID`, `GOOGLE_LIVE_CLIENT_SECRET` and
+`GOOGLE_LIVE_REFRESH_TOKEN` are set, so neither `make` nor CI runs it.
+
+Running it needs an OAuth 2.0 client of type Web application in a
+Google Cloud project of your own, with the Gmail, Calendar and Drive
+APIs enabled, and a refresh token for a test Google account that
+granted the union of the three entries' `scopes` (spec 015 names them)
+in one consent. Mint the refresh token by sending that account through
+the client's authorization URL with `access_type=offline` and
+`prompt=consent`, and the union of those scopes, then exchanging the
+returned code at Google's token endpoint for a refresh token; the test
+sets `GOOGLE_CLIENT_SECRET` itself, so you set only the three variables
+below.
+
+```sh
+GOOGLE_LIVE_CLIENT_ID=<your client id> \
+GOOGLE_LIVE_CLIENT_SECRET=<your client secret> \
+GOOGLE_LIVE_REFRESH_TOKEN=<the test account's refresh token> \
+  go test ./cmd/ponsd -run TestGoogleRealForwarding -v
+```
+
+It proves the forwarding path for real: the credential refreshes at
+Google's token endpoint on the first call, then a read-only call
+reaches each of Gmail, Calendar and Drive, and a write each connector's
+allow does not admit, `gmail.compose`'s own send included, is refused
+by the authorizer's `requests` limit before it ever reaches Google. It
+does not run the sign-in and does not disconnect or revoke at Google,
+which still need a person at a browser.
+
 ## Two rules that are not style
 
 **A credential never leaves.** No route, record, log line, error or test
