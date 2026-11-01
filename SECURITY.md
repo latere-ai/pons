@@ -77,6 +77,29 @@ code.
 ## Supply chain
 
 Dependencies are checked for known vulnerabilities on every push. A
-release is built from a tagged commit whose verify run passed: the
-image is signed by the release workflow's identity, and the release
-carries a bill of materials with a signed checksum.
+release is built from a tagged commit whose verify run passed, through
+the shared release stages in
+[latere-ai/ci](https://github.com/latere-ai/ci): the image is signed by
+the build stage's identity, run for this repository, and the release
+carries a bill of materials and `checksums.txt`, signed by the publish
+stage's identity. To check a release, with `TAG` its tag:
+
+```sh
+gh release download "$TAG" -R latere-ai/pons -D pons-release
+cd pons-release
+cosign verify-blob --bundle checksums.txt.sigstore.json \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/latere-ai/ci/\.github/workflows/image-publish\.yml@' \
+  --certificate-github-workflow-repository latere-ai/pons checksums.txt
+sha256sum -c checksums.txt
+
+cosign verify "ghcr.io/latere-ai/ponsd:$TAG" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/latere-ai/ci/\.github/workflows/image-build\.yml@' \
+  --certificate-github-workflow-repository latere-ai/pons
+gh attestation verify "oci://ghcr.io/latere-ai/ponsd:$TAG" -R latere-ai/pons \
+  --signer-workflow latere-ai/ci/.github/workflows/image-build.yml
+```
+
+The release workflow runs the same checks against every release it
+publishes.
