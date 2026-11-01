@@ -470,6 +470,8 @@ func (c *Connector) call(w http.ResponseWriter, r *http.Request, m rpc, sw Conne
 		}
 		if sw.Endless {
 			if _, err := io.WriteString(w, ": keep-alive\n\n"); err != nil || http.NewResponseController(w).Flush() != nil {
+				// A write fails once the caller went away, as the wait does.
+				c.leave()
 				return
 			}
 			continue
