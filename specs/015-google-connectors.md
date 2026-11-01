@@ -261,13 +261,39 @@ own, and a query that names one of the sign-in's own is refused. Since
 disconnect revokes only for the last holder of a grant
 ([[007-sign-in]]). The check against the real Google is open.
 
+`cmd/ponsd.TestGoogleRealForwarding` is that check's automated part: it
+loads these entries, seeds each with a refresh token already granted
+their scopes, calls each through the forwarding path for real, and
+checks a write outside the allow is refused before it reaches Google. It
+is skipped unless the owner sets:
+
+```sh
+GOOGLE_LIVE_CLIENT_ID=<the client id of the Google Cloud console's OAuth
+  client, project "latere" or a test project of the same shape>
+GOOGLE_LIVE_CLIENT_SECRET=<that client's secret>
+GOOGLE_LIVE_REFRESH_TOKEN=<a refresh token minted once for a test Google
+  account that consented to the union of the three entries' scopes above>
+go test ./cmd/ponsd/ -run TestGoogleRealForwarding -v
+```
+
+A refresh token is minted by running the entries' own authorization
+request by hand for a test account, with `access_type=offline` and the
+union of the three entries' scopes, and exchanging the code it returns
+at `https://oauth2.googleapis.com/token`; nothing of that exchange is
+this check's to run; it only has to be run once; the token does not
+expire from use. The check reads no account email, and it does not
+disconnect or revoke, since neither needs the real Google to prove the
+forwarding path or the refusal; those two, and the sign-in itself, still
+need a person at a browser.
+
 | Criterion | State |
 |---|---|
 | `catalog.TestTheGoogleEntries` | written; loads the entries from this file |
 | `signin.TestTheAuthorizeURLsQueryIsKept` | written |
 | `catalog.TestLoadRefusals`, its case of a sign-in member in `authorize_url` | written |
 | `signin.TestARevocationWaitsForTheLastHolder`, `TestOnlyTheLastConnectionOfAGrantRevokes` | written, the second with two entries of one client against the stubs, over both store adapters |
-| the manual check against the real Google | open |
+| `cmd/ponsd.TestGoogleRealForwarding`, against the real Google | written; open until the owner runs it with the variables above |
+| the sign-in's account, the disconnect and the revocation, against the real Google | open; still a manual check |
 
 ## Not in this spec
 
@@ -285,4 +311,5 @@ changes. Each waits for a need.
 | Of a person's connections of one account through entries of one client, a disconnect revokes nothing while another holds the grant and the other still answers, and the last one revokes; a connection of another account revokes at its own disconnect | `signin.TestARevocationWaitsForTheLastHolder`, `TestOnlyTheLastConnectionOfAGrantRevokes`, e2e tier |
 | The authorization request of an entry whose `authorize_url` carries `access_type` and `prompt` carries both as written beside the sign-in's own members, each of which `catalog.AuthorizationMembers` names, and the sign-in connects | `signin.TestTheAuthorizeURLsQueryIsKept` |
 | An `authorize_url` whose query names a member the sign-in sets is refused when the catalog loads | `catalog.TestLoadRefusals` |
-| Against the real Google with the installation's client, a person connects each entry and sees their email as its `account`; lists their mail, reads their calendar, asks for free time and lists their files through the forwarding addresses; writes a draft and is refused a send by the installation's authorizer; after disconnecting one entry, the other two still answer; and after disconnecting the last, Google takes the revocation and the person's Google Account no longer lists the installation | a manual check before the entries ship, recorded in this spec's Outcome |
+| Against the real Google with a client of the entries' shape, each connection lists mail, reads the calendar and lists files through the forwarding addresses, and a write outside the allow (a send among them) is refused before it reaches Google | `cmd/ponsd.TestGoogleRealForwarding`, run by the owner with `GOOGLE_LIVE_CLIENT_ID`, `GOOGLE_LIVE_CLIENT_SECRET` and `GOOGLE_LIVE_REFRESH_TOKEN` set (above); open until then |
+| Against the real Google with the installation's own client, a person connects each entry by signing in and sees their email as its `account`; after disconnecting one entry, the other two still answer; and after disconnecting the last, Google takes the revocation and the person's Google Account no longer lists the installation | a manual check before the entries ship, recorded in this spec's Outcome |
