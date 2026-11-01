@@ -11,7 +11,7 @@ require (
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
-	go.yaml.in/yaml/v3 v3.0.5
+	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/tools v0.52.0
 	latere.ai/x/ci-gate v0.61.0
 	latere.ai/x/pkg v0.110.2
