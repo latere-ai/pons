@@ -386,8 +386,11 @@ revision, with five tools, a streamed answer, and a switch for each
 answer of the table, the earlier revision's sessions, `GET` and
 `DELETE` included, and a stream that waits for the test between events.
 
-Remains: `deploy/`, and `docs/configuration.md` generated from the table, so the
-`deploy` job of `verify` is not there yet; `TestReleaseWorkflowShape`.
+`deploy/prod` and its rollout identity (`deploy/bootstrap/`) are in this
+repository. The `deploy` job of `release.yml` applies them through latere-ai/ci's
+`image-deploy.yml` once the repository variable `PONS_RELEASE_DEPLOY` is set,
+and `test/deploy/release_test.go` holds the job's shape. Remains:
+`docs/configuration.md` generated from the table rather than written by hand.
 
 | Criterion | State |
 |---|---|
