@@ -9,7 +9,7 @@
 #   migrations and 25061 for the pool;
 # - platformd's internal TLS listener, pod port 8443 behind the Service's
 #   443, for every decision; platformd's side admits the core in
-#   ponsd-platformd-tls below;
+#   ponsd-platformd-tls, which deploy/bootstrap holds;
 # - auth at https://auth.latere.ai, for its discovery and key set: a public
 #   name this cluster serves, whose address inside the cluster is the load
 #   balancer's, which Cilium translates to the ingress controller's Pods
@@ -110,24 +110,4 @@ spec:
               - 240.0.0.0/4
       ports:
         - port: 443
-          protocol: TCP
----
-# platformd's internal TLS listener admits the core's Pods, which ask its
-# decider at /internal/pons/authorize.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: ponsd-platformd-tls
-spec:
-  podSelector:
-    matchLabels:
-      app: platformd
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: ponsd
-      ports:
-        - port: 8443
           protocol: TCP
