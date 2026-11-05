@@ -11,10 +11,9 @@ reads (`pons-db`, `ponsd-authorizer`, `ponsd-sealing`, `ponsd-github`,
 `ponsd-google` and `platformd-internal-ca`) are created outside this tree
 and keep their names.
 
-`networkpolicy-platformd-tls.yaml` admits the core's Pods to platformd's
-internal TLS listener. It selects platformd's Pods and not the core's, which
-a rollout identity may not write, so an operator applies it once with
-`kubectl apply -f deploy/bootstrap/networkpolicy-platformd-tls.yaml`.
+The NetworkPolicy that admits the core's Pods to platformd's internal TLS
+listener selects platformd's Pods, so platform's release applies it
+(`latere-ai/platform`, `deploy/prod`). No operator step remains for it.
 
 ## The rollout identity
 
