@@ -6,8 +6,11 @@ package id
 import (
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 	"time"
+
+	"latere.ai/x/pkg/ulid"
 )
 
 var shape = regexp.MustCompile(`^(con|ctr|flw|call)_[0-7][0-9a-hjkmnp-tv-z]{25}$`)
@@ -24,7 +27,7 @@ func TestPrefixedAndOrdered(t *testing.T) {
 		}
 		for _, p := range []string{Connection, Connector, Flow, Call} {
 			s := g.New(p)
-			if !shape.MatchString(s) || !Valid(p, s) {
+			if !shape.MatchString(s) || !ulid.Valid(p+"_", s) {
 				t.Fatalf("%q is not a %s id", s, p)
 			}
 			if p == Connection {
@@ -49,32 +52,14 @@ func TestAClockThatStepsBackKeepsTheOrder(t *testing.T) {
 	}
 }
 
-// The tail carries into the byte before it when it overflows.
-func TestTheTailCarries(t *testing.T) {
-	at := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
-	g := &Generator{Now: func() time.Time { return at }}
-	first := g.New(Flow)
-	for i := range g.tail {
-		if i > 0 {
-			g.tail[i] = 0xff
-		}
+// The package-level New names the prefix, an underscore and a lowercase
+// ULID, whatever the clock, and the ULID reads back as a valid one.
+func TestNew(t *testing.T) {
+	got := New(Connection)
+	if !shape.MatchString(got) || !ulid.Valid(Connection+"_", got) {
+		t.Fatalf("New(%q) = %q", Connection, got)
 	}
-	second := g.New(Flow)
-	if second <= first {
-		t.Fatalf("%q does not sort after %q", second, first)
-	}
-}
-
-func TestValid(t *testing.T) {
-	good := New(Connection)
-	for _, bad := range []string{
-		"", "con_", "ctr" + good[3:], good + "x", good[:len(good)-1] + "U", "con_8" + good[5:],
-	} {
-		if Valid(Connection, bad) {
-			t.Errorf("Valid(%q) = true", bad)
-		}
-	}
-	if !Valid(Connection, good) {
-		t.Errorf("Valid(%q) = false", good)
+	if got != strings.ToLower(got) {
+		t.Fatalf("%q is not lowercase", got)
 	}
 }
