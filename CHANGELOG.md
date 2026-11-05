@@ -6,6 +6,17 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+### Added
+
+- **A release can deploy itself.** The release workflow has a `deploy` job
+  between the build and the publish, which applies `deploy/prod` with the
+  image pinned by digest, waits for the rollout and runs
+  `tools/smoke/release.sh` against the live origin. It runs only where the
+  repository variable `PONS_RELEASE_DEPLOY` is set, so a fork publishes
+  every artifact and deploys nothing. `deploy/prod` holds Latere's
+  production manifests and `deploy/bootstrap` the identity the job deploys
+  with.
+
 ## v0.5.1 - 2026-11-01
 
 ### Fixed

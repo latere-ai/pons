@@ -316,7 +316,15 @@ Every section is written for whoever runs `ponsd` or calls its API.
 The release workflow waits for the verify run of the tagged commit,
 builds the image for both platforms, signs it, attests a bill of
 materials and its provenance, archives `deploy/` with the image pinned
-by digest, and creates the release from the changelog section. A third
+by digest, and creates the release from the changelog section. Between the
+build and the publish, a `deploy` job runs the shared deploy stage of
+`latere-ai/ci` where the repository variable `PONS_RELEASE_DEPLOY` is set:
+`deploy/prod`, Latere's own overlay, is applied with `ponsd` pinned by the
+digest the build pushed, the Deployment is waited for, and
+`tools/smoke/release.sh` is repeated against the live origin until it
+passes. The stage reaches the cluster as the rollout identity of
+`deploy/bootstrap/rollout-identity.yaml`, through the repository secret
+`PONS_KUBECONFIG`; a fork sets neither and deploys nothing. A third
 workflow moves the gate's pin once a day when the whole bar passes on
 the new version.
 
@@ -369,8 +377,8 @@ bill of materials with a signed checksum. It attests the bill of
 materials and the provenance only while the repository is public,
 because GitHub keeps attestations for a private repository only on a
 higher plan: v0.1.0 published nothing for that reason, and v0.1.1, of
-2026-10-13, is the first release with an image. With no `deploy/`, a
-release archives no manifests.
+2026-10-13, is the first release with an image. A release archives no
+manifests: `deploy/prod` is applied by the `deploy` job, not shipped.
 
 The stub connector is built beside them: a Model Context Protocol
 server over streamable HTTP at `mcp.example.com`, of the current
