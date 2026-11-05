@@ -53,7 +53,8 @@ variable, or the authorizer's vocabulary or limits also updates
 [`docs/`](docs/README.md), and [`api/openapi.yaml`](api/openapi.yaml)
 where it applies. A change someone running `ponsd` would notice gets a
 line under `## Unreleased` in [`CHANGELOG.md`](CHANGELOG.md), written for
-them; a `v*` tag without a section there is refused.
+them; a `v*` tag without a section there is refused. A maintainer cuts a
+release with `go tool lateregate release vX.Y.Z`.
 
 ## The bar
 
