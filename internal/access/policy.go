@@ -44,22 +44,7 @@ type OwnerPolicy struct{}
 // endpoint are one seam to everything above. A token whose grants cannot be
 // read is denied: its reach is unknown, and the closed answer is a deny.
 func (p OwnerPolicy) Authorize(_ context.Context, req authz.Request) (authz.Decision, error) {
-	d := p.decide(req)
-	if !d.Allow {
-		return d, nil
-	}
-	grants, readable := grantsOf(req.Claims)
-	if !readable {
-		return authz.Decision{Reason: authz.ReasonGrant}, nil
-	}
-	return authz.Restrict(authorizer.Core, d, req, grants), nil
-}
-
-// grantsOf reads the grants a token carries. readable is false for a claim
-// that does not read as grants, which is a deny and no outage.
-func grantsOf(claims map[string]any) (grants authz.Grants, readable bool) {
-	grants, err := authz.ParseGrants(claims)
-	return grants, err == nil
+	return authz.RestrictByClaims(authorizer.Core, p.decide(req), req), nil
 }
 
 // Decide is Authorize under the name latere.ai/x/pkg/authz/server calls a
