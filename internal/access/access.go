@@ -30,6 +30,7 @@ import (
 	"slices"
 
 	"latere.ai/x/pkg/authz"
+	"latere.ai/x/pkg/requestid"
 
 	"latere.ai/x/pons/authorizer"
 )
@@ -99,16 +100,16 @@ func Ask(r *http.Request, action string, resource authz.Resource) Question {
 	return Question{Action: action, Resource: resource, Request: RequestInfo(r)}
 }
 
-// RequestInfo is what the authorizer is told about the request: its id when
-// the request carries one, the peer address as the server sees it, and the
-// user agent.
+// RequestInfo is what the authorizer is told about the request: its id (the
+// client's when it is visible ASCII of bounded length, else a fresh one),
+// the peer address as the server sees it, and the user agent.
 func RequestInfo(r *http.Request) authz.Caller {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		// An address with no port is already the host.
 		host = r.RemoteAddr
 	}
-	return authz.Caller{ID: r.Header.Get("X-Request-Id"), IP: host, UserAgent: r.UserAgent()}
+	return authz.Caller{ID: requestid.FromRequest(r), IP: host, UserAgent: r.UserAgent()}
 }
 
 // Decision is the answer to a question.

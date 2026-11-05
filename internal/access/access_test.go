@@ -26,6 +26,7 @@ import (
 	"latere.ai/x/pkg/authz/conformance"
 	"latere.ai/x/pkg/authz/server"
 	"latere.ai/x/pkg/authz/stub"
+	"latere.ai/x/pkg/requestid"
 
 	"latere.ai/x/pons/authorizer"
 	"latere.ai/x/pons/internal/access"
@@ -63,6 +64,27 @@ func asking(t *testing.T, a *stubs.Authorizer, now func() time.Time) access.Auth
 		t.Fatal(err)
 	}
 	return access.NewAuthorizer(c)
+}
+
+// A request id the client chose reaches the authorizer only when it is
+// visible ASCII of bounded length; any other, or none, is replaced by a
+// fresh one.
+func TestTheRequestIDIsCheckedBeforeItIsSent(t *testing.T) {
+	for name, header := range map[string]string{
+		"a good id": "req-1", "a space": "req 1", "a newline": "req\n1", "too long": strings.Repeat("a", requestid.MaxLen+1), "none": "",
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/v1/connections", nil)
+		if header != "" {
+			r.Header["X-Request-Id"] = []string{header}
+		}
+		got := access.RequestInfo(r).ID
+		switch {
+		case name == "a good id" && got != header:
+			t.Errorf("%s: sent %q", name, got)
+		case name != "a good id" && (got == header || !requestid.Valid(got)):
+			t.Errorf("%s: sent %q", name, got)
+		}
+	}
 }
 
 // The authorizer receives the subject, every claim verbatim, the action and
