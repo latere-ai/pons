@@ -1,0 +1,109 @@
+# The connectors Latere's installation of Pons offers, read by ponsd at
+# start from PONS_CATALOG_FILE. The first entry is the GitHub connector of
+# Pons spec 013 with this installation's values: the client id of the
+# "Latere AI" GitHub App, its client secret by reference to the variable the
+# Secret ponsd-github sets, and the page where a person chooses which
+# repositories the App reaches. The other three are Google's connectors of
+# Pons spec 015 (spec 200) with the Web client of the Google Cloud project
+# latere, its secret by reference to the variable the Secret ponsd-google
+# sets. Both callbacks are the core's own host's,
+# https://connect.latere.ai/v1/connections/callback.
+#
+# deploy/pons/prod/catalog.yaml is this file, byte for byte: platformd reads
+# each connector's name, title, kind and git host from its own copy, since a
+# connector Pons answers carries no git host.
+connectors:
+  - name: github
+    title: GitHub
+    description: Clone, change and push the repositories you choose, and work with their issues and pull requests.
+    icon: https://github.githubassets.com/favicons/favicon.png
+    kind: http
+    url: https://api.github.com
+    git:
+      url: https://github.com
+      inject: {scheme: basic, username: x-access-token}
+    hosts: ["api.github.com", "github.com"]
+    http:
+      pass: ["X-GitHub-Api-Version"]
+      pass_back: ["X-RateLimit-*", "X-GitHub-Request-Id", "X-Accepted-GitHub-Permissions"]
+    auth:
+      type: oauth
+      discovery: none
+      issuer: https://github.com/login/oauth
+      authorize_url: https://github.com/login/oauth/authorize
+      token_url: https://github.com/login/oauth/access_token
+      client: {id: Iv23liyu3zuBcXNQSzZz, secret: {env: GITHUB_APP_CLIENT_SECRET}}
+      resource: false
+      account: {url: https://api.github.com/user, field: login}
+    links:
+      manage: https://github.com/apps/latere-ai/installations/new
+  - name: gmail
+    title: Gmail
+    description: Read and search your mail, and write drafts for you to send.
+    icon: https://www.gstatic.com/images/branding/product/2x/gmail_2020q4_48dp.png
+    kind: http
+    url: https://gmail.googleapis.com/gmail/v1
+    hosts: ["gmail.googleapis.com", "openidconnect.googleapis.com"]
+    auth:
+      type: oauth
+      discovery: none
+      issuer: https://accounts.google.com
+      authorize_url: https://accounts.google.com/o/oauth2/v2/auth?access_type=offline&prompt=consent+select_account
+      token_url: https://oauth2.googleapis.com/token
+      revoke_url: https://oauth2.googleapis.com/revoke
+      client: {id: 1000358641850-oqpgq19mfabfbhij8ovmag3gqj6nuabr.apps.googleusercontent.com, secret: {env: GOOGLE_CLIENT_SECRET}}
+      scopes:
+        - openid
+        - email
+        - https://www.googleapis.com/auth/gmail.readonly
+        - https://www.googleapis.com/auth/gmail.compose
+      resource: false
+      account: {url: https://openidconnect.googleapis.com/v1/userinfo, field: email}
+  - name: google-calendar
+    title: Google Calendar
+    description: Read your calendars, find free time, and create and change events.
+    icon: https://www.gstatic.com/images/branding/product/2x/calendar_2020q4_48dp.png
+    kind: http
+    url: https://www.googleapis.com/calendar/v3
+    hosts: ["www.googleapis.com", "openidconnect.googleapis.com"]
+    http:
+      read_only: ["POST /freeBusy"]
+    auth:
+      type: oauth
+      discovery: none
+      issuer: https://accounts.google.com
+      authorize_url: https://accounts.google.com/o/oauth2/v2/auth?access_type=offline&prompt=consent+select_account
+      token_url: https://oauth2.googleapis.com/token
+      revoke_url: https://oauth2.googleapis.com/revoke
+      client: {id: 1000358641850-oqpgq19mfabfbhij8ovmag3gqj6nuabr.apps.googleusercontent.com, secret: {env: GOOGLE_CLIENT_SECRET}}
+      scopes:
+        - openid
+        - email
+        - https://www.googleapis.com/auth/calendar.calendarlist.readonly
+        - https://www.googleapis.com/auth/calendar.events.readonly
+        - https://www.googleapis.com/auth/calendar.events.owned
+        - https://www.googleapis.com/auth/calendar.events.freebusy
+      resource: false
+      account: {url: https://openidconnect.googleapis.com/v1/userinfo, field: email}
+  - name: google-drive
+    title: Google Drive
+    description: Find and read your files, and save new files to your Drive.
+    icon: https://www.gstatic.com/images/branding/product/2x/drive_2020q4_48dp.png
+    kind: http
+    url: https://www.googleapis.com
+    hosts: ["www.googleapis.com", "openidconnect.googleapis.com"]
+    auth:
+      type: oauth
+      discovery: none
+      issuer: https://accounts.google.com
+      authorize_url: https://accounts.google.com/o/oauth2/v2/auth?access_type=offline&prompt=consent+select_account
+      token_url: https://oauth2.googleapis.com/token
+      revoke_url: https://oauth2.googleapis.com/revoke
+      client: {id: 1000358641850-oqpgq19mfabfbhij8ovmag3gqj6nuabr.apps.googleusercontent.com, secret: {env: GOOGLE_CLIENT_SECRET}}
+      scopes:
+        - openid
+        - email
+        - https://www.googleapis.com/auth/drive.readonly
+        - https://www.googleapis.com/auth/drive.file
+      resource: false
+      account: {url: https://openidconnect.googleapis.com/v1/userinfo, field: email}

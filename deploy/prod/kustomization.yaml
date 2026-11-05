@@ -1,0 +1,42 @@
+# The production target: the Pons core as Latere runs it, behind the
+# capability Connections. It is declared in .lateregate.yaml under both
+# identity.skip and identity.overlays, so the gate's no-latere-value rule
+# reads the addresses set here rather than refusing them.
+#
+# Everything here is safe to re-apply, because the release pipeline applies
+# it on every release with `kubectl apply -k deploy/prod` and then sets the
+# image to the digest it built. A resource that cannot be re-applied belongs
+# in deploy/bootstrap/, which the pipeline never reads.
+#
+# The Secrets pons-db, ponsd-authorizer, ponsd-sealing, ponsd-github,
+# ponsd-google and platformd-internal-ca are created outside the tree and
+# keep their names. The 2 ConfigMaps are generated here, so a change of a
+# setting or of the catalog renames the ConfigMap and rolls the Pods that
+# read it.
+#
+# The Deployment names the image with the placeholder tag `unreleased`,
+# which never resolves, so a target that pins nothing fails to pull rather
+# than running an unknown build. The images entry below names the release
+# this target runs. `lateregate release` rewrites the version in the same
+# commit as the changelog section, under the release.stamp entry in
+# .lateregate.yaml, so this line never lags a tag.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: latere
+resources:
+  - serviceaccount.yaml
+  - deployment.yaml
+  - service.yaml
+  - pdb.yaml
+  - networkpolicy.yaml
+  - ingress.yaml
+images:
+  - name: ghcr.io/latere-ai/ponsd
+    newTag: v0.4.3
+configMapGenerator:
+  - name: ponsd
+    envs:
+      - ponsd.env
+  - name: ponsd-catalog
+    files:
+      - catalog.yaml

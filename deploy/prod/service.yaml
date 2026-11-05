@@ -1,0 +1,17 @@
+# The core's one listener: the API under /v1/connections and the probes
+# beside it. The ingress controller routes the prefix here, and platformd
+# lists a person's connections here, in the cluster.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ponsd
+  labels:
+    app.kubernetes.io/name: ponsd
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: ponsd
+  ports:
+    - name: public
+      port: 8080
+      targetPort: public

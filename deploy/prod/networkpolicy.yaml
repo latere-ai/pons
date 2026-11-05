@@ -1,0 +1,133 @@
+# What reaches the core, and what it reaches, and only that.
+#
+# In: the ingress controller, which routes /v1/connections, and platformd's
+# Pods, which list a person's connections in the cluster, on the one port.
+#
+# Out:
+# - the resolver;
+# - the database, DigitalOcean's managed Postgres, on 25060 for the
+#   migrations and 25061 for the pool;
+# - platformd's internal TLS listener, pod port 8443 behind the Service's
+#   443, for every decision; platformd's side admits the core in
+#   ponsd-platformd-tls below;
+# - auth at https://auth.latere.ai, for its discovery and key set: a public
+#   name this cluster serves, whose address inside the cluster is the load
+#   balancer's, which Cilium translates to the ingress controller's Pods
+#   before policy is evaluated, so those Pods on their https port are
+#   admitted;
+# - the collector the namespace's monitoring injects, dialed at the node's
+#   address on a host port that Cilium translates to the collector's Pod on
+#   4318;
+# - every other address on 443 but the private and reserved ranges of the
+#   core's address table (pons specs/009-outbound-requests.md): the
+#   services people connect, so a connector is reached and a neighbor in
+#   the cluster or the cloud's network is not. This is the third layer
+#   below the core's own dialer, which refuses those addresses itself.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ponsd
+  labels:
+    app.kubernetes.io/name: ponsd
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ponsd
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app: platformd
+      ports:
+        - port: 8080
+          protocol: TCP
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - ports:
+        - port: 25060
+          protocol: TCP
+        - port: 25061
+          protocol: TCP
+    - to:
+        - podSelector:
+            matchLabels:
+              app: platformd
+      ports:
+        - port: 8443
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - port: 443
+          protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: dash0-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+      ports:
+        - port: 4318
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 0.0.0.0/8
+              - 10.0.0.0/8
+              - 100.64.0.0/10
+              - 127.0.0.0/8
+              - 169.254.0.0/16
+              - 172.16.0.0/12
+              - 192.0.0.0/24
+              - 192.0.2.0/24
+              - 192.168.0.0/16
+              - 198.18.0.0/15
+              - 198.51.100.0/24
+              - 203.0.113.0/24
+              - 224.0.0.0/4
+              - 240.0.0.0/4
+      ports:
+        - port: 443
+          protocol: TCP
+---
+# platformd's internal TLS listener admits the core's Pods, which ask its
+# decider at /internal/pons/authorize.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ponsd-platformd-tls
+spec:
+  podSelector:
+    matchLabels:
+      app: platformd
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ponsd
+      ports:
+        - port: 8443
+          protocol: TCP

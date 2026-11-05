@@ -9,6 +9,13 @@ cover:
       starts the containers the suites run against; the lines no run reaches
       are the ones for a container runtime that fails
 
+# The tag the production overlay runs is rewritten in the same commit as the
+# changelog section, so deploy/prod/kustomization.yaml never lags a release.
+release:
+  stamp:
+    - file: deploy/prod/kustomization.yaml
+      pattern: 'newTag: v\d+\.\d+\.\d+'
+
 license:
   spdx: Apache-2.0
   holder: Latere AI
@@ -57,6 +64,13 @@ identity:
   reached_by: self-hosted
   # Access is by role: the roles rule runs, and it is one way once set.
   roles_only: true
+  # deploy/prod is Latere's own overlay inside the core's tree; it names the
+  # installation it serves, so the no-latere-value rule reads the addresses
+  # it sets and does not refuse them.
+  skip:
+    - deploy/prod
+  overlays:
+    - deploy/prod
 
 # The store of specs/005-store-and-sealing.md serves through
 # PONS_DATABASE_POOL_URL where an installation names a pooled endpoint and
