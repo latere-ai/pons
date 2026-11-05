@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"latere.ai/x/pkg/authz"
 	"latere.ai/x/pkg/authz/stub"
@@ -174,8 +175,16 @@ func TestTheSessionClaimIsCopiedNotRead(t *testing.T) {
 	if got := session(map[string]any{"session": map[string]any{"id": 7.0}}); got != "" {
 		t.Errorf("an id that is no string: %q", got)
 	}
-	if got := truncate(strings.Repeat("t", 200)); len(got) != 128 {
-		t.Errorf("a tool kept at %d bytes", len(got))
+	var rec call
+	rec.found(store.Connection{}, access.Caller{}, "POST", strings.Repeat("t", 200), "read", 0, 0)
+	if len(rec.Tool) != 128 {
+		t.Errorf("a tool kept at %d bytes", len(rec.Tool))
+	}
+	// Byte 128 falls inside the 43rd three-byte rune, so a plain cut there
+	// would leave invalid UTF-8, which Postgres refuses.
+	rec.found(store.Connection{}, access.Caller{}, "POST", strings.Repeat("世", 50), "read", 0, 0)
+	if !utf8.ValidString(rec.Tool) || len(rec.Tool) != 126 {
+		t.Errorf("a multibyte tool kept as %d bytes, valid UTF-8 %t", len(rec.Tool), utf8.ValidString(rec.Tool))
 	}
 }
 

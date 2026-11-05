@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"time"
 
+	"latere.ai/x/pkg/sanitize"
+
 	"latere.ai/x/pons/internal/access"
 	"latere.ai/x/pons/internal/apierr"
 	"latere.ai/x/pons/internal/id"
@@ -45,7 +47,7 @@ func (c *call) found(row store.Connection, caller access.Caller, method, tool, e
 	c.due = true
 	c.Connection, c.Owner, c.Connector = row.ID, row.Owner, row.Connector
 	c.Subject, c.Session = caller.Subject, session(caller.Claims)
-	c.Method, c.Tool, c.Effect, c.Refs, c.BytesIn = method, truncate(tool), effect, refs, bytesIn
+	c.Method, c.Tool, c.Effect, c.Refs, c.BytesIn = method, sanitize.TruncateBytes(tool, maxRecorded), effect, refs, bytesIn
 }
 
 // fail sets the outcome of a request that ends with an error, when no step
@@ -92,14 +94,6 @@ func session(claims map[string]any) string {
 	}
 	if len(s) > maxRecorded {
 		return ""
-	}
-	return s
-}
-
-// truncate bounds what a record keeps of a tool.
-func truncate(s string) string {
-	if len(s) > maxRecorded {
-		return s[:maxRecorded]
 	}
 	return s
 }
