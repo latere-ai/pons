@@ -203,3 +203,7 @@ Upgrading is running the next release's image. The tag equals the git
 tag, and `ponsd version` says which one runs. The new release applies
 its schema at start; the [changelog](../CHANGELOG.md) says what changed
 for whoever runs `ponsd`.
+
+`tools/smoke/release.sh` checks a running installation from the outside with
+no token, as the release pipeline does after a rollout; give it `BASE_URL`,
+the origin with the base path.
