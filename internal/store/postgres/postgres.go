@@ -20,10 +20,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5" // the pgx5:// driver pgxmigrate selects by scheme
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -76,50 +76,40 @@ const versionSQL = `SELECT version, dirty FROM schema_migrations`
 
 // Migrate applies the pending migrations over the direct connection. It
 // refuses a schema this binary does not know: one a failed migration left
-// dirty, and one a newer binary wrote.
+// dirty, and one a newer binary wrote. Both are read under the migrator's
+// own lock, so a replica that is mid-migration is waited for and not taken
+// for a failed one.
 func Migrate(ctx context.Context, directURL string) error {
-	dsn, err := migrationURL(directURL)
+	dsn, err := pgxmigrate.DriverURL(directURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("store: the direct database URL: %w", err)
 	}
-	highest, err := migrations.Highest()
+	// A database that does not answer is told apart from a migration that
+	// failed, and the migrator's own errors may quote the address.
+	cfg, err := pgxpool.ParseConfig(directURL)
 	if err != nil {
-		return fmt.Errorf("store: %w", err)
+		return errors.New("store: the direct database URL is not a Postgres URL")
 	}
-	conn, err := pgx.Connect(ctx, directURL)
+	conn, err := pgx.ConnectConfig(ctx, cfg.ConnConfig)
 	if err != nil {
 		return ErrUnreachable
 	}
-	version, dirty, err := schemaVersion(ctx, conn)
-	closeErr := conn.Close(ctx)
+	if err := conn.Close(ctx); err != nil {
+		return fmt.Errorf("store: closing the migration check's connection: %w", err)
+	}
+	err = pgxmigrate.Up(dsn, migrations.FS, ".")
+	var dirty migrate.ErrDirty
 	switch {
-	case err != nil:
-		return err
-	case closeErr != nil:
-		return fmt.Errorf("store: closing the migration check's connection: %w", closeErr)
-	case dirty:
-		return fmt.Errorf("store: the schema is dirty at version %d: a migration failed halfway, and an operator repairs it before this process starts", version)
-	case version > highest:
-		return fmt.Errorf("store: the schema is at version %d and this binary carries %d: run the version that wrote the schema", version, highest)
+	case err == nil:
+		return nil
+	case errors.As(err, &dirty):
+		return fmt.Errorf("store: the schema is dirty at version %d: a migration failed halfway, and an operator repairs it before this process starts", dirty.Version)
+	case errors.Is(err, pgxmigrate.ErrDirty):
+		return errors.New("store: the schema is dirty: a migration failed halfway, and an operator repairs it before this process starts")
+	case errors.Is(err, pgxmigrate.ErrNewer):
+		return fmt.Errorf("store: run the version that wrote the schema: %w", err)
 	}
-	if err := pgxmigrate.Up(dsn, migrations.FS, "."); err != nil {
-		return fmt.Errorf("store: applying the schema: %w", err)
-	}
-	return nil
-}
-
-// migrationURL is the direct URL under the scheme golang-migrate's pgx/v5
-// driver registers. The errors name no part of the URL.
-func migrationURL(raw string) (string, error) {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "", errors.New("store: the direct database URL is not a URL")
-	}
-	if u.Scheme != "postgres" && u.Scheme != "postgresql" {
-		return "", errors.New("store: the direct database URL does not have the scheme postgres")
-	}
-	u.Scheme = "pgx5"
-	return u.String(), nil
+	return fmt.Errorf("store: applying the schema: %w", err)
 }
 
 // versioner reads the schema version: a connection or a pool.

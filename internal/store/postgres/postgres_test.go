@@ -7,9 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"strconv"
 	"strings"
 	"testing"
-	"testing/fstest"
 	"time"
 
 	"latere.ai/x/pons/internal/store"
@@ -121,19 +122,35 @@ func TestReady(t *testing.T) {
 	}
 }
 
-// The highest migration is read from the files' numbers.
-func TestHighestOf(t *testing.T) {
-	got, err := migrations.HighestOf(fstest.MapFS{
-		"000001_a.up.sql": {}, "000003_b.up.sql": {}, "README": {},
-	})
-	if err != nil || got != 3 {
-		t.Fatalf("HighestOf = %d, %v", got, err)
+// The highest migration is the newest numbered file the binary embeds.
+func TestHighest(t *testing.T) {
+	got, err := migrations.Highest()
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := migrations.HighestOf(fstest.MapFS{"x_a.up.sql": {}}); err == nil {
-		t.Fatal("a migration that does not start with a number was read")
+	entries, err := fs.ReadDir(migrations.FS, ".")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := migrations.HighestOf(fstest.MapFS{}); err == nil {
-		t.Fatal("no migration at all was read")
+	var want uint
+	for _, e := range entries {
+		number, _, _ := strings.Cut(e.Name(), "_")
+		if n, err := strconv.ParseUint(number, 10, 64); err == nil {
+			want = max(want, uint(n))
+		}
+	}
+	if want == 0 || got != want {
+		t.Fatalf("Highest = %d, the newest embedded file is %d", got, want)
+	}
+}
+
+// A direct URL that carries the pool's own settings still migrates: those
+// parameters are the pool's and the server refuses them as session settings.
+func TestMigrateDropsPoolSettings(t *testing.T) {
+	ctx := context.Background()
+	direct, _ := pgtest.Database(t)
+	if err := postgres.Migrate(ctx, direct+"&pool_max_conns=2&pool_min_conns=0"); err != nil {
+		t.Fatalf("migrating a URL with pool settings: %v", err)
 	}
 }
 
