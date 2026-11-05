@@ -14,6 +14,19 @@ here is refused before it is pushed.
   that forwards only that prefix shows which release it runs. The release
   smoke compares the served version with the tag.
 
+### Fixed
+
+- **A tool name with a multibyte character is recorded.** It is cut on a
+  character boundary, where a cut inside a character made Postgres refuse
+  the call record.
+
+- **A replica that starts while another runs the migrations waits for
+  it,** up to 5 minutes, where it refused to start, and `pool_*`
+  parameters of the database URL no longer reach Postgres.
+
+- **A request id is passed to the authorizer only when it is visible ASCII
+  of at most 128 bytes;** otherwise a fresh one is sent.
+
 ## v0.5.2 - 2026-11-05
 
 ### Added
