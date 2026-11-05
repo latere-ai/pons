@@ -6,6 +6,8 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+## v0.5.2 - 2026-11-05
+
 ### Added
 
 - **A release can deploy itself.** The release workflow has a `deploy` job

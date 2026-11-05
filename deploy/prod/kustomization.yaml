@@ -32,7 +32,7 @@ resources:
   - ingress.yaml
 images:
   - name: ghcr.io/latere-ai/ponsd
-    newTag: v0.4.3
+    newTag: v0.5.2
 configMapGenerator:
   - name: ponsd
     envs:
