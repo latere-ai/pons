@@ -6,6 +6,8 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+## v0.6.0 - 2026-11-05
+
 ### Added
 
 - **`GET {base}/version` is public.** It answers the build's `version`,
