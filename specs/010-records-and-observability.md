@@ -195,6 +195,7 @@ Outside the base path, on the API's listener, with no token
 | `/livez` | the process: `200` while it serves |
 | `/readyz` | `200` when the store answers, a sealing key is present and the catalog was read; otherwise `503`, naming each check that failed |
 | `/version` | the version, the commit and the build time |
+| `{base}/version` | the same body below the base path, for a deployment whose ingress forwards only that prefix; the release smoke compares its version with the tag |
 
 The checks are `store` (the store's `Ready`, within 1 second),
 `sealing` and `catalog`. The authorizer and the issuer are not checks:

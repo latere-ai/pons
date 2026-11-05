@@ -21,6 +21,7 @@ import (
 	"latere.ai/x/pons/internal/store"
 	"latere.ai/x/pons/internal/store/postgres"
 	"latere.ai/x/pons/internal/store/postgres/pgtest"
+	"latere.ai/x/pons/internal/version"
 	"latere.ai/x/pons/test/stubs"
 )
 
@@ -278,6 +279,29 @@ func TestAddedConnectorRules(t *testing.T) {
 	}
 	if a := h.do(http.MethodPost, "/v1/connectors", "alice", base(func(map[string]any) {})); a.code() != apierr.CodeNameTaken {
 		t.Fatalf("a name twice: %d %s", a.status, a.body)
+	}
+}
+
+// The build identity is public below the base path, the prefix the ingress
+// forwards, and is the body the root serves.
+func TestVersionBelowTheBasePath(t *testing.T) {
+	oldV, oldC, oldD := version.Version, version.Commit, version.Date
+	t.Cleanup(func() { version.Version, version.Commit, version.Date = oldV, oldC, oldD })
+	version.Version, version.Commit, version.Date = "v1.2.3", "abc1234", "2026-11-05T00:00:00Z"
+	h := newHarness(t, func(s *Server) { s.BasePath = "/v1/connections" })
+	a := h.do(http.MethodGet, "/v1/connections/version", "", nil)
+	want := `{"version":"v1.2.3","commit":"abc1234","build_time":"2026-11-05T00:00:00Z"}`
+	if a.status != http.StatusOK || strings.TrimSpace(string(a.body)) != want {
+		t.Fatalf("/v1/connections/version with no token: %d %s", a.status, a.body)
+	}
+	if root := h.do(http.MethodGet, "/version", "", nil); string(root.body) != string(a.body) {
+		t.Errorf("the root /version %s differs from %s", root.body, a.body)
+	}
+	if a := h.do(http.MethodPost, "/v1/connections/version", "", nil); a.status == http.StatusOK {
+		t.Errorf("POST /v1/connections/version answered %d", a.status)
+	}
+	if a := newHarness(t, func(s *Server) { s.BasePath = "" }).do(http.MethodGet, "/version", "", nil); a.status != http.StatusOK {
+		t.Errorf("/version with no base path: %d", a.status)
 	}
 }
 

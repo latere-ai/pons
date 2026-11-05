@@ -21,6 +21,9 @@ carries `iat`, minted less than 24 hours ago. Pons has no login and no
 API key of its own. Four routes take no token: the sign-in's callback, the two client
 metadata documents, and the OpenAPI document. The probes, `/livez`,
 `/readyz` and `/version`, sit at the root, outside the base path.
+`GET {base}/version` answers the same body under the base path, with no
+token, so a release check can read the running version through the
+prefix an ingress forwards.
 
 The caller is the token's issuer and `sub` joined by a pipe,
 `https://login.example.com|alice`. That string is the `owner` of what

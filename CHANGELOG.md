@@ -6,6 +6,14 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+### Added
+
+- **`GET {base}/version` is public.** It answers the build's `version`,
+  `commit` and `build_time` with no token below the base path, for
+  example `/v1/connections/version`, so a deployment behind an ingress
+  that forwards only that prefix shows which release it runs. The release
+  smoke compares the served version with the tag.
+
 ## v0.5.2 - 2026-11-05
 
 ### Added

@@ -132,6 +132,11 @@ no token:
 | `GET /readyz` | `ok` when the store answers, a sealing key is set, and the catalog was read; otherwise `503` with what is not ready, such as `not ready: sealing: no sealing key`. With `PONS_DIAL_ALLOW_PRIVATE` set, a ready answer carries a second line saying so |
 | `GET /version` | the version, the commit and the build time, as JSON |
 
+`GET /version` is also served under `PONS_BASE_PATH`, as
+`{PONS_BASE_PATH}/version`, with no token and the same body. It is the one
+of the three an ingress that forwards only the base path makes public, and
+the release smoke compares its `version` with the release tag.
+
 ## Checking an installation
 
 `ponsd check` runs with the same environment as `serve` and answers

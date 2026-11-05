@@ -179,6 +179,12 @@ func (s *Server) Handler() http.Handler {
 		mux.Handle(p, probes)
 	}
 	b := s.BasePath
+	if b != "" {
+		// The build identity is also public below the base path, the one
+		// prefix the ingress forwards, so a release check reads it from
+		// outside. It takes no token and is the body /version serves.
+		mux.Handle("GET "+b+"/version", versionAt(probes))
+	}
 	for _, rt := range routes {
 		handle := rt.handle
 		mux.Handle(rt.method+" "+b+rt.path, s.authenticated(func(w http.ResponseWriter, r *http.Request, c access.Caller) error {
@@ -208,7 +214,9 @@ func (s *Server) Handler() http.Handler {
 	})
 	return otel.Handler(front, "ponsd",
 		otel.WithRouteTemplate(func(r *http.Request) string { return r.Pattern }),
-		otel.WithSkip(func(r *http.Request) bool { return !strings.HasPrefix(r.URL.Path, b+"/") }))
+		otel.WithSkip(func(r *http.Request) bool {
+			return !strings.HasPrefix(r.URL.Path, b+"/") || r.URL.Path == b+"/version"
+		}))
 }
 
 // authenticated runs a route for a verified caller and answers its error.
@@ -258,6 +266,17 @@ func (s *Server) limited(c access.Caller) error {
 		return apierr.Fail(apierr.CodeRateLimited, "creates_per_minute="+strconv.Itoa(s.CreatesPerMinute))
 	}
 	return nil
+}
+
+// versionAt serves the answer of the probes' /version at the path it is
+// mounted on, so the build identity below the base path is the very body
+// the root serves.
+func versionAt(probes http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rooted := r.Clone(r.Context())
+		rooted.URL.Path, rooted.URL.RawPath = "/version", ""
+		probes.ServeHTTP(w, rooted)
+	})
 }
 
 // probes serve /livez, /readyz and /version. /readyz is ready when the
