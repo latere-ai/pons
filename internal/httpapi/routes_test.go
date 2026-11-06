@@ -168,7 +168,7 @@ func TestADenyAndAnOutageAnswerBeforeAnythingIsDone(t *testing.T) {
 			h := newHarnessOn(t, open(t))
 			ctr, con := fixture(t, h)
 			for _, rt := range Routes() {
-				if slices.Contains(public, rt) || rt.Method == http.MethodGet {
+				if slices.Contains(public, rt) {
 					continue
 				}
 				path, body, headers := request(h, rt, ctr, con)
@@ -183,11 +183,16 @@ func TestADenyAndAnOutageAnswerBeforeAnythingIsDone(t *testing.T) {
 					a := h.do(rt.Method, path, "alice", body, headers...)
 					h.authz.set(nil)
 					want := map[string]int{"deny": http.StatusForbidden, "outage": http.StatusServiceUnavailable}[outcome]
-					if outcome == "deny" && !strings.HasSuffix(rt.Path, "s") {
+					if outcome == "deny" && (strings.Contains(rt.Path, "{") || !strings.HasSuffix(rt.Path, "s")) {
 						want = http.StatusNotFound
 					}
 					if a.status != want {
 						t.Errorf("%s %s under a %s: %d %s", rt.Method, rt.Path, outcome, a.status, a.body)
+					}
+					for _, named := range []string{con, ctr, h.web, "the-key-of-alice", "the-api-key-of-alice", "wiki", subject("alice")} {
+						if strings.Contains(string(a.body), named) {
+							t.Errorf("%s %s under a %s names %q: %s", rt.Method, rt.Path, outcome, named, a.body)
+						}
 					}
 					if after := state(t, h.store, con); after != before {
 						t.Errorf("%s %s under a %s changed the store: %s to %s", rt.Method, rt.Path, outcome, before, after)

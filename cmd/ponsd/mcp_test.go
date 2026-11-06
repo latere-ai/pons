@@ -487,9 +487,13 @@ func TestEveryCallIsRecorded(t *testing.T) {
 		t.Fatal("an argument or a result is kept")
 	}
 	// An authorizer that does not answer is a 503 of Pons's own: no record.
+	served := len(upstreamOf(t).mcp.Requests())
 	az.Fail(http.StatusInternalServerError)
 	if a := s.callTool("alice", con, "delete_notebook", nil); a.status != http.StatusServiceUnavailable {
 		t.Fatalf("an outage: %d %s", a.status, a.body)
+	}
+	if n := len(upstreamOf(t).mcp.Requests()); n != served {
+		t.Fatalf("an outage let %d requests through to the connector", n-served)
 	}
 	if got := s.settled(t, con, len(want)); len(got) != len(want) {
 		t.Fatalf("a 503 of Pons's own left a record: %+v", got[len(got)-1])

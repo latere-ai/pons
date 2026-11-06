@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -159,5 +160,40 @@ func TestARecordFailureNeverFailsTheCall(t *testing.T) {
 	logged := r.logs.String()
 	if !strings.Contains(logged, "a call record was not written") || !strings.Contains(logged, c.ID) || strings.Contains(logged, "never logged") {
 		t.Fatalf("the warning: %s", logged)
+	}
+}
+
+// A denied call is recorded once a minute for a subject and connection: one
+// inside the minute leaves none, and the first after it leaves a second.
+func TestADeniedCallIsRecordedAgainAfterAMinute(t *testing.T) {
+	r := newRig(t, false)
+	c := r.keyed()
+	var offset atomic.Int64
+	base := time.Now()
+	r.c.Now = func() time.Time { return base.Add(time.Duration(offset.Load())) }
+	r.az.set(authorizer.Limits{ReadOnly: true})
+	deny := func(subject string) {
+		t.Helper()
+		if a := r.send(http.MethodDelete, address(c, "http")+"/repos/acme/app", subject, nil); a.status != http.StatusForbidden && a.status != http.StatusNotFound {
+			t.Fatalf("a denied call: %d %s", a.status, a.body)
+		}
+	}
+	steps := []struct {
+		after time.Duration
+		by    string
+		want  int
+	}{
+		{0, "alice", 1},
+		{deniedEvery - time.Second, "alice", 1},
+		{deniedEvery - time.Second, "bob", 2},
+		{deniedEvery, "alice", 3},
+		{deniedEvery + time.Second, "alice", 3},
+	}
+	for i, st := range steps {
+		offset.Store(int64(st.after))
+		deny(st.by)
+		if n := len(r.calls(c)); n != st.want {
+			t.Fatalf("step %d (%s at +%s): %d records, want %d", i, st.by, st.after, n, st.want)
+		}
 	}
 }

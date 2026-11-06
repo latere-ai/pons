@@ -483,9 +483,13 @@ func TestForwardedRequestsAreRecorded(t *testing.T) {
 	// A request that names no connection, and a failure of Pons's own,
 	// leave none.
 	r.send(http.MethodGet, "/v1/connections/con_nothing/http/user", "alice", nil)
+	served := len(r.api.Requests())
 	r.az.out(true)
 	if a := r.send(http.MethodGet, address(c, "http")+"/user", "alice", nil); a.status != http.StatusServiceUnavailable {
 		t.Fatalf("an outage: %d", a.status)
+	}
+	if n := len(r.api.Requests()); n != served {
+		t.Fatalf("an outage let %d requests through to the service", n-served)
 	}
 	r.az.out(false)
 	if n := len(r.calls(c)); n != 5 {
