@@ -548,7 +548,7 @@ type toolView struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	Effect      string `json:"effect"`
-	Hidden      bool   `json:"hidden,omitempty"`
+	Hidden      bool   `json:"hidden,omitzero"`
 }
 
 // listTools is GET /connections/{id}/tools: the tools the connection's

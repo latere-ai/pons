@@ -4,10 +4,12 @@
 package mcp
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"testing"
+
+	"latere.ai/x/pons/internal/version"
 )
 
 // A mirrored value is itself, or its base64 form decoded; a base64 form that
@@ -193,5 +195,41 @@ func TestAListOfTools(t *testing.T) {
 		if _, _, err := ToolsOf("application/json", []byte(body)); err == nil {
 			t.Errorf("%s read as a list", body)
 		}
+	}
+}
+
+// The probe's request is the same bytes every time, members in key order,
+// so a server that caches by content sees one request.
+func TestTheProbesRequestBytes(t *testing.T) {
+	req, err := ListToolsAfter(t.Context(), "https://mcp.example.com/mcp", "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"id":1,"jsonrpc":"2.0","method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/clientCapabilities":{},` +
+		`"io.modelcontextprotocol/clientInfo":{"name":"pons","version":"` + version.Version + `"},` +
+		`"io.modelcontextprotocol/protocolVersion":"` + Revision + `"},"cursor":"c1"}}`
+	if string(got) != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
+}
+
+// What a server answers is read as the lenient servers write it: a
+// repeated member takes its last value, a member name in another letter
+// case is the member, and bytes that are no UTF-8 do not refuse the answer.
+func TestAnswersOfServersAreReadLeniently(t *testing.T) {
+	body := []byte("{\"JSONRPC\":\"2.0\",\"Result\":{\"tools\":[{\"Name\":\"a\",\"description\":\"x\xff\"}],\"nextCursor\":\"p1\",\"nextCursor\":\"p2\"}}")
+	tools, next, err := ToolsOf("application/json", body)
+	if err != nil || len(tools) != 1 || tools[0].Name != "a" || next != "p2" {
+		t.Fatalf("%+v %q %v", tools, next, err)
+	}
+	if v := Negotiated([]byte(`{"result":{"protocolVersion":"x","ProtocolVersion":"2025-11-25"}}`)); v != "2025-11-25" {
+		t.Errorf("negotiated %q", v)
+	}
+	if !ModernError([]byte(`{"jsonrpc":"2.0","Error":{"Code":-32020},"error":{"code":-32021}}`)) {
+		t.Error("a repeated error member")
 	}
 }

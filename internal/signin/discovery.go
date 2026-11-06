@@ -5,7 +5,7 @@ package signin
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/url"
@@ -17,6 +17,7 @@ import (
 	"latere.ai/x/pons/internal/apierr"
 	"latere.ai/x/pons/internal/dial"
 	"latere.ai/x/pons/internal/mcp"
+	"latere.ai/x/pons/internal/wire"
 )
 
 // Plan is what one sign-in uses, found before the person is sent away and
@@ -183,7 +184,7 @@ func (s *Signin) resourceAt(ctx context.Context, conn Connector, challenge strin
 			continue
 		}
 		var doc resourceDocument
-		if err := json.Unmarshal(answer.Body, &doc); err != nil {
+		if err := json.Unmarshal(answer.Body, &doc, wire.Foreign); err != nil {
 			return resourceDocument{}, nil, unsupported("resource_metadata")
 		}
 		if !sameResource(doc.Resource, u) {
@@ -300,7 +301,7 @@ func (s *Signin) metadata(ctx context.Context, conn Connector, issuer string) (m
 			continue
 		}
 		var md metadataDocument
-		if err := json.Unmarshal(answer.Body, &md); err != nil {
+		if err := json.Unmarshal(answer.Body, &md, wire.Foreign); err != nil {
 			return metadataDocument{}, unsupported("metadata")
 		}
 		switch {

@@ -14,7 +14,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/tools v0.52.0
 	latere.ai/x/ci-gate v0.65.0
-	latere.ai/x/pkg v0.111.0
+	latere.ai/x/pkg v0.113.0
 )
 
 require (

@@ -8,7 +8,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"slices"
@@ -20,6 +21,7 @@ import (
 	"latere.ai/x/pons/catalog"
 	"latere.ai/x/pons/internal/store"
 	"latere.ai/x/pons/internal/version"
+	"latere.ai/x/pons/internal/wire"
 	"latere.ai/x/pons/test/stubs"
 )
 
@@ -102,9 +104,9 @@ func TestAnswerPassesUnchanged(t *testing.T) {
 		`"_meta":{"io.modelcontextprotocol/protocolVersion":"` + stubs.MCPRevision + `"}}}`
 	_, headers := rpc("tools/call", map[string]any{"name": "search_notes"})
 	a := r.send(http.MethodPost, address(c, "mcp"), "alice", strings.NewReader(body), headers...)
-	want, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage("7"), "result": map[string]any{
+	want, err := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": jsontext.Value("7"), "result": map[string]any{
 		"content": []map[string]any{{"type": "text", "text": `search_notes {"q":"kittens", "n": 1e999}`}},
-	}})
+	}}, json.Deterministic(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,13 +322,13 @@ func FuzzParse(f *testing.F) {
 		if why != "" {
 			return
 		}
-		var top map[string]json.RawMessage
-		if err := json.Unmarshal(body, &top); err != nil {
+		var top map[string]jsontext.Value
+		if err := json.Unmarshal(body, &top, wire.Foreign); err != nil {
 			t.Fatalf("accepted a body that is not one object: %q", body)
 		}
 		var method string
 		if raw, ok := top["method"]; ok {
-			if err := json.Unmarshal(raw, &method); err != nil {
+			if err := json.Unmarshal(raw, &method, wire.Foreign); err != nil {
 				t.Fatalf("accepted a method that is no string: %q", body)
 			}
 		}
@@ -339,9 +341,9 @@ func FuzzParse(f *testing.F) {
 				Name string `json:"name"`
 			} `json:"params"`
 		}
-		// encoding/json matches keys without regard to case, as many a
+		// A decoder that matches keys without regard to case, as many a
 		// connector does: it reads the same call.
-		if json.Unmarshal(body, &loose) == nil && (loose.Method != m.method || (m.method == MethodToolsCall && loose.Params.Name != m.tool)) {
+		if json.Unmarshal(body, &loose, wire.Foreign) == nil && (loose.Method != m.method || (m.method == MethodToolsCall && loose.Params.Name != m.tool)) {
 			t.Fatalf("read %+v, a case-blind connector reads %+v: %q", m, loose, body)
 		}
 	})
@@ -705,5 +707,32 @@ func TestASessionsRefusalSaysWhy(t *testing.T) {
 	nothing := r.send(http.MethodPost, "/v1/connections/con_nothing/mcp", "alice", strings.NewReader(body), headers...)
 	if a := r.send(http.MethodPost, address(c, "mcp"), "alice", strings.NewReader(body), headers...); a.status != http.StatusNotFound || !bytes.Equal(a.body, nothing.body) {
 		t.Fatalf("another reason: %d %s", a.status, a.body)
+	}
+}
+
+// The parse refuses a repeated method, params or name by the reason that
+// names it, and reads past a repeated or invalidly encoded member it has no
+// use for, as a connector that takes the last member and any bytes does.
+func TestParseKeysAndBytes(t *testing.T) {
+	for _, tc := range []struct {
+		body, why, method, tool string
+	}{
+		{`{"method":"a","method":"b"}`, whyDuplicate, "", ""},
+		{`{"method":"tools/call","params":{"name":"a"},"params":{"name":"b"}}`, whyDuplicate, "", ""},
+		{`{"method":"tools/call","params":{"name":"a","name":"b"}}`, whyDuplicate, "", ""},
+		{`{"method":"tools/call","params":{"NAME":"a"}}`, whyKeyCase, "", ""},
+		{`{"METHOD":"tools/call"}`, whyKeyCase, "", ""},
+		{`{"id":1,"id":2,"method":"tools/list"}`, "", "tools/list", ""},
+		{"{\"pad\":\"\xff\",\"method\":\"tools/list\"}", "", "tools/list", ""},
+		{"{\"method\":\"tools/call\",\"params\":{\"name\":\"a\xff\",\"x\":1,\"x\":2}}", "", "tools/call", "a\ufffd"},
+		{`{"method":"tools/list"} {"method":"x"}`, whyNotAnObject, "", ""},
+		{`{"method":"tools/list"`, whyNotAnObject, "", ""},
+		{`{"method":1}`, whyMethod, "", ""},
+		{`{"method":"tools/call","params":{"name":""}}`, whyToolName, "", ""},
+	} {
+		m, why := parseMessage([]byte(tc.body))
+		if why != tc.why || m.method != tc.method || m.tool != tc.tool {
+			t.Errorf("%q: read %+v, refused for %q; want %q %q refused for %q", tc.body, m, why, tc.method, tc.tool, tc.why)
+		}
 	}
 }

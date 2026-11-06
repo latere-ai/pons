@@ -13,12 +13,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"strings"
 
 	"latere.ai/x/pons/internal/version"
+	"latere.ai/x/pons/internal/wire"
 )
 
 // The revisions Pons speaks when it sends a request of its own: Revision
@@ -79,7 +80,7 @@ func ModernError(body []byte) bool {
 			Code *int `json:"code"`
 		} `json:"error"`
 	}
-	if json.Unmarshal(body, &r) != nil || r.JSONRPC != "2.0" || r.Error == nil || r.Error.Code == nil {
+	if json.Unmarshal(body, &r, wire.Foreign) != nil || r.JSONRPC != "2.0" || r.Error == nil || r.Error.Code == nil {
 		return false
 	}
 	return *r.Error.Code >= minModernCode && *r.Error.Code <= maxModernCode
@@ -179,7 +180,7 @@ func Negotiated(body []byte) string {
 			ProtocolVersion string `json:"protocolVersion"`
 		} `json:"result"`
 	}
-	if json.Unmarshal(body, &r) != nil || r.Result.ProtocolVersion == "" {
+	if json.Unmarshal(body, &r, wire.Foreign) != nil || r.Result.ProtocolVersion == "" {
 		return Legacy
 	}
 	return r.Result.ProtocolVersion
@@ -211,7 +212,7 @@ func ToolsOf(contentType string, body []byte) ([]Tool, string, error) {
 				NextCursor string `json:"nextCursor"`
 			} `json:"result"`
 		}
-		if json.Unmarshal(m, &r) == nil && r.Result != nil {
+		if json.Unmarshal(m, &r, wire.Foreign) == nil && r.Result != nil {
 			return r.Result.Tools, r.Result.NextCursor, nil
 		}
 	}
@@ -221,7 +222,7 @@ func ToolsOf(contentType string, body []byte) ([]Tool, string, error) {
 // post is a POST of one JSON-RPC message with the transport's content
 // headers.
 func post(ctx context.Context, url string, body map[string]any) (*http.Request, error) {
-	raw, err := json.Marshal(body)
+	raw, err := json.Marshal(body, wire.Outbound)
 	if err != nil {
 		return nil, err
 	}

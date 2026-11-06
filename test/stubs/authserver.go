@@ -7,7 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"latere.ai/x/pons/internal/wire"
 )
 
 // IssMode is how the answer at the redirect address carries iss (RFC 9207).
@@ -519,7 +521,7 @@ func (a *AuthServer) revoke(w http.ResponseWriter, sw AuthSwitches, form url.Val
 // redirect addresses it named, and a secret when the switch issues one.
 func (a *AuthServer) register(w http.ResponseWriter, sw AuthSwitches, body []byte) {
 	var req map[string]any
-	if err := json.Unmarshal(body, &req); err != nil {
+	if err := json.Unmarshal(body, &req, wire.Foreign); err != nil {
 		writeJSONStatus(w, http.StatusBadRequest, map[string]any{"error": "invalid_client_metadata"})
 		return
 	}

@@ -14,7 +14,7 @@ package store
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"time"
 )
@@ -122,12 +122,12 @@ type Connector struct {
 	Hosts       []string
 	// Auth and Tools are the members of the connector's auth and tools,
 	// as the catalog package encodes them.
-	Auth  json.RawMessage
-	Tools json.RawMessage
+	Auth  jsontext.Value
+	Tools jsontext.Value
 	// SignIn is what the add found of how the server signs people in, as
 	// internal/signin encodes it, and empty for a server that signs nobody
 	// in.
-	SignIn json.RawMessage
+	SignIn jsontext.Value
 	// Vouched is the authorizer's word, at the add, that someone the
 	// installation trusts looked at the server. Disabled is a connector
 	// its owner turned off: listed, and connected or called by nobody.
@@ -253,8 +253,8 @@ const (
 
 // SealedCredential is a connection's credential as it is stored.
 type SealedCredential struct {
-	Kind   string          // oauth, token or client_credentials
-	Meta   json.RawMessage // credentials.meta, in the clear
+	Kind   string         // oauth, token or client_credentials
+	Meta   jsontext.Value // credentials.meta, in the clear
 	Sealed Sealed
 }
 

@@ -5,9 +5,11 @@ package authorizer
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 
@@ -28,16 +30,16 @@ type Limits struct {
 	// connector is added for, which lets the add carry a client registered
 	// at that server. Read from the allow of an add, and stored with the
 	// connector; Pons never sets it itself.
-	Vouched bool `json:"vouched,omitempty"`
+	Vouched bool `json:"vouched,omitzero"`
 	// MaxConnections is how many connections one owner may hold; 0 leaves
 	// the installation's cap, and so does a figure above it. Read from the
 	// allow of a connect.
-	MaxConnections int `json:"max_connections,omitempty"`
+	MaxConnections int `json:"max_connections,omitzero"`
 	// Connectors are globs of the connector references the caller may
 	// connect; empty is all. Read from the allow of a connect.
 	Connectors []string `json:"connectors,omitempty"`
 	// ReadOnly holds a use to tools whose effect is read.
-	ReadOnly bool `json:"read_only,omitempty"`
+	ReadOnly bool `json:"read_only,omitzero"`
 	// Tools are globs of the tools a use may call; empty is all.
 	Tools []string `json:"tools,omitempty"`
 	// Refs are globs of the full ref names a push may update; empty is
@@ -52,7 +54,7 @@ type Limits struct {
 	Requests []string `json:"requests,omitempty"`
 	// CallsPerMinute caps the requests of one subject to one connection;
 	// 0 is no cap.
-	CallsPerMinute int `json:"calls_per_minute,omitempty"`
+	CallsPerMinute int `json:"calls_per_minute,omitzero"`
 }
 
 // ErrUnreadableLimits is an allow whose limits cannot be held: an object
@@ -70,14 +72,14 @@ func DecodeLimits(d authz.Decision) (Limits, error) {
 		return l, nil
 	}
 	// The keys are read first and compared by their exact spelling: the
-	// decoder below matches a member's name without regard to case, and a
-	// key spelled another way is one this version does not know.
-	var members map[string]json.RawMessage
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	if err := dec.Decode(&members); err != nil {
+	// decoder below ignores a member it has no field for, and a key this
+	// version does not know is one the allow cannot be held to.
+	var members map[string]jsontext.Value
+	dec := jsontext.NewDecoder(bytes.NewReader(raw))
+	if err := json.UnmarshalDecode(dec, &members); err != nil {
 		return Limits{}, fmt.Errorf("%w: %w", ErrUnreadableLimits, err)
 	}
-	if dec.More() {
+	if _, err := dec.ReadValue(); !errors.Is(err, io.EOF) {
 		return Limits{}, fmt.Errorf("%w: more than one object", ErrUnreadableLimits)
 	}
 	for key := range members {

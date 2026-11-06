@@ -5,7 +5,7 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"strings"
 	"time"
@@ -34,15 +34,15 @@ type connectorView struct {
 	Hosts       []string  `json:"hosts"`
 	Auth        authView  `json:"auth"`
 	Tools       marksView `json:"tools"`
-	Disabled    *bool     `json:"disabled,omitempty"`
-	Vouched     *bool     `json:"vouched,omitempty"`
-	Connections *int64    `json:"connections,omitempty"`
+	Disabled    *bool     `json:"disabled,omitzero"`
+	Vouched     *bool     `json:"vouched,omitzero"`
+	Connections *int64    `json:"connections,omitzero"`
 }
 
 type authView struct {
 	Type   string          `json:"type"`
 	Scopes []string        `json:"scopes,omitempty"`
-	Inject *catalog.Inject `json:"inject,omitempty"`
+	Inject *catalog.Inject `json:"inject,omitzero"`
 	Hint   string          `json:"hint,omitempty"`
 	// Client is how Pons identifies itself at an added connector's
 	// authorization server: own, document or registered.
@@ -285,10 +285,10 @@ type callView struct {
 	DurationMS int64     `json:"duration_ms"`
 	Method     string    `json:"method"`
 	Tool       string    `json:"tool,omitempty"`
-	Refs       int       `json:"refs,omitempty"`
+	Refs       int       `json:"refs,omitzero"`
 	Effect     string    `json:"effect,omitempty"`
 	Outcome    string    `json:"outcome"`
-	Status     int       `json:"status,omitempty"`
+	Status     int       `json:"status,omitzero"`
 	BytesIn    int64     `json:"bytes_in"`
 	BytesOut   int64     `json:"bytes_out"`
 }

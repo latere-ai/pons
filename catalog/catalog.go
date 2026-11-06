@@ -98,8 +98,8 @@ type Connector struct {
 	Links       Links    `yaml:"links,omitempty" json:"links"`
 	// Git and HTTP are the members of a connector of kind http
 	// (specs/014-http-forwarding.md).
-	Git  *Git  `yaml:"git,omitempty" json:"git,omitempty"`
-	HTTP *HTTP `yaml:"http,omitempty" json:"http,omitempty"`
+	Git  *Git  `yaml:"git,omitempty" json:"git,omitzero"`
+	HTTP *HTTP `yaml:"http,omitempty" json:"http,omitzero"`
 }
 
 // The schemes a credential takes on a git request.
@@ -112,7 +112,7 @@ const (
 // how the credential goes on a git request.
 type Git struct {
 	URL    string     `yaml:"url" json:"url"`
-	Inject *GitInject `yaml:"inject,omitempty" json:"inject,omitempty"`
+	Inject *GitInject `yaml:"inject,omitempty" json:"inject,omitzero"`
 }
 
 // GitInject is the credential's place on a git request: Authorization:
@@ -141,9 +141,9 @@ type Auth struct {
 	Issuer       string   `yaml:"issuer,omitempty" json:"issuer,omitempty"`
 	AuthorizeURL string   `yaml:"authorize_url,omitempty" json:"authorize_url,omitempty"`
 	RevokeURL    string   `yaml:"revoke_url,omitempty" json:"revoke_url,omitempty"`
-	Client       *Client  `yaml:"client,omitempty" json:"client,omitempty"`
-	Resource     *bool    `yaml:"resource,omitempty" json:"resource,omitempty"`
-	Account      *Account `yaml:"account,omitempty" json:"account,omitempty"`
+	Client       *Client  `yaml:"client,omitempty" json:"client,omitzero"`
+	Resource     *bool    `yaml:"resource,omitempty" json:"resource,omitzero"`
+	Account      *Account `yaml:"account,omitempty" json:"account,omitzero"`
 
 	// oauth and client_credentials
 	TokenURL string   `yaml:"token_url,omitempty" json:"token_url,omitempty"`
@@ -153,14 +153,14 @@ type Auth struct {
 	Audience string `yaml:"audience,omitempty" json:"audience,omitempty"`
 
 	// token
-	Inject *Inject `yaml:"inject,omitempty" json:"inject,omitempty"`
+	Inject *Inject `yaml:"inject,omitempty" json:"inject,omitzero"`
 	Hint   string  `yaml:"hint,omitempty" json:"hint,omitempty"`
 }
 
 // Client is a client the operator registered with the service.
 type Client struct {
 	ID     string     `yaml:"id" json:"id"`
-	Secret *SecretRef `yaml:"secret,omitempty" json:"secret,omitempty"`
+	Secret *SecretRef `yaml:"secret,omitempty" json:"secret,omitzero"`
 }
 
 // Inject is where a key goes in a forwarded request: a header, valued by a

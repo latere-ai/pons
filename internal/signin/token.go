@@ -6,7 +6,7 @@ package signin
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"maps"
@@ -17,6 +17,7 @@ import (
 
 	"latere.ai/x/pons/catalog"
 	"latere.ai/x/pons/internal/dial"
+	"latere.ai/x/pons/internal/wire"
 )
 
 // maxTokenAnswer bounds what a token endpoint's answer may hold.
@@ -162,7 +163,7 @@ func (s *Signin) token(ctx context.Context, endpoint string, ports []int, form u
 // not JSON.
 func members(raw []byte) (map[string]any, error) {
 	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err == nil {
+	if err := json.Unmarshal(raw, &m, wire.Foreign); err == nil {
 		return m, nil
 	}
 	values, err := url.ParseQuery(string(raw))

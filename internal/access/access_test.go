@@ -6,7 +6,7 @@ package access_test
 import (
 	"bufio"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net"
@@ -182,7 +182,7 @@ func asJSON(t *testing.T, fields map[string]any) string {
 	if len(fields) == 0 {
 		return "{}"
 	}
-	raw, err := json.Marshal(fields)
+	raw, err := json.Marshal(fields, json.Deterministic(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -355,7 +355,7 @@ func TestOneRetryOnAConnectionFailure(t *testing.T) {
 	var served atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		served.Add(1)
-		if err := json.NewEncoder(w).Encode(map[string]any{"allow": true}); err != nil {
+		if err := json.MarshalWrite(w, map[string]any{"allow": true}); err != nil {
 			t.Error(err)
 		}
 	}))
@@ -610,7 +610,7 @@ func TestOwnerPolicyNarrowsByTheGrants(t *testing.T) {
 			return
 		}
 		var req authz.Request
-		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil || !authorizer.Known(req.Action) {
+		if err := json.UnmarshalRead(io.LimitReader(r.Body, 1<<20), &req); err != nil || !authorizer.Known(req.Action) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -626,7 +626,7 @@ func TestOwnerPolicyNarrowsByTheGrants(t *testing.T) {
 		if d.Filter != nil {
 			body["filter"] = d.Filter
 		}
-		if err := json.NewEncoder(w).Encode(body); err != nil {
+		if err := json.MarshalWrite(w, body); err != nil {
 			t.Error(err)
 		}
 	}))

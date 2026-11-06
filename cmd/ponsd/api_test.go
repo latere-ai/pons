@@ -227,20 +227,21 @@ func TestARenameNamesTheNewName(t *testing.T) {
 	iss := stubs.NewIssuer(t)
 	alice := iss.Subject("alice")
 	// An authorizer that decides whose the rename is first, and then holds
-	// the name to a rule of its own: no name starts with x-.
+	// the name to a rule of its own: no name starts with x-. Each answer is
+	// the decision's wire form, the body a core writes.
 	rename := func(req authz.Request) any {
 		switch {
 		case req.Subject != alice:
-			return authz.Decision{Allow: false, Reason: "not_owner"}
+			return map[string]any{"allow": false, "reason": "not_owner"}
 		case strings.HasPrefix(req.Resource.String(authorizer.FieldNewName), "x-"):
-			return authz.Decision{Allow: false, Reason: authorizer.ReasonNameUnusable}
+			return map[string]any{"allow": false, "reason": authorizer.ReasonNameUnusable}
 		}
-		return authz.Decision{Allow: true}
+		return map[string]any{"allow": true}
 	}
 	// One that answers the same reason to a disconnect, where it says
 	// nothing about a name.
 	disconnect := func(authz.Request) any {
-		return authz.Decision{Allow: false, Reason: authorizer.ReasonNameUnusable}
+		return map[string]any{"allow": false, "reason": authorizer.ReasonNameUnusable}
 	}
 	az, over := withAuthorizer(t, nil,
 		stub.WithAction(authorizer.ActionConnectionUpdate, rename),

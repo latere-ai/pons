@@ -5,7 +5,7 @@ package signin
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -16,6 +16,7 @@ import (
 	"latere.ai/x/pons/internal/apierr"
 	"latere.ai/x/pons/internal/dial"
 	"latere.ai/x/pons/internal/store"
+	"latere.ai/x/pons/internal/wire"
 )
 
 // Disconnect removes a connection (specs/007-sign-in.md): it opens the
@@ -218,7 +219,7 @@ func (s *Signin) account(ctx context.Context, conn Connector, token string) stri
 		err = cerr
 	}
 	var doc map[string]any
-	if err != nil || resp.StatusCode != http.StatusOK || json.Unmarshal(raw, &doc) != nil {
+	if err != nil || resp.StatusCode != http.StatusOK || json.Unmarshal(raw, &doc, wire.Foreign) != nil {
 		s.log().InfoContext(ctx, "the account was not read", "status", resp.StatusCode)
 		return ""
 	}

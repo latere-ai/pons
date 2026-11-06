@@ -6,7 +6,7 @@ package signin
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net"
@@ -16,6 +16,7 @@ import (
 	"latere.ai/x/pons/internal/apierr"
 	"latere.ai/x/pons/internal/dial"
 	"latere.ai/x/pons/internal/store"
+	"latere.ai/x/pons/internal/wire"
 )
 
 // Document is a client metadata document: how Pons names itself to an
@@ -71,7 +72,7 @@ func (s *Signin) register(ctx context.Context, conn Connector, md metadataDocume
 			doc.ApplicationType = "native"
 		}
 	}
-	body, err := json.Marshal(doc)
+	body, err := json.Marshal(doc, wire.Outbound)
 	if err != nil {
 		return "", apierr.Internal(err)
 	}
@@ -96,7 +97,7 @@ func (s *Signin) register(ctx context.Context, conn Connector, md metadataDocume
 		ClientID     string `json:"client_id"`
 		ClientSecret string `json:"client_secret"`
 	}
-	if resp.StatusCode < 200 || resp.StatusCode > 299 || json.Unmarshal(raw, &answer) != nil || answer.ClientID == "" {
+	if resp.StatusCode < 200 || resp.StatusCode > 299 || json.Unmarshal(raw, &answer, wire.Foreign) != nil || answer.ClientID == "" {
 		return "", unsupported("registration")
 	}
 	row := store.Registration{Issuer: md.Issuer, RedirectURI: redirect, ClientID: answer.ClientID, RegisteredAt: s.now()}

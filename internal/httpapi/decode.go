@@ -5,7 +5,8 @@ package httpapi
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
@@ -33,12 +34,17 @@ func decode(r *http.Request, v any) error {
 	if len(body) > maxBodyBytes {
 		return apierr.Fail(apierr.CodeRequestTooLarge, "")
 	}
-	dec := json.NewDecoder(bytes.NewReader(body))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(v); err != nil {
+	dec := jsontext.NewDecoder(bytes.NewReader(body))
+	// The value is read whole before it is decoded, so a body that is no
+	// JSON is told from one that is JSON of another shape.
+	value, err := dec.ReadValue()
+	if err != nil {
 		return decodeError(err)
 	}
-	if dec.More() {
+	if err := json.Unmarshal(value, v, json.RejectUnknownMembers(true)); err != nil {
+		return decodeError(err)
+	}
+	if _, err := dec.ReadValue(); !errors.Is(err, io.EOF) {
 		return apierr.Fail(apierr.CodeInvalidRequest, "trailing_data")
 	}
 	return nil
@@ -46,15 +52,28 @@ func decode(r *http.Request, v any) error {
 
 // decodeError names the member a body's error is about.
 func decodeError(err error) error {
-	var typeErr *json.UnmarshalTypeError
+	var semantic *json.SemanticError
 	switch {
-	case strings.HasPrefix(err.Error(), "json: unknown field "):
-		name := strings.Trim(strings.TrimPrefix(err.Error(), "json: unknown field "), `"`)
-		return apierr.OnField(apierr.CodeUnknownField, name, "")
-	case errors.As(err, &typeErr):
-		return apierr.OnField(apierr.CodeInvalidField, typeErr.Field, "wrong_type")
+	case errors.Is(err, json.ErrUnknownName) && errors.As(err, &semantic):
+		names := memberPath(semantic.JSONPointer)
+		return apierr.OnField(apierr.CodeUnknownField, names[len(names)-1], "")
+	case errors.As(err, &semantic):
+		return apierr.OnField(apierr.CodeInvalidField, strings.Join(memberPath(semantic.JSONPointer), "."), "wrong_type")
 	}
 	return apierr.Fail(apierr.CodeInvalidRequest, "not_json")
+}
+
+// memberPath is the names a JSON pointer walks, "" for the body itself. It
+// is never empty, so the last name of a pointer to a member is that member.
+func memberPath(p jsontext.Pointer) []string {
+	var names []string
+	for name := range p.Tokens() {
+		names = append(names, name)
+	}
+	if len(names) == 0 {
+		return []string{""}
+	}
+	return names
 }
 
 // page reads limit and cursor: 50 by default, 200 at most, and a cursor

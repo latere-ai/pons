@@ -4,7 +4,7 @@
 package httpapi
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 
@@ -14,6 +14,7 @@ import (
 	"latere.ai/x/pons/internal/apierr"
 	"latere.ai/x/pons/internal/signin"
 	"latere.ai/x/pons/internal/store"
+	"latere.ai/x/pons/internal/wire"
 )
 
 // startedView is the answer to a connect or a reconnect of a connector
@@ -245,7 +246,7 @@ func (s *Server) clientDocument(w http.ResponseWriter, r *http.Request) {
 		}
 		redirect = s.Signin.RedirectOf(found)
 	}
-	body, err := json.Marshal(s.Signin.ClientDocument(id, title, redirect))
+	body, err := json.Marshal(s.Signin.ClientDocument(id, title, redirect), wire.Outbound)
 	if err != nil {
 		s.answer(w, r, apierr.Internal(err))
 		return

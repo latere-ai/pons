@@ -5,7 +5,8 @@ package postgres
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"latere.ai/x/pons/internal/store"
+	"latere.ai/x/pons/internal/wire"
 )
 
 // jsonText is a value as the text of a json column. A nil list is an empty
@@ -23,16 +25,16 @@ func jsonText(v any, empty string) (string, error) {
 		if x == nil {
 			return empty, nil
 		}
-	case json.RawMessage:
+	case jsontext.Value:
 		if len(x) == 0 {
 			return empty, nil
 		}
-		if !json.Valid(x) {
+		if !x.IsValid() {
 			return "", errors.New("store: a json column holds a value that is not JSON")
 		}
 		return string(x), nil
 	}
-	b, err := json.Marshal(v)
+	b, err := json.Marshal(v, wire.Stored)
 	if err != nil {
 		return "", fmt.Errorf("store: encoding a json column: %w", err)
 	}
@@ -52,11 +54,11 @@ func list(text string) ([]string, error) {
 }
 
 // raw reads a json document, nil for the empty one.
-func raw(text string) json.RawMessage {
+func raw(text string) jsontext.Value {
 	if text == "" || text == "{}" {
 		return nil
 	}
-	return json.RawMessage(text)
+	return jsontext.Value(text)
 }
 
 // --- connectors -----------------------------------------------------------

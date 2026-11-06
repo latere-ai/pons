@@ -4,7 +4,7 @@
 package httpapi
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/url"
@@ -21,6 +21,7 @@ import (
 	"latere.ai/x/pons/internal/id"
 	"latere.ai/x/pons/internal/signin"
 	"latere.ai/x/pons/internal/store"
+	"latere.ai/x/pons/internal/wire"
 )
 
 // routeAddConnector names the add in an idempotency key's row.
@@ -292,14 +293,14 @@ func (s *Server) addConnector(w http.ResponseWriter, r *http.Request, c access.C
 		}
 	}
 	if conn.Auth.Type == catalog.AuthOAuth {
-		if row.SignIn, err = json.Marshal(way.Found); err != nil {
+		if row.SignIn, err = json.Marshal(way.Found, wire.Stored); err != nil {
 			return apierr.Internal(err)
 		}
 	}
-	if row.Auth, err = json.Marshal(conn.Auth); err != nil {
+	if row.Auth, err = json.Marshal(conn.Auth, wire.Stored); err != nil {
 		return apierr.Internal(err)
 	}
-	if row.Tools, err = json.Marshal(conn.Tools); err != nil {
+	if row.Tools, err = json.Marshal(conn.Tools, wire.Stored); err != nil {
 		return apierr.Internal(err)
 	}
 	row.Name, row.Title, row.Description, row.Icon = conn.Name, conn.Title, conn.Description, conn.Icon

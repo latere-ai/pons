@@ -4,7 +4,7 @@
 package stubs
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -339,7 +339,7 @@ func (a *API) upload(w http.ResponseWriter, r *http.Request) {
 
 // writeStubJSON answers a JSON value, or 500 for one that does not encode.
 func writeStubJSON(w http.ResponseWriter, status int, v any) {
-	body, err := json.Marshal(v)
+	body, err := json.Marshal(v, json.Deterministic(true))
 	if err != nil {
 		http.Error(w, "the stub's answer does not encode: "+err.Error(), http.StatusInternalServerError)
 		return

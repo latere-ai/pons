@@ -41,7 +41,7 @@ const (
 type Found struct {
 	Issuer        string `json:"issuer,omitempty"`
 	TokenEndpoint string `json:"token_endpoint,omitempty"`
-	Iss           bool   `json:"iss,omitempty"`
+	Iss           bool   `json:"iss,omitzero"`
 	Client        string `json:"client,omitempty"`
 }
 

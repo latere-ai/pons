@@ -11,7 +11,8 @@ package storetest
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"reflect"
@@ -175,8 +176,8 @@ func ok(t testing.TB, err error) {
 
 // sameJSON reports whether two documents mean the same, the empty one
 // equal to an empty object.
-func sameJSON(a, b json.RawMessage) bool {
-	norm := func(r json.RawMessage) any {
+func sameJSON(a, b jsontext.Value) bool {
+	norm := func(r jsontext.Value) any {
 		if len(r) == 0 {
 			return map[string]any{}
 		}
@@ -211,8 +212,8 @@ func testConnectors(t *testing.T, e env) {
 	wiki := store.Connector{
 		ID: id.New(id.Connector), Owner: "alice", Name: "wiki", Title: "Team wiki", Description: "The wiki.",
 		Icon: "https://wiki.example.com/icon.svg", Kind: "mcp", URL: "https://wiki.example.com/mcp",
-		Hosts: []string{"wiki.example.com"}, Auth: json.RawMessage(`{"type":"token"}`),
-		Tools: json.RawMessage(`{"read_only":["get_*"]}`),
+		Hosts: []string{"wiki.example.com"}, Auth: jsontext.Value(`{"type":"token"}`),
+		Tools: jsontext.Value(`{"read_only":["get_*"]}`),
 	}
 	ok(t, cs.Create(ctx, wiki, 0))
 	got, err := cs.Get(ctx, wiki.ID)
@@ -230,7 +231,7 @@ func testConnectors(t *testing.T, e env) {
 	_, err = cs.Get(ctx, id.New(id.Connector))
 	is(t, err, store.ErrNotFound)
 	bad := wiki
-	bad.ID, bad.Name, bad.Auth = id.New(id.Connector), "bad", json.RawMessage(`{`)
+	bad.ID, bad.Name, bad.Auth = id.New(id.Connector), "bad", jsontext.Value(`{`)
 	if err := cs.Create(ctx, bad, 0); err == nil {
 		t.Fatal("a connector whose auth is not JSON was created")
 	}
@@ -282,8 +283,8 @@ func testConnectorEdits(t *testing.T, e env) {
 	ok(t, err)
 	wiki := store.Connector{
 		ID: "ctr_wiki", Owner: "org", Name: "wiki", Title: "Team wiki", Kind: "mcp", URL: "https://wiki.example.com/mcp",
-		Hosts: []string{"wiki.example.com"}, Auth: json.RawMessage(`{"type":"oauth"}`),
-		SignIn:  json.RawMessage(`{"issuer":"https://auth.example.com","client":"own"}`),
+		Hosts: []string{"wiki.example.com"}, Auth: jsontext.Value(`{"type":"oauth"}`),
+		SignIn:  jsontext.Value(`{"issuer":"https://auth.example.com","client":"own"}`),
 		Vouched: true, ClientSecret: secret,
 	}
 	ok(t, cs.Create(ctx, wiki, 0))
@@ -303,8 +304,8 @@ func testConnectorEdits(t *testing.T, e env) {
 	ok(t, err)
 	edit := wiki
 	edit.Title, edit.Description, edit.Icon = "Wiki", "The team's wiki.", "https://wiki.example.com/icon.svg"
-	edit.Auth, edit.Tools, edit.Disabled, edit.ClientSecret = json.RawMessage(`{"type":"oauth","scopes":["read"]}`), json.RawMessage(`{"hidden":["delete_*"]}`), true, rotated
-	edit.Owner, edit.Name, edit.URL, edit.Vouched, edit.SignIn = "mallory", "other", "https://other.example.com/mcp", false, json.RawMessage(`{}`)
+	edit.Auth, edit.Tools, edit.Disabled, edit.ClientSecret = jsontext.Value(`{"type":"oauth","scopes":["read"]}`), jsontext.Value(`{"hidden":["delete_*"]}`), true, rotated
+	edit.Owner, edit.Name, edit.URL, edit.Vouched, edit.SignIn = "mallory", "other", "https://other.example.com/mcp", false, jsontext.Value(`{}`)
 	ok(t, cs.Update(ctx, edit))
 	got, err = cs.Get(ctx, wiki.ID)
 	ok(t, err)
@@ -322,7 +323,7 @@ func testConnectorEdits(t *testing.T, e env) {
 	missing.ID = id.New(id.Connector)
 	is(t, cs.Update(ctx, missing), store.ErrNotFound)
 	bad := edit
-	bad.Tools = json.RawMessage(`{`)
+	bad.Tools = jsontext.Value(`{`)
 	if err := cs.Update(ctx, bad); err == nil {
 		t.Fatal("an edit whose tools are not JSON was written")
 	}
@@ -352,7 +353,7 @@ func testConnectorCap(t *testing.T, e env) {
 	add := func(owner, name string, max int) error {
 		return cs.Create(ctx, store.Connector{
 			ID: id.New(id.Connector), Owner: owner, Name: name, Title: name, Kind: "mcp",
-			URL: "https://" + name + ".example.com/mcp", Auth: json.RawMessage(`{"type":"none"}`),
+			URL: "https://" + name + ".example.com/mcp", Auth: jsontext.Value(`{"type":"none"}`),
 		}, max)
 	}
 	ok(t, add("alice", "a", 2))
@@ -612,7 +613,7 @@ func testCredentials(t *testing.T, e env) {
 	_, _, err = e.st.Credentials().Get(ctx, id.New(id.Connection))
 	is(t, err, store.ErrNotFound)
 	bad := cred
-	bad.Meta = json.RawMessage(`{`)
+	bad.Meta = jsontext.Value(`{`)
 	if _, err := e.st.Credentials().Put(ctx, c.ID, bad); err == nil {
 		t.Fatal("a credential whose meta is not JSON was written")
 	}
@@ -691,7 +692,7 @@ func testRefresh(t *testing.T, e env) {
 	is(t, cr.CompleteRefresh(ctx, missing, 1, next), store.ErrNotFound)
 	is(t, cr.ReleaseRefresh(ctx, missing), store.ErrNotFound)
 	bad := next
-	bad.Meta = json.RawMessage(`{`)
+	bad.Meta = jsontext.Value(`{`)
 	if err := cr.CompleteRefresh(ctx, c.ID, 3, bad); err == nil {
 		t.Fatal("a completion whose meta is not JSON was written")
 	}
@@ -1187,11 +1188,11 @@ func testRotation(t *testing.T, e env) {
 	ok(t, err)
 	ok(t, e.st.Connectors().Create(ctx, store.Connector{
 		ID: "ctr_vouched", Owner: "org", Name: "vouched", Title: "Vouched", Kind: "mcp", URL: "https://mcp.example.com/mcp",
-		Auth: json.RawMessage(`{"type":"oauth"}`), Vouched: true, ClientSecret: clientSecret,
+		Auth: jsontext.Value(`{"type":"oauth"}`), Vouched: true, ClientSecret: clientSecret,
 	}, 0))
 	ok(t, e.st.Connectors().Create(ctx, store.Connector{
 		ID: "ctr_plain", Owner: "org", Name: "plain", Title: "Plain", Kind: "mcp", URL: "https://mcp.example.com/mcp",
-		Auth: json.RawMessage(`{"type":"none"}`),
+		Auth: jsontext.Value(`{"type":"none"}`),
 	}, 0))
 
 	counts, err := store.Remaining(ctx, e.st, rotated)

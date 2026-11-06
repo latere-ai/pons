@@ -4,9 +4,12 @@
 package store
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"time"
+
+	"latere.ai/x/pons/internal/wire"
 )
 
 // MinSecretBytes is the shortest credential value accepted: a shorter one
@@ -59,7 +62,7 @@ type Secrets struct {
 }
 
 // Encode is the plaintext a seal takes.
-func (s Secrets) Encode() ([]byte, error) { return json.Marshal(s) }
+func (s Secrets) Encode() ([]byte, error) { return json.Marshal(s, wire.Stored) }
 
 // DecodeSecrets reads an opened plaintext.
 func DecodeSecrets(b []byte) (Secrets, error) {
@@ -69,10 +72,10 @@ func DecodeSecrets(b []byte) (Secrets, error) {
 }
 
 // EncodeMeta is the meta column.
-func EncodeMeta(m Meta) (json.RawMessage, error) { return json.Marshal(m) }
+func EncodeMeta(m Meta) (jsontext.Value, error) { return json.Marshal(m, wire.Stored) }
 
 // DecodeMeta reads the meta column.
-func DecodeMeta(b json.RawMessage) (Meta, error) {
+func DecodeMeta(b jsontext.Value) (Meta, error) {
 	var m Meta
 	if len(b) == 0 {
 		return m, nil

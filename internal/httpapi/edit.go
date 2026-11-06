@@ -4,7 +4,7 @@
 package httpapi
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"slices"
@@ -16,6 +16,7 @@ import (
 	"latere.ai/x/pons/internal/apierr"
 	"latere.ai/x/pons/internal/signin"
 	"latere.ai/x/pons/internal/store"
+	"latere.ai/x/pons/internal/wire"
 )
 
 // editRequest is the body of PATCH /connectors/{id}: what an edit changes,
@@ -91,10 +92,10 @@ func (s *Server) editConnector(w http.ResponseWriter, r *http.Request, c access.
 			return err
 		}
 	}
-	if row.Auth, err = json.Marshal(edited.Auth); err != nil {
+	if row.Auth, err = json.Marshal(edited.Auth, wire.Stored); err != nil {
 		return apierr.Internal(err)
 	}
-	if row.Tools, err = json.Marshal(edited.Tools); err != nil {
+	if row.Tools, err = json.Marshal(edited.Tools, wire.Stored); err != nil {
 		return apierr.Internal(err)
 	}
 	switch err := s.Store.Connectors().Update(r.Context(), row); {

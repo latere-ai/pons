@@ -12,7 +12,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"reflect"
@@ -315,9 +315,9 @@ func (x viewConnectors) Delete(_ context.Context, id string) error {
 }
 
 // checkJSON refuses a json column that is not JSON, as Postgres does.
-func checkJSON(docs ...json.RawMessage) error {
+func checkJSON(docs ...jsontext.Value) error {
 	for _, d := range docs {
-		if len(d) > 0 && !json.Valid(d) {
+		if len(d) > 0 && !d.IsValid() {
 			return errors.New("store: a json column holds a value that is not JSON")
 		}
 	}

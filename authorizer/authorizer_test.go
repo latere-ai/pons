@@ -5,7 +5,8 @@ package authorizer_test
 
 import (
 	"bufio"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
@@ -191,13 +192,13 @@ func TestDecodeRefusesWhatItCannotHold(t *testing.T) {
 		`{"requests": ["GET  /x"]}`, `{"requests": ["GET /a/**/b"]}`, `{"requests": ["GET /a*"]}`, `{"requests": ["GET /a//b"]}`,
 		`{"requests": ["GET /a/"]}`, `{"requests": ["POST/x"]}`,
 	} {
-		_, err := authorizer.DecodeLimits(authz.Decision{Allow: true, Limits: json.RawMessage(raw)})
+		_, err := authorizer.DecodeLimits(authz.Decision{Allow: true, Limits: jsontext.Value(raw)})
 		if !errors.Is(err, authorizer.ErrUnreadableLimits) {
 			t.Errorf("%s: %v", raw, err)
 		}
 	}
 	for _, raw := range []string{``, `null`, ` {} `} {
-		l, err := authorizer.DecodeLimits(authz.Decision{Allow: true, Limits: json.RawMessage(raw)})
+		l, err := authorizer.DecodeLimits(authz.Decision{Allow: true, Limits: jsontext.Value(raw)})
 		if err != nil || !isZero(l) {
 			t.Errorf("%q: %+v, %v", raw, l, err)
 		}

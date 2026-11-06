@@ -5,13 +5,15 @@ package carry
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"net/http"
 	"strings"
 
 	"latere.ai/x/pons/internal/mcp"
+	"latere.ai/x/pons/internal/wire"
 )
 
 // MethodToolsCall is the one protocol method whose request names a tool.
@@ -44,22 +46,22 @@ const (
 // scanned as far as the JSON grammar needs and not decoded. It answers why
 // a body is refused, or "".
 func parseMessage(body []byte) (message, string) {
-	dec := json.NewDecoder(bytes.NewReader(body))
-	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+	dec := newScanner(body)
+	if tok, err := dec.ReadToken(); err != nil || tok.Kind() != '{' {
 		return message{}, whyNotAnObject
 	}
 	var (
 		m                   message
 		method, params, has bool
-		name                json.RawMessage
+		name                jsontext.Value
 	)
-	for dec.More() {
+	for dec.PeekKind() != '}' {
 		key, err := objectKey(dec)
 		if err != nil {
 			return message{}, whyNotAnObject
 		}
-		var raw json.RawMessage
-		if err := dec.Decode(&raw); err != nil {
+		raw, err := dec.ReadValue()
+		if err != nil {
 			return message{}, whyNotAnObject
 		}
 		switch {
@@ -68,7 +70,7 @@ func parseMessage(body []byte) (message, string) {
 				return message{}, whyDuplicate
 			}
 			method = true
-			if json.Unmarshal(raw, &m.method) != nil {
+			if json.Unmarshal(raw, &m.method, wire.Foreign) != nil {
 				return message{}, whyMethod
 			}
 		case key == "params":
@@ -84,38 +86,45 @@ func parseMessage(body []byte) (message, string) {
 			return message{}, whyKeyCase
 		}
 	}
-	if _, err := dec.Token(); err != nil {
+	if _, err := dec.ReadToken(); err != nil {
 		return message{}, whyNotAnObject
 	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+	if _, err := dec.ReadToken(); !errors.Is(err, io.EOF) {
 		// A second value after the object: not one message.
 		return message{}, whyNotAnObject
 	}
 	if m.method == MethodToolsCall {
-		if !has || json.Unmarshal(name, &m.tool) != nil || m.tool == "" {
+		if !has || json.Unmarshal(name, &m.tool, wire.Foreign) != nil || m.tool == "" {
 			return message{}, whyToolName
 		}
 	}
 	return m, ""
 }
 
+// newScanner reads a body's tokens. It accepts a repeated member name and
+// invalid UTF-8 so the repeat is found and refused here, by the reason
+// that names it, and not by the decoder as a body that is no JSON.
+func newScanner(b []byte) *jsontext.Decoder {
+	return jsontext.NewDecoder(bytes.NewReader(b), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true))
+}
+
 // paramsName reads the name member of params when params is an object, by
 // exact case and once, and nothing else of it.
-func paramsName(raw json.RawMessage) (json.RawMessage, bool, string) {
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+func paramsName(raw jsontext.Value) (jsontext.Value, bool, string) {
+	dec := newScanner(raw)
+	if tok, err := dec.ReadToken(); err != nil || tok.Kind() != '{' {
 		// params that is no object names no tool.
 		return nil, false, ""
 	}
-	var name json.RawMessage
+	var name jsontext.Value
 	has := false
-	for dec.More() {
+	for dec.PeekKind() != '}' {
 		key, err := objectKey(dec)
 		if err != nil {
 			return nil, false, whyNotAnObject
 		}
-		var value json.RawMessage
-		if err := dec.Decode(&value); err != nil {
+		value, err := dec.ReadValue()
+		if err != nil {
 			return nil, false, whyNotAnObject
 		}
 		switch {
@@ -123,7 +132,7 @@ func paramsName(raw json.RawMessage) (json.RawMessage, bool, string) {
 			if has {
 				return nil, false, whyDuplicate
 			}
-			name, has = value, true
+			name, has = value.Clone(), true
 		case strings.EqualFold(key, "name"):
 			return nil, false, whyKeyCase
 		}
@@ -132,16 +141,15 @@ func paramsName(raw json.RawMessage) (json.RawMessage, bool, string) {
 }
 
 // objectKey reads the next key of an object.
-func objectKey(dec *json.Decoder) (string, error) {
-	tok, err := dec.Token()
+func objectKey(dec *jsontext.Decoder) (string, error) {
+	tok, err := dec.ReadToken()
 	if err != nil {
 		return "", err
 	}
-	key, ok := tok.(string)
-	if !ok {
+	if tok.Kind() != '"' {
 		return "", errors.New("carry: an object key that is not a string")
 	}
-	return key, nil
+	return tok.String(), nil
 }
 
 // mirroredDiffers reports whether a header the transport mirrors from the

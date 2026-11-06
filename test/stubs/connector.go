@@ -5,7 +5,8 @@ package stubs
 
 import (
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"latere.ai/x/pons/internal/wire"
 )
 
 // The protocol revisions the stub connector speaks: Revision by default,
@@ -209,13 +212,13 @@ func (c *Connector) Sessions() int {
 
 // rpc is the part of a JSON-RPC message the stub reads.
 type rpc struct {
-	ID     json.RawMessage `json:"id"`
-	Method string          `json:"method"`
+	ID     jsontext.Value `json:"id"`
+	Method string         `json:"method"`
 	Params struct {
-		Name      string          `json:"name"`
-		Arguments json.RawMessage `json:"arguments"`
-		Cursor    string          `json:"cursor"`
-		Meta      map[string]any  `json:"_meta"`
+		Name      string         `json:"name"`
+		Arguments jsontext.Value `json:"arguments"`
+		Cursor    string         `json:"cursor"`
+		Meta      map[string]any `json:"_meta"`
 	} `json:"params"`
 }
 
@@ -228,7 +231,7 @@ func (c *Connector) serve(w http.ResponseWriter, r *http.Request) {
 	var m rpc
 	if r.Method == http.MethodPost {
 		// A body that does not parse is answered below, once recorded.
-		_ = json.Unmarshal(body, &m)
+		_ = json.Unmarshal(body, &m, wire.Foreign)
 	}
 	c.mu.Lock()
 	c.requests = append(c.requests, ConnectorRequest{
@@ -293,7 +296,7 @@ func (c *Connector) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the current revision takes POST alone", http.StatusMethodNotAllowed)
 		return
 	}
-	if json.Unmarshal(body, &m) != nil {
+	if json.Unmarshal(body, &m, wire.Foreign) != nil {
 		writeRPCError(w, http.StatusBadRequest, nil, -32700, "Parse error")
 		return
 	}
@@ -368,7 +371,7 @@ func (c *Connector) legacy(w http.ResponseWriter, r *http.Request, m rpc, body [
 		c.listen(w, r)
 	case r.Method != http.MethodPost:
 		http.Error(w, "not a method of the protocol", http.StatusMethodNotAllowed)
-	case json.Unmarshal(body, &m) != nil:
+	case json.Unmarshal(body, &m, wire.Foreign) != nil:
 		writeRPCError(w, http.StatusBadRequest, nil, -32700, "Parse error")
 	default:
 		w.Header().Set("Mcp-Session-Id", session)
@@ -510,7 +513,7 @@ func (c *Connector) wait(r *http.Request, sw ConnectorSwitches, gap time.Duratio
 // writeEvent writes one event of a stream and flushes it, and reports
 // whether the caller took it.
 func writeEvent(w http.ResponseWriter, id string, v any) bool {
-	b, err := json.Marshal(v)
+	b, err := json.Marshal(v, json.Deterministic(true))
 	if err != nil {
 		return false
 	}
@@ -521,9 +524,9 @@ func writeEvent(w http.ResponseWriter, id string, v any) bool {
 }
 
 // writeRPCError answers a JSON-RPC error.
-func writeRPCError(w http.ResponseWriter, status int, id json.RawMessage, code int, message string) {
+func writeRPCError(w http.ResponseWriter, status int, id jsontext.Value, code int, message string) {
 	if len(id) == 0 {
-		id = json.RawMessage("null")
+		id = jsontext.Value("null")
 	}
 	writeStubJSON(w, status, map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": code, "message": message}})
 }

@@ -8,11 +8,14 @@
 package pons_test
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"go/types"
+	"io"
 	"io/fs"
 	"os/exec"
 	"path/filepath"
@@ -341,11 +344,13 @@ func TestDriverIsConfined(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dec := json.NewDecoder(strings.NewReader(string(out)))
+	dec := jsontext.NewDecoder(strings.NewReader(string(out)))
 	seen := 0
-	for dec.More() {
+	for {
 		var p listed
-		if err := dec.Decode(&p); err != nil {
+		if err := json.UnmarshalDecode(dec, &p); errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
 			t.Fatal(err)
 		}
 		seen++
