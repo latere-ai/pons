@@ -17,24 +17,125 @@ This repository is the whole service, `ponsd`, and anyone can run it.
 [![Go](https://img.shields.io/github/go-mod/go-version/latere-ai/pons)](go.mod)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-## The problem
+## Status
 
-An agent is useful in proportion to what it can reach: a person's
-repositories, their issue tracker, their documents. Each of those sits
-behind a sign-in or a key, and the usual answers are poor. A key pasted
-into a conversation has reached a model provider. A token handed to an
-agent's sandbox can be read by any code that runs there. A credential
-store inside one agent runtime serves that runtime and nothing else.
+Pons is before 1.0: a minor release may still change the API, the
+catalog format or the configuration, and its section in the
+[changelog](CHANGELOG.md) says what changed and what an operator must
+do. The [releases page](https://github.com/latere-ai/pons/releases)
+lists every release with its signed image. Pons has had no external
+security audit; [SECURITY.md](SECURITY.md#what-is-protected) lists what
+it commits to and the test that holds each commitment.
 
-Pons is one place that holds such credentials, and one door through
-which they are used. Whatever calls it, an agent's session, a script or
-an application, presents a token of its own and receives the other
-service's answer. A prompt that tricks an agent can make it send a
-request. It cannot make it reveal a credential it never held.
+| | |
+|---|---|
+| **GitHub**, through a GitHub App of your own: a person signs in, and a caller clones, fetches and pushes over git and calls the REST API | works, and was checked against github.com |
+| **A connector of kind `http`**: any HTTP API, with a git host beside it when the entry names one, through the forwarding and git addresses | works |
+| **A pasted key** (`token`) | works; for kind `http` the key is tried against the service before it is kept |
+| **Client credentials** (`client_credentials`): the connection holds its owner's client id and secret, and Pons mints a token at use | works |
+| **A sign-in** (`oauth`) for a catalog connector or a server added by its address, with refresh by one writer across replicas | works |
+| **A push held to the branches your authorizer names** | works; a push to another branch is refused before any of it reaches the service, and git prints the rule as the reason |
+| **The MCP address** of a connector of kind `mcp`, for Model Context Protocol clients: each tool call asked about by its tool, held to the tools your authorizer names and to the ones the catalog marks as only reading, and recorded | works; checked against a stub server of the current protocol revision and of the earlier ones with their sessions, not yet against a real one |
+| **An MCP server added by its address**, for a person, an organization or everyone, as your authorizer names its owner: Pons asks the server how to sign in, and the server is changed or turned off without a restart | works; checked against stub servers and authorization servers, not yet against a real one |
+| **Metrics, and a span for each call and each outbound request** | designed, not built yet; each call leaves a call record and one log line |
+| **Kubernetes manifests** for your own cluster | not in the repository yet; [Install](docs/install.md) lists what a deployment needs |
 
-Pons runs no agent, holds no accounts and decides no policy. Who may
-connect what, and which caller may use which connection, is answered by
-your authorizer, or by a built-in owner policy when you have none.
+## Quickstart
+
+Install Go 1.27 or newer, `git`, `make`, `curl`, `jq`, `openssl` and
+Podman first; Docker takes the same arguments. This runs
+[Dex](https://dexidp.io) in a container as the OpenID Connect issuer,
+starts `ponsd` on its in-memory store with a catalog of one public
+service, connects it, and calls GitHub's API through the connection's
+address. Run it in one shell:
+
+```sh
+git clone https://github.com/latere-ai/pons.git && cd pons
+make build
+
+mkdir -p local
+cat > local/dex.yaml <<'YAML'
+issuer: http://127.0.0.1:5556/dex
+storage:
+  type: memory
+web:
+  http: 0.0.0.0:5556
+oauth2:
+  passwordConnector: local
+enablePasswordDB: true
+staticPasswords:
+  - email: alice@example.com
+    hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+    username: alice
+    userID: alice
+staticClients:
+  - id: pons
+    name: Pons
+    secret: local-client-secret
+    redirectURIs: ["http://127.0.0.1:5555/callback"]
+YAML
+cat > local/catalog.yaml <<'YAML'
+connectors:
+  - name: github-public
+    title: GitHub, public repositories
+    kind: http
+    url: https://api.github.com
+    hosts: ["api.github.com"]
+    auth: {type: none}
+YAML
+
+podman run -d --name pons-dex -p 127.0.0.1:5556:5556 \
+  -v "$PWD/local/dex.yaml:/etc/dex/config.yaml:ro" \
+  ghcr.io/dexidp/dex:v2.43.1 dex serve /etc/dex/config.yaml
+until curl -fs http://127.0.0.1:5556/dex/.well-known/openid-configuration > /dev/null; do sleep 1; done
+
+PONS_PUBLIC_URL=http://localhost:8080 \
+PONS_OIDC_ISSUERS=http://127.0.0.1:5556/dex \
+PONS_SEALING_KEYS="$(openssl rand -base64 32)" \
+PONS_CATALOG_FILE=local/catalog.yaml \
+  ./out/ponsd serve 2> local/ponsd.log &
+until curl -fs http://localhost:8080/readyz > /dev/null; do sleep 1; done
+
+TOKEN=$(curl -s http://127.0.0.1:5556/dex/token -u pons:local-client-secret \
+  -d grant_type=password -d username=alice@example.com -d password=password \
+  -d scope=openid | jq -r .id_token)
+ADDRESS=$(curl -s http://localhost:8080/v1/connections -H "Authorization: Bearer $TOKEN" \
+  -d '{"connector": "github-public"}' | jq -r .address)
+curl -s "$ADDRESS/repos/latere-ai/pons" -H "Authorization: Bearer $TOKEN" | jq '{full_name, license: .license.spdx_id}'
+```
+
+The last call goes through Pons to `api.github.com` and prints:
+
+```json
+{
+  "full_name": "latere-ai/pons",
+  "license": "Apache-2.0"
+}
+```
+
+`kill %1; podman rm -f pons-dex` stops both. [Running it
+locally](docs/local.md) goes on from here: a clone through the git
+address, the call records, a pasted key and a sign-in.
+
+## How it fits
+
+Pons stands between the callers that use another service and the
+service itself, and decides nothing on its own:
+
+- **Your app** connects and disconnects a person's services through the
+  API, and sends the person's browser to the service's sign-in when it
+  has one.
+- **A caller**, such as code in an agent's sandbox, a script or an
+  application, calls a connection's address with a token of its own and
+  gets the service's answer.
+- **The other service** receives the request with the credential added.
+- **Your OpenID Connect issuer** signs every token Pons accepts. Pons
+  has no login and no API key of its own.
+- **Your authorizer** answers who may connect what and which caller may
+  use which connection. Without one, a built-in owner policy lets each
+  person act only on their own connections.
+- **Postgres** holds the connections, the sealed credentials and the
+  call records.
 
 ```mermaid
 flowchart LR
@@ -46,6 +147,16 @@ flowchart LR
   ponsd -. "verify the token" .-> issuer["your OpenID Connect issuer"]
   ponsd -. "may this caller?" .-> authz["your authorizer"]
 ```
+
+An agent is useful in proportion to what it can reach: a person's
+repositories, their issue tracker, their documents. Each of those sits
+behind a sign-in or a key, and the usual answers are poor. A key pasted
+into a conversation has reached a model provider. A token handed to an
+agent's sandbox can be read by any code that runs there. A credential
+store inside one agent runtime serves that runtime and nothing else.
+Pons is one place that holds such credentials, and one door through
+which they are used. A prompt that tricks an agent can make it send a
+request. It cannot make it reveal a credential it never held.
 
 ## A connection, end to end
 
@@ -137,32 +248,6 @@ its connection, such as one with a bad token, leaves none, and a refused
 call is recorded at most once a minute per caller and connection
 ([API](docs/api.md#call-records)).
 
-## What works today
-
-| | |
-|---|---|
-| **GitHub**, through a GitHub App of your own: a person signs in, and a caller clones, fetches and pushes over git and calls the REST API | works, and was checked against github.com |
-| **A connector of kind `http`**: any HTTP API, with a git host beside it when the entry names one, through the forwarding and git addresses | works |
-| **A pasted key** (`token`) | works; for kind `http` the key is tried against the service before it is kept |
-| **Client credentials** (`client_credentials`): the connection holds its owner's client id and secret, and Pons mints a token at use | works |
-| **A sign-in** (`oauth`) for a catalog connector or a server added by its address, with refresh by one writer across replicas | works |
-| **A push held to the branches your authorizer names** | works; a push to another branch is refused before any of it reaches the service, and git prints the rule as the reason |
-| **The MCP address** of a connector of kind `mcp`, for Model Context Protocol clients: each tool call asked about by its tool, held to the tools your authorizer names and to the ones the catalog marks as only reading, and recorded | on main, not yet in a release; checked against a stub server of the current protocol revision and of the earlier ones with their sessions, not yet against a real one |
-| **An MCP server added by its address**, for a person, an organization or everyone, as your authorizer names its owner: Pons asks the server how to sign in, and the server is changed or turned off without a restart | on main, not yet in a release; checked against stub servers and authorization servers, not yet against a real one |
-| **Kubernetes manifests** | not in the repository yet; [Install](docs/install.md) lists what a deployment needs |
-
-## Try it
-
-[Running it locally](docs/local.md) starts `ponsd` on your machine with
-a local issuer, connects a public service with no credential, and calls
-it through both addresses with `curl` and `git`. You need Go 1.27 or
-newer to build `ponsd`, and a container runtime for the issuer.
-
-```sh
-make build   # out/ponsd
-make         # the quality gate
-```
-
 ## Install it
 
 Every release publishes the image `ghcr.io/latere-ai/ponsd:<tag>` for
@@ -183,10 +268,11 @@ optional.
 | [The catalog](docs/catalog.md) | every member of an entry, each way to give access, and the GitHub entry |
 | [API](docs/api.md) | connecting, reconnecting, disconnecting, call records, the addresses, and the errors to branch on |
 | [Writing an authorizer](docs/authorizer.md) | the question Pons asks, the vocabulary, the limits an allow carries, and the owner policy |
-| [Security](docs/security.md) | what Pons guarantees, and what it does not |
+| [Security](docs/security.md) | what Pons guarantees, what it sees and keeps, and what it does not defend |
+| [`api/openapi.yaml`](api/openapi.yaml) | the full API reference |
+| [Changelog](CHANGELOG.md) | what changed in each release, and what an operator must do |
 
-[`docs/README.md`](docs/README.md) is the index, and
-[`api/openapi.yaml`](api/openapi.yaml) is the full API reference.
+[`docs/README.md`](docs/README.md) is the index, by reader.
 
 ## Contributing
 
