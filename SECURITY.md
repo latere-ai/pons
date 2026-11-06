@@ -99,7 +99,7 @@ by tests in this repository, which run on every change.
 ## Supply chain
 
 Dependencies are checked for known vulnerabilities on every push that
-changes a Go package. A release is built from a tagged commit whose
+changes the code or its dependencies. A release is built from a tagged commit whose
 verify run passed, through the shared release stages in
 [latere-ai/ci](https://github.com/latere-ai/ci): the image is signed by
 the build stage's identity, run for this repository, and the release
