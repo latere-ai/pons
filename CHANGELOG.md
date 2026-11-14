@@ -21,6 +21,9 @@ here is refused before it is pushed.
   two reasons of a deny that Pons tells the caller, an installation that
   sets `PONS_DIAL_ALLOW_PRIVATE`, and a secret a caller puts in a
   forwarded call's path.
+- **The network policy no longer admits the Dash0 collector.** The collector
+  is retired, so the egress rule to it is gone. Telemetry export stays off
+  until a deployment sets `OTEL_EXPORTER_OTLP_ENDPOINT`.
 
 ## v0.6.0 - 2026-11-05
 
