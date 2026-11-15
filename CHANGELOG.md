@@ -15,6 +15,8 @@ here is refused before it is pushed.
 
 ### Changed
 
+- Built with Go 1.27.4, which fixes GO-2026-6859.
+
 - **[SECURITY.md](SECURITY.md) names the tests that hold each
   commitment,** takes reports through GitHub's private vulnerability
   reporting beside security@latere.ai, and lists three more limits: the
