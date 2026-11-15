@@ -12,7 +12,7 @@ import (
 	"latere.ai/x/pons/catalog"
 )
 
-// The headers that pass toward the connector (specs/014-http-forwarding.md).
+// The headers that pass toward the connector (specs/.archive/014-http-forwarding.md).
 // Everything else is removed, the caller's Authorization first. The length
 // is the request's own and the body's framing is the transport's.
 var (

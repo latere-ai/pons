@@ -35,7 +35,7 @@ type answer struct {
 
 // tokenError is an answer that is an error: the OAuth error code, with the
 // words some services use in its place read as the standard's
-// (specs/013-github-connector.md). Its text is the code alone.
+// (specs/.archive/013-github-connector.md). Its text is the code alone.
 type tokenError struct{ Code string }
 
 func (e *tokenError) Error() string { return "signin: the token endpoint answered " + e.Code }

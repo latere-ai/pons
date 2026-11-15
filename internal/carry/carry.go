@@ -6,7 +6,7 @@
 // through the dialer and streams the answer back (specs/008-carrying-a-call.md).
 // Built here are the MCP address of a connection of kind mcp, the
 // forwarding address and the git address of a connection of kind http
-// (specs/014-http-forwarding.md), and the probe of a key for both kinds.
+// (specs/.archive/014-http-forwarding.md), and the probe of a key for both kinds.
 //
 // A request is taken in the order of spec 008: the origin, the caller and
 // the places in flight, what is read from the request (the method and the
@@ -171,7 +171,7 @@ func (c *Carrier) Address(connection, address string) string {
 }
 
 // ForwardedMethods are the methods the forwarding address carries, the
-// ones an API is called with (specs/014-http-forwarding.md). Any other is
+// ones an API is called with (specs/.archive/014-http-forwarding.md). Any other is
 // refused before the connection is loaded: TRACE, which a service may
 // answer with the request it received, CONNECT, and every method of
 // another protocol.

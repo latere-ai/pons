@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// The addresses of a connection of kind http (specs/014-http-forwarding.md).
+// The addresses of a connection of kind http (specs/.archive/014-http-forwarding.md).
 const (
 	// AddressHTTP is the forwarding address, toward the connector's url.
 	AddressHTTP = "http"
@@ -34,7 +34,7 @@ type target struct {
 	decoded string
 }
 
-// checkPath holds a forwarded path to its connector (specs/014-http-forwarding.md):
+// checkPath holds a forwarded path to its connector (specs/.archive/014-http-forwarding.md):
 // no dot segment, no empty segment, no backslash, no encoded slash,
 // backslash or dot segment, no control character, and at most 2048 bytes.
 // tail is the escaped path after the address, empty or starting with a

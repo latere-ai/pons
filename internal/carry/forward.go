@@ -168,7 +168,7 @@ func (c *Carrier) place(ctx context.Context, call *call, o signin.Opened, addres
 }
 
 // refused handles a 401 from the connector (specs/008-carrying-a-call.md,
-// specs/014-http-forwarding.md). A key moves its connection at once; an
+// specs/.archive/014-http-forwarding.md). A key moves its connection at once; an
 // oauth credential is refreshed and a client's token minted anew, and a
 // request with no body is sent once more with it, while one with a body is
 // answered the 401 as it came. It answers the credential to send again,

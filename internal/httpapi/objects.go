@@ -256,7 +256,7 @@ func (c connector) signin() signin.Connector {
 
 // address is where a caller reaches a connection: the MCP address for kind
 // mcp (specs/008-carrying-a-call.md), the forwarding address for kind http
-// (specs/014-http-forwarding.md).
+// (specs/.archive/014-http-forwarding.md).
 func (s *Server) address(c store.Connection) string {
 	base := s.PublicURL + s.BasePath + "/connections/" + c.ID
 	if c.Kind == catalog.KindHTTP {

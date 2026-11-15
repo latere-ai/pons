@@ -18,7 +18,7 @@ import (
 	"latere.ai/x/pons/internal/apierr"
 )
 
-// The bounds of a push's commands (specs/014-http-forwarding.md).
+// The bounds of a push's commands (specs/.archive/014-http-forwarding.md).
 const (
 	// MaxCommandBytes bounds what is read of a push before its pack.
 	MaxCommandBytes = 64 << 10
@@ -278,7 +278,7 @@ func writeBands(b *bytes.Buffer, band byte, data []byte, max int) {
 	}
 }
 
-// refusePush answers a push its allow's Refs refuse (specs/014-http-forwarding.md).
+// refusePush answers a push its allow's Refs refuse (specs/.archive/014-http-forwarding.md).
 // None of the push reaches the connector. git reads no answer before it has
 // sent its whole request, so the rest of the body, the pack, is read and
 // dropped first, bounded as a forwarded body is; then the refusal is

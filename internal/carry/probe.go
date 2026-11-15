@@ -27,7 +27,7 @@ const probeTimeout = 15 * time.Second
 const maxProbeAnswer = 64 << 10
 
 // Probe tries a key against a connector before it is stored. For kind http
-// (specs/014-http-forwarding.md) it is one GET of the connector's url; for
+// (specs/.archive/014-http-forwarding.md) it is one GET of the connector's url; for
 // kind mcp (specs/008-carrying-a-call.md) a tools/list of the current
 // revision, and for a connector of an earlier revision that revision's
 // handshake, a tools/list in the session it opens, and the DELETE that ends

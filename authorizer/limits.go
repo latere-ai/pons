@@ -47,7 +47,7 @@ type Limits struct {
 	Refs []string `json:"refs,omitempty"`
 	// Requests are the requests a use of a forwarding address may send,
 	// each a method in capitals, one space, and a pattern over the path
-	// below the address (specs/014-http-forwarding.md): a segment `*`
+	// below the address (specs/.archive/014-http-forwarding.md): a segment `*`
 	// stands for one non-empty segment, a last segment `**` for the rest of
 	// the path, and every other segment for itself. Empty is all. A git
 	// address is held by Refs instead.

@@ -15,7 +15,7 @@ import (
 )
 
 // API is the stub API: a small JSON API in a code host's manner, behind a
-// connector of kind http (specs/014-http-forwarding.md). It serves a root
+// connector of kind http (specs/.archive/014-http-forwarding.md). It serves a root
 // document, a user, a list of issues paged with a Link header, a write that
 // records its body, a redirect within and one elsewhere, an answer with
 // headers of every kind, an upload that counts what arrived, and a large

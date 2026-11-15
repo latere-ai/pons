@@ -191,7 +191,7 @@ func (s *Signin) settle(ctx context.Context, f store.Flow) error {
 const maxAccountAnswer = 1 << 20
 
 // account reads the account a connection acts as, once, after the code
-// exchange (specs/013-github-connector.md): a GET of the entry's account
+// exchange (specs/.archive/013-github-connector.md): a GET of the entry's account
 // url with the new access token, bound to the connector's hosts, and the
 // string at the top-level member it names. A failure leaves it empty and
 // fails nothing.

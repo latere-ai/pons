@@ -96,7 +96,7 @@ type Settings struct {
 
 	MaxRequestBytes int64 // PONS_MAX_REQUEST_BYTES
 	// MaxForwardBytes bounds a request body on a forwarding or git
-	// address (specs/014-http-forwarding.md).
+	// address (specs/.archive/014-http-forwarding.md).
 	MaxForwardBytes   int64         // PONS_MAX_FORWARD_BYTES
 	CallHeaderTimeout time.Duration // PONS_CALL_HEADER_TIMEOUT
 	StreamIdleTimeout time.Duration // PONS_STREAM_IDLE_TIMEOUT

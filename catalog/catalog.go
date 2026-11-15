@@ -97,7 +97,7 @@ type Connector struct {
 	Tools       Marks    `yaml:"tools,omitempty" json:"tools"`
 	Links       Links    `yaml:"links,omitempty" json:"links"`
 	// Git and HTTP are the members of a connector of kind http
-	// (specs/014-http-forwarding.md).
+	// (specs/.archive/014-http-forwarding.md).
 	Git  *Git  `yaml:"git,omitempty" json:"git,omitzero"`
 	HTTP *HTTP `yaml:"http,omitempty" json:"http,omitzero"`
 }
@@ -171,7 +171,7 @@ type Inject struct {
 }
 
 // Account is where the account a connection acts as is read once after a
-// sign-in (specs/013-github-connector.md).
+// sign-in (specs/.archive/013-github-connector.md).
 type Account struct {
 	URL   string `yaml:"url" json:"url"`
 	Field string `yaml:"field" json:"field"`
@@ -591,7 +591,7 @@ func Validate(c Connector, added bool) []Problem {
 
 // validateHTTP checks the members of a connector of kind http, git and
 // http, which a connector of another kind does not take
-// (specs/014-http-forwarding.md).
+// (specs/.archive/014-http-forwarding.md).
 func validateHTTP(c Connector) []Problem {
 	var ps []Problem
 	bad := func(field, why string) { ps = append(ps, Problem{field, why}) }
