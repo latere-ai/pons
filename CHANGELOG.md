@@ -6,6 +6,8 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+## v0.7.0 - 2026-11-15
+
 ### Added
 
 - **[docs/security.md](docs/security.md) says what Pons sees, how long it
