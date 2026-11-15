@@ -27,68 +27,14 @@ flowchart LR
   complete --> superseded
 ```
 
-Specs 001 to 012 were read as a whole on 2026-10-12 by two readers
-working apart, one for security and one for consistency and the
-protocol, and were revised from what they found. Specs 013 and 014 were
-written after that reading: GitHub, the first connector, carried as git
-and its REST API through the forwarding and git addresses of 014. Spec
-015 adds Google's Gmail, Calendar and Drive the same way, through their
-REST APIs.
-
-v0.1.1, of 2026-10-13, is the first release with an image; v0.1.0
-published nothing. Steps 1 to 4 of the build order are built; of step 5
-the forwarding and git addresses of 014 with the carrier's steps of 008,
-and since 2026-10-14 the MCP address of 008 against the stub connector;
-step 6, the sign-in of 007 with GitHub's habits of 013, for catalog
-connectors; and step 7 for GitHub, the whole path against the stubs and,
-on 2026-10-13, against the real GitHub, as 013's Outcome records. The
-release workflow of 011 is built, and the repository is public since
-that check.
-
-v0.1.2, of 2026-10-13, carries: a connection's kind and a connector's
-sent to the authorizer as `connection_kind` and `connector_kind`; a
-refused push answered in git's protocol, so git prints the rule; git's
-probe before a push larger than its post buffer forwarded; the
-forwarding address held to an API's methods; the limit `requests`, with
-which an authorizer holds a forwarding request to method and path
-patterns and a request outside them is answered `403` naming the limit
-(004); an `authorize_url` that may carry a query; the Google entries of
-015; and the documentation in `docs/`. Main carries, for the next
-release, the MCP address of 008, built on 2026-10-14 for MCP servers in
-general: a connection of kind `mcp` used as a Model Context Protocol
-server over streamable HTTP, each tool call asked about by its tool and
-held to the tool marks and the allow, a key of kind `mcp` probed by
-`tools/list`, discovery's first request for kind `mcp` made the same
-way, and the stub connector of 011 it is tested against, with the
-earlier revision's sessions. Google's own MCP servers wait for Google.
-Main also carries, since 2026-10-14, revocation by the last holder of a
-grant (007): a disconnect or a sweep revokes only when no other
-credential records the same issuer, client id and account, which let
-015's Google entries give Google's revocation endpoint; and discovery's
-refusal of an authorization server at an address the outbound rules
-refuse answered as row 3 of 012 says, `connector_unreachable` with the
-rule's name.
-
-Since 2026-10-15 main carries 016: connectors added for a person, an
-organization or everyone, as the authorizer names their owner, edited
-and turned off without a restart, a vouched-for server's own client, and
-sign-in at a server added by its address, at the issuer's own callback
-when it sends no `iss`.
-
-What remains is the count of denied calls
-and the other metrics and spans of 010; a check of the MCP address
-against a real MCP server (008); `deploy/`, the generated configuration
-reference and the release workflow's test of 011; the threat model's own
-tests of 012 and its metadata test; and 015's check against the real
-Google.
-
 Specs 013 and 014 are `complete` and archived: every criterion has its
 test, and the check against the real GitHub passed. Specs 002 and 008
 are `testing`: built, and every one of their criteria has its test; 008
 waits for the count of 010's metrics and a check against a real MCP
 server. 016 is `testing` too, waiting for a check against a real MCP
-server and its authorization server. The other specs are `in-progress`: each says under
-Implementation status what is built and which of its criteria wait.
+server and its authorization server. The other specs are `in-progress`:
+each says under Implementation status what is built and which of its
+criteria wait.
 
 ## Index
 
