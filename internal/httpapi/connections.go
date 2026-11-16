@@ -351,11 +351,13 @@ func (s *Server) listConnections(w http.ResponseWriter, r *http.Request, c acces
 		return err
 	}
 	q := r.URL.Query()
-	state := store.State(q.Get("state"))
-	switch state {
-	case "", store.StatePending, store.StateConnected, store.StateNeedsReconnect:
-	default:
-		return apierr.OnField(apierr.CodeInvalidField, "state", "not_a_state")
+	var state store.State
+	if raw := q.Get("state"); raw != "" {
+		s, known := store.ParseState(raw)
+		if !known {
+			return apierr.OnField(apierr.CodeInvalidField, "state", "not_a_state")
+		}
+		state = s
 	}
 	d, err := s.ask(r, c, authorizer.ActionConnectionList, access.ListOf(authorizer.ActionConnectionList, q.Get("owner")))
 	if err != nil {

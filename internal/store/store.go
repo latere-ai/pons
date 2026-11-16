@@ -16,7 +16,10 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	"errors"
+	"fmt"
 	"time"
+
+	"latere.ai/x/pkg/statemachine"
 )
 
 // The errors an adapter answers with. A handler maps each to the error of
@@ -29,11 +32,14 @@ var (
 	// ErrLimitReached is a connection or an added connector past its
 	// owner's cap.
 	ErrLimitReached = errors.New("store: the owner holds as many as the cap allows")
-	// ErrIllegalMove is a pair of states that is not an edge of the
-	// connection's state machine. It is answered before any statement.
-	ErrIllegalMove = errors.New("store: the move is not an edge of the state machine")
-	// ErrStateMoved is a connection no longer in the state a move is from.
-	ErrStateMoved = errors.New("store: the connection is no longer in that state")
+	// ErrIllegalMove is a pair of states that is not a step of
+	// ConnectionTable, or a start it does not have. It is answered before
+	// any statement, and wraps statemachine.ErrIllegalTransition.
+	ErrIllegalMove = fmt.Errorf("store: the move is not a step of the connection's lifecycle: %w", statemachine.ErrIllegalTransition)
+	// ErrStateMoved is a record no longer in the state a write needs, such
+	// as a connection no longer in the state a move is from. It wraps
+	// statemachine.ErrIllegalTransition.
+	ErrStateMoved = fmt.Errorf("store: the record is no longer in that state: %w", statemachine.ErrIllegalTransition)
 	// ErrVersionMoved is a refresh that lost to a newer credential.
 	ErrVersionMoved = errors.New("store: the credential's version moved")
 	// ErrInUse is an added connector a connection still uses.
@@ -83,29 +89,6 @@ const (
 	ReasonRevoked           = "revoked"
 	ReasonCredentialRefused = "credential_refused"
 )
-
-// Edges are the moves of the connection's state machine, the diagram of
-// specs/002-objects.md, as from and to. Delete, the edge to the end from
-// every state, is Connections.Delete and not a move.
-var Edges = [][2]State{
-	{StatePending, StateConnected},
-	{StatePending, StatePending},
-	{StatePending, StateNeedsReconnect},
-	{StateConnected, StateNeedsReconnect},
-	{StateConnected, StatePending},
-	{StateNeedsReconnect, StatePending},
-	{StateNeedsReconnect, StateConnected},
-}
-
-// Legal reports whether from to is an edge.
-func Legal(from, to State) bool {
-	for _, e := range Edges {
-		if e[0] == from && e[1] == to {
-			return true
-		}
-	}
-	return false
-}
 
 // Connector is a connector added by its address (specs/006-catalog.md,
 // specs/016-connectors-added-for-others.md). A catalog connector has no
@@ -221,11 +204,17 @@ type Connections interface {
 	Rename(ctx context.Context, id, name string) error
 	// Move changes the state from from to to, in one statement that
 	// matches only while the row is in from: ErrIllegalMove before any
-	// statement, ErrStateMoved when it no longer is, ErrNotFound. A move to
-	// StateNeedsReconnect, and a move from StatePending to StatePending,
-	// sets the reason; a move to StateConnected clears it; any other keeps
+	// statement when from to is not a step of ConnectionTable,
+	// ErrStateMoved when the row is no longer in from, ErrNotFound. A move
+	// to StateNeedsReconnect sets the reason, keeping the current one when
+	// none is given; a move to StateConnected clears it; any other keeps
 	// it.
 	Move(ctx context.Context, id string, from, to State, reason string) error
+	// Refuse records the reason a pending connection's old credential was
+	// refused, keeping the current reason when none is given, and leaves
+	// the state as it is: ErrStateMoved when the connection is not
+	// pending, ErrNotFound.
+	Refuse(ctx context.Context, id, reason string) error
 	// Describe writes the account, the scopes and the expiry.
 	Describe(ctx context.Context, id string, a Account) error
 	// Touch writes last_used_at only when it is empty or more than a
@@ -234,6 +223,10 @@ type Connections interface {
 	// Delete removes the connection with its credential and its flow, in
 	// one transaction: ErrNotFound.
 	Delete(ctx context.Context, id string) error
+	// DeletePending removes a connection that never connected, in one
+	// statement that matches only while it is pending and holds no
+	// credential: ErrStateMoved when it is no longer, ErrNotFound.
+	DeletePending(ctx context.Context, id string) error
 	// CountByState counts every owner's connections per state.
 	CountByState(ctx context.Context) (map[State]int64, error)
 	// InUse reports whether a connection names the connector reference.
@@ -320,12 +313,25 @@ type Flow struct {
 
 // Flows are the sign-ins in progress, at most one per connection.
 type Flows interface {
-	// Put writes a flow, replacing the live flow of its connection.
+	// Put writes a new flow, in the state FlowTable starts in, replacing
+	// the live flow of its connection: ErrIllegalMove for a flow that is
+	// not in that state.
 	Put(ctx context.Context, f Flow) error
 	// Get reads the flow of a connection: ErrNotFound.
 	Get(ctx context.Context, connectionID string) (Flow, error)
 	// ByState reads the flow whose state hash is h: ErrNotFound.
 	ByState(ctx context.Context, h []byte) (Flow, error)
+	// Answer records the callback on the flow f.ID names: its pending
+	// credential, its finish hash and its new time, with the state hash
+	// cleared. It matches only while the flow awaits its callback:
+	// ErrStateMoved when the flow was answered, ended or replaced since f
+	// was read, ErrNotFound when it is gone.
+	Answer(ctx context.Context, f Flow) error
+	// End sets the time of the flow id names to at and clears its hashes,
+	// so no callback or confirm matches it again and the next sweep takes
+	// it. It matches only while a hash is set: ErrStateMoved when the flow
+	// already ended or was replaced, ErrNotFound when it is gone.
+	End(ctx context.Context, id string, at time.Time) error
 	// Delete removes the flow of a connection.
 	Delete(ctx context.Context, connectionID string) error
 	// TakeExpired deletes and returns up to limit flows whose time is

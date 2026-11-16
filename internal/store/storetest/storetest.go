@@ -21,6 +21,9 @@ import (
 	"testing"
 	"time"
 
+	"latere.ai/x/pkg/statemachine"
+	"latere.ai/x/pkg/statemachine/statemachinetest"
+
 	"latere.ai/x/pons/internal/id"
 	"latere.ai/x/pons/internal/store"
 )
@@ -76,6 +79,7 @@ func Run(t *testing.T, open Open) {
 		{"Delete", testDelete},
 		{"Grants", testGrants},
 		{"Flows", testFlows},
+		{"FlowLifecycle", func(t *testing.T, e env) { FlowLifecycle(t, e.st, e.clock.Now) }},
 		{"Registrations", testRegistrations},
 		{"Calls", testCalls},
 		{"Idempotency", testIdempotency},
@@ -510,14 +514,15 @@ func testCap(t *testing.T, e env) {
 	failIf(t, len(rows) != 4, "alice holds %d", len(rows))
 }
 
-// StateMachine holds a store to the connection's state machine: every edge
-// of the diagram moves, every other pair is refused before anything is
-// written, a connection no longer in the state a move is from is not moved,
-// and of two movers from one state one wins.
+// StateMachine holds a store to the connection's lifecycle table: Exhaustive
+// and Race drive Connections.Move through every pair of states and every
+// pair of racing steps, a create starts only in a state the table starts
+// in, a connection no longer in the state a move is from is not moved, the
+// reason follows its rule, and a refusal and the delete of a pending
+// connection that never connected hold to the state they need.
 func StateMachine(t *testing.T, st store.Store) {
 	ctx := context.Background()
 	cs := st.Connections()
-	states := []store.State{store.StatePending, store.StateConnected, store.StateNeedsReconnect}
 	// in makes a connection in a state.
 	in := func(s store.State) store.Connection {
 		t.Helper()
@@ -533,21 +538,32 @@ func StateMachine(t *testing.T, st store.Store) {
 		c.State = s
 		return c
 	}
-	for _, from := range states {
-		for _, to := range states {
-			c := in(from)
-			err := cs.Move(ctx, c.ID, from, to, store.ReasonRevoked)
-			got, gerr := cs.Get(ctx, c.ID)
-			ok(t, gerr)
-			if store.Legal(from, to) {
-				failIf(t, err != nil || got.State != to, "%s to %s, an edge: %v, now %s", from, to, err, got.State)
-				continue
+	d := statemachinetest.Driver[store.State]{
+		Enter: func(t *testing.T, s store.State) string { return in(s).ID },
+		Move: func(key string, to store.State) error {
+			from, err := cs.Get(ctx, key)
+			if err != nil {
+				return err
 			}
-			failIf(t, !errors.Is(err, store.ErrIllegalMove) || got.State != from, "%s to %s, no edge: %v, now %s", from, to, err, got.State)
-		}
+			return cs.Move(ctx, key, from.State, to, store.ReasonRevoked)
+		},
+		State: func(t *testing.T, key string) store.State {
+			c, err := cs.Get(ctx, key)
+			ok(t, err)
+			return c.State
+		},
 	}
+	statemachinetest.Exhaustive(t, store.ConnectionTable, d)
+	statemachinetest.Race(t, store.ConnectionTable, d)
+
+	// A create starts only in a state the table starts in.
+	is(t, cs.Create(ctx, Connection("owner", "start-"+id.New(id.Connection)[4:], store.StateNeedsReconnect), 0), store.ErrIllegalMove)
+	failIf(t, !errors.Is(store.ErrIllegalMove, statemachine.ErrIllegalTransition), "ErrIllegalMove does not wrap ErrIllegalTransition")
+	failIf(t, !errors.Is(store.ErrStateMoved, statemachine.ErrIllegalTransition), "ErrStateMoved does not wrap ErrIllegalTransition")
+
 	// A move needs the row in its from state, and a row.
 	c := in(store.StateConnected)
+	is(t, cs.Move(ctx, c.ID, store.StateConnected, store.StateConnected, ""), store.ErrIllegalMove)
 	is(t, cs.Move(ctx, c.ID, store.StatePending, store.StateConnected, ""), store.ErrStateMoved)
 	is(t, cs.Move(ctx, id.New(id.Connection), store.StatePending, store.StateConnected, ""), store.ErrNotFound)
 
@@ -563,12 +579,23 @@ func StateMachine(t *testing.T, st store.Store) {
 	reason(store.ReasonRefreshRefused)
 	ok(t, cs.Move(ctx, c.ID, store.StateNeedsReconnect, store.StatePending, ""))
 	reason(store.ReasonRefreshRefused)
-	ok(t, cs.Move(ctx, c.ID, store.StatePending, store.StatePending, ""))
+	ok(t, cs.Refuse(ctx, c.ID, ""))
 	reason(store.ReasonRefreshRefused)
-	ok(t, cs.Move(ctx, c.ID, store.StatePending, store.StatePending, store.ReasonRevoked))
+	ok(t, cs.Refuse(ctx, c.ID, store.ReasonRevoked))
 	reason(store.ReasonRevoked)
 	ok(t, cs.Move(ctx, c.ID, store.StatePending, store.StateConnected, store.ReasonRevoked))
 	reason("")
+
+	// A refusal is made on a pending connection and no other, and leaves its
+	// state as it is.
+	for _, from := range []store.State{store.StateConnected, store.StateNeedsReconnect} {
+		x := in(from)
+		is(t, cs.Refuse(ctx, x.ID, store.ReasonRevoked), store.ErrStateMoved)
+		got, err := cs.Get(ctx, x.ID)
+		ok(t, err)
+		failIf(t, got.State != from, "a refusal moved %s to %s", from, got.State)
+	}
+	is(t, cs.Refuse(ctx, id.New(id.Connection), store.ReasonRevoked), store.ErrNotFound)
 
 	// Of 8 movers from one state, one wins.
 	errs := race(8, func(int) error {
@@ -584,6 +611,72 @@ func StateMachine(t *testing.T, st store.Store) {
 		}
 	}
 	failIf(t, won != 1, "%d movers from one state won", won)
+	deletePending(t, st)
+}
+
+// deletePending holds DeletePending to the connections that never connected:
+// a pending one with no credential goes with its flow, and a connected one,
+// a pending one that holds a credential and a connection that a confirm
+// connects at the moment the sweep reaches it stay.
+func deletePending(t *testing.T, st store.Store) {
+	ctx := context.Background()
+	cs := st.Connections()
+	s := Sealer(t, 1)
+	fresh := func(state store.State) store.Connection {
+		t.Helper()
+		c := Connection("owner", "p-"+id.New(id.Connection)[4:], state)
+		Create(t, st, c)
+		return c
+	}
+	never := fresh(store.StatePending)
+	ok(t, st.Flows().Put(ctx, Flow(t, s, never, time.Now().Add(time.Hour))))
+	ok(t, cs.DeletePending(ctx, never.ID))
+	_, err := cs.Get(ctx, never.ID)
+	is(t, err, store.ErrNotFound)
+	_, err = st.Flows().Get(ctx, never.ID)
+	is(t, err, store.ErrNotFound)
+	is(t, cs.DeletePending(ctx, never.ID), store.ErrNotFound)
+
+	connected := fresh(store.StateConnected)
+	is(t, cs.DeletePending(ctx, connected.ID), store.ErrStateMoved)
+	reconnecting := fresh(store.StatePending)
+	_, err = st.Credentials().Put(ctx, reconnecting.ID, Credential(t, s, reconnecting, store.Secrets{AccessToken: "token-" + reconnecting.ID}))
+	ok(t, err)
+	is(t, cs.DeletePending(ctx, reconnecting.ID), store.ErrStateMoved)
+	for _, c := range []store.Connection{connected, reconnecting} {
+		_, err := cs.Get(ctx, c.ID)
+		ok(t, err)
+	}
+
+	// A confirm and the sweep reach one pending connection at once. Either
+	// the confirm commits, and the sweep leaves a connected connection with
+	// its credential, or the sweep deletes first, and the confirm finds
+	// nothing to connect and writes nothing.
+	for range 20 {
+		c := fresh(store.StatePending)
+		cred := Credential(t, s, c, store.Secrets{AccessToken: "token-" + c.ID})
+		errs := race(2, func(i int) error {
+			if i == 0 {
+				return st.Tx(ctx, func(tx store.Tx) error {
+					if _, err := tx.Credentials().Put(ctx, c.ID, cred); err != nil {
+						return err
+					}
+					return tx.Connections().Move(ctx, c.ID, store.StatePending, store.StateConnected, "")
+				})
+			}
+			return cs.DeletePending(ctx, c.ID)
+		})
+		got, gerr := cs.Get(ctx, c.ID)
+		_, _, cerr := st.Credentials().Get(ctx, c.ID)
+		switch {
+		case errs[0] == nil && errors.Is(errs[1], store.ErrStateMoved):
+			failIf(t, gerr != nil || got.State != store.StateConnected || cerr != nil, "the confirm won, and the connection is %v %v, credential %v", got.State, gerr, cerr)
+		case errs[1] == nil && errs[0] != nil:
+			failIf(t, !errors.Is(gerr, store.ErrNotFound) || !errors.Is(cerr, store.ErrNotFound), "the sweep won, and the connection is %v %v, credential %v", got.State, gerr, cerr)
+		default:
+			t.Fatalf("a confirm and a sweep: %v and %v, connection %v %v", errs[0], errs[1], got.State, gerr)
+		}
+	}
 }
 
 func testCredentials(t *testing.T, e env) {
@@ -873,6 +966,67 @@ func sameFlow(a, b store.Flow) bool {
 		a.ExpiresAt.Equal(b.ExpiresAt)
 }
 
+// FlowLifecycle holds a store to the flow's lifecycle table: Exhaustive and
+// Race drive Flows.Answer and Flows.End through every pair of states and
+// every pair of racing steps. Open is the one state a flow starts in, so
+// Flows.Put takes no other, and no writer takes a flow back to it.
+func FlowLifecycle(t *testing.T, st store.Store, now func() time.Time) {
+	ctx := context.Background()
+	fs := st.Flows()
+	s := Sealer(t, 1)
+	d := statemachinetest.Driver[store.FlowStatus]{
+		Enter: func(t *testing.T, to store.FlowStatus) string {
+			c := Connection("owner", "f-"+id.New(id.Connection)[4:], store.StatePending)
+			ok(t, st.Connections().Create(ctx, c, 0))
+			f := Flow(t, s, c, now().Add(time.Hour))
+			f.FinishHash, f.Pending = nil, store.SealedCredential{}
+			ok(t, fs.Put(ctx, f))
+			switch to {
+			case store.FlowAnswered:
+				ok(t, fs.Answer(ctx, answered(t, s, f, now())))
+			case store.FlowEnded:
+				ok(t, fs.End(ctx, f.ID, now()))
+			case store.FlowOpen:
+				// Put left it open.
+			}
+			return c.ID
+		},
+		Move: func(key string, to store.FlowStatus) error {
+			f, err := fs.Get(ctx, key)
+			if err != nil {
+				return err
+			}
+			switch to {
+			case store.FlowAnswered:
+				return fs.Answer(ctx, answered(t, s, f, now()))
+			case store.FlowEnded:
+				return fs.End(ctx, f.ID, now())
+			case store.FlowOpen:
+				// No writer takes a flow back to open.
+			}
+			return fmt.Errorf("no writer takes a flow to %s: %w", to, statemachine.ErrIllegalTransition)
+		},
+		State: func(t *testing.T, key string) store.FlowStatus {
+			f, err := fs.Get(ctx, key)
+			ok(t, err)
+			return store.FlowStatusOf(f)
+		},
+	}
+	statemachinetest.Exhaustive(t, store.FlowTable, d)
+	statemachinetest.Race(t, store.FlowTable, d)
+}
+
+// answered is f as the callback leaves it: the state hash cleared, the
+// finish hash and the pending credential set.
+func answered(t testing.TB, s store.Sealer, f store.Flow, now time.Time) store.Flow {
+	t.Helper()
+	f.StateHash = nil
+	f.FinishHash = []byte("finish-" + f.ID)
+	f.Pending = Credential(t, s, store.Connection{ID: f.Connection, Owner: "owner"}, store.Secrets{AccessToken: "pending-" + f.ID})
+	f.ExpiresAt = now.Add(10 * time.Minute)
+	return f
+}
+
 func testFlows(t *testing.T, e env) {
 	ctx := context.Background()
 	fs := e.st.Flows()
@@ -906,9 +1060,21 @@ func testFlows(t *testing.T, e env) {
 	is(t, err, store.ErrNotFound)
 	afterCallback := replaced
 	afterCallback.StateHash = nil
-	ok(t, fs.Put(ctx, afterCallback))
+	afterCallback.FinishHash = []byte("finish-2-" + c.ID)
+	afterCallback.Pending = Credential(t, s, c, store.Secrets{AccessToken: "pending-2-" + c.ID})
+	afterCallback.ExpiresAt = now.Add(20 * time.Minute)
+	ok(t, fs.Answer(ctx, afterCallback))
 	_, err = fs.ByState(ctx, replaced.StateHash)
 	is(t, err, store.ErrNotFound)
+	got, err = fs.Get(ctx, c.ID)
+	ok(t, err)
+	failIf(t, !sameFlow(got, afterCallback) || got.Pending.Sealed.Zero() || !got.ExpiresAt.Equal(afterCallback.ExpiresAt), "the answered flow %+v", got)
+	// A flow is answered once, and a flow that was replaced is not
+	// answered by the callback of the one before it.
+	is(t, fs.Answer(ctx, afterCallback), store.ErrStateMoved)
+	is(t, fs.Answer(ctx, f), store.ErrNotFound)
+	// A flow that is not open is not started.
+	is(t, fs.Put(ctx, afterCallback), store.ErrIllegalMove)
 	other := Connection("alice", "other", store.StatePending)
 	Create(t, e.st, other)
 	clash := Flow(t, s, other, now.Add(time.Minute))

@@ -11,15 +11,24 @@ const TouchInterval = time.Minute
 
 // NextReason is a connection's reason after a move, the rule both adapters
 // apply (specs/005-store-and-sealing.md). A move to StateConnected clears
-// it. A move to StateNeedsReconnect, and a refusal of a pending
-// connection's old credential, a move from StatePending to StatePending,
-// set it to the reason given, and keep the current one when none is given,
-// so a reconnect again keeps a reason it had. Every other move keeps it.
-func NextReason(from, to State, current, given string) string {
+// it. A move to StateNeedsReconnect sets the reason given, and keeps the
+// current one when none is given, so a reconnect again keeps a reason it
+// had. Every other move keeps it. Connections.Refuse sets the reason of a
+// pending connection by NextRefusedReason.
+func NextReason(to State, current, given string) string {
 	switch {
 	case to == StateConnected:
 		return ""
-	case given != "" && (to == StateNeedsReconnect || (from == StatePending && to == StatePending)):
+	case given != "" && to == StateNeedsReconnect:
+		return given
+	}
+	return current
+}
+
+// NextRefusedReason is a pending connection's reason after a refusal: the
+// one given, or the current one when none is given.
+func NextRefusedReason(current, given string) string {
+	if given != "" {
 		return given
 	}
 	return current

@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"strconv"
 
+	"latere.ai/x/pkg/statemachine"
+
 	"latere.ai/x/pons/catalog"
 	"latere.ai/x/pons/internal/apierr"
 	"latere.ai/x/pons/internal/dial"
@@ -170,9 +172,13 @@ func (s *Signin) settle(ctx context.Context, f store.Flow) error {
 	if row.State != store.StatePending {
 		return nil
 	}
-	if _, _, err := s.Store.Credentials().Get(ctx, row.ID); errors.Is(err, store.ErrNotFound) {
-		return s.Store.Connections().Delete(ctx, row.ID)
-	} else if err != nil {
+	// A pending connection that never held a credential goes, in one
+	// statement that holds both conditions: a confirm that connects it
+	// between the read above and the delete leaves it as it is.
+	switch err := s.Store.Connections().DeletePending(ctx, row.ID); {
+	case err == nil, errors.Is(err, store.ErrNotFound):
+		return nil
+	case !errors.Is(err, store.ErrStateMoved):
 		return err
 	}
 	to := store.StateConnected
@@ -180,7 +186,7 @@ func (s *Signin) settle(ctx context.Context, f store.Flow) error {
 		to = store.StateNeedsReconnect
 	}
 	err = s.Store.Connections().Move(ctx, row.ID, store.StatePending, to, "")
-	if errors.Is(err, store.ErrStateMoved) {
+	if errors.Is(err, statemachine.ErrIllegalTransition) {
 		// A confirm or a reconnect got there first.
 		return nil
 	}

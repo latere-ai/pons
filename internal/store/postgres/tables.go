@@ -248,8 +248,8 @@ func scanConnection(row pgx.Row) (store.Connection, error) {
 }
 
 func (x connections) Create(ctx context.Context, c store.Connection, max int) error {
-	if c.State != store.StatePending && c.State != store.StateConnected {
-		return store.ErrIllegalMove
+	if err := store.CheckStart(c.State); err != nil {
+		return err
 	}
 	scopes, err := jsonText(c.Scopes, "[]")
 	if err != nil {
@@ -333,22 +333,32 @@ func (x connections) Rename(ctx context.Context, id, name string) error {
 }
 
 func (x connections) Move(ctx context.Context, id string, from, to store.State, reason string) error {
-	if !store.Legal(from, to) {
-		return store.ErrIllegalMove
+	if err := store.CheckMove(from, to); err != nil {
+		return err
 	}
 	// The reason follows store.NextReason: cleared, set to the given one,
 	// or kept, decided here so the statement reads nothing first.
 	clearReason := to == store.StateConnected
-	setReason := !clearReason && store.NextReason(from, to, "\x00", reason) != "\x00"
+	setReason := !clearReason && store.NextReason(to, "\x00", reason) != "\x00"
+	// The row is written only while it is in from, which the table lists
+	// before to, so a connection another request already moved is left as
+	// it is.
 	tag, err := x.v.q.Exec(ctx, `
 UPDATE connections SET state = $3,
        reason = CASE WHEN $4::boolean THEN '' WHEN $5::boolean THEN $6 ELSE reason END,
        updated_at = coalesce($7::timestamptz, now())
  WHERE id = $1 AND state = $2`, id, string(from), string(to), clearReason, setReason, reason, x.v.at())
+	return x.matched(ctx, id, tag.RowsAffected(), err)
+}
+
+// matched answers a write guarded on a state: nil when it changed the row,
+// ErrNotFound when no row has the id, and ErrStateMoved when the row is in
+// another state.
+func (x connections) matched(ctx context.Context, id string, n int64, err error) error {
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 1 {
+	if n == 1 {
 		return nil
 	}
 	var exists bool
@@ -359,6 +369,14 @@ UPDATE connections SET state = $3,
 		return store.ErrNotFound
 	}
 	return store.ErrStateMoved
+}
+
+func (x connections) Refuse(ctx context.Context, id, reason string) error {
+	tag, err := x.v.q.Exec(ctx, `
+UPDATE connections SET reason = CASE WHEN $3 <> '' THEN $3 ELSE reason END,
+       updated_at = coalesce($4::timestamptz, now())
+ WHERE id = $1 AND state = $2`, id, string(store.StatePending), reason, x.v.at())
+	return x.matched(ctx, id, tag.RowsAffected(), err)
 }
 
 func (x connections) Describe(ctx context.Context, id string, a store.Account) error {
@@ -388,6 +406,17 @@ func (x connections) Delete(ctx context.Context, id string) error {
 	return affected(tag.RowsAffected(), err)
 }
 
+func (x connections) DeletePending(ctx context.Context, id string) error {
+	// One statement holds both conditions. A confirm that commits between
+	// a caller's reads and this delete has moved the row out of pending
+	// and given it a credential, so the delete matches nothing.
+	tag, err := x.v.q.Exec(ctx, `
+DELETE FROM connections
+ WHERE id = $1 AND state = $2 AND NOT EXISTS (SELECT 1 FROM credentials WHERE connection = $1)`,
+		id, string(store.StatePending))
+	return x.matched(ctx, id, tag.RowsAffected(), err)
+}
+
 func (x connections) CountByState(ctx context.Context) (map[store.State]int64, error) {
 	rows, err := x.v.q.Query(ctx, `SELECT state, count(*) FROM connections GROUP BY state`)
 	if err != nil {
@@ -401,7 +430,11 @@ func (x connections) CountByState(ctx context.Context) (map[store.State]int64, e
 		if err := rows.Scan(&state, &n); err != nil {
 			return nil, err
 		}
-		out[store.State(state)] = n
+		s, known := store.ParseState(state)
+		if !known {
+			return nil, fmt.Errorf("postgres: a connection is in the state %q, which the table does not have", state)
+		}
+		out[s] = n
 	}
 	return out, rows.Err()
 }

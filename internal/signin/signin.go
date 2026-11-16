@@ -22,6 +22,8 @@ import (
 	"sync"
 	"time"
 
+	"latere.ai/x/pkg/statemachine"
+
 	"latere.ai/x/pons/catalog"
 	"latere.ai/x/pons/internal/apierr"
 	"latere.ai/x/pons/internal/dial"
@@ -209,12 +211,16 @@ func notConnected(state store.State, reason string) *apierr.Error {
 // answers the 409 the call gives, with the state the connection is in.
 func Refused(ctx context.Context, st store.Store, c store.Connection, reason string) error {
 	to := store.StateNeedsReconnect
+	var err error
 	if c.State == store.StatePending {
+		// A pending connection keeps its state and takes the reason.
 		to = store.StatePending
+		err = st.Connections().Refuse(ctx, c.ID, reason)
+	} else {
+		err = st.Connections().Move(ctx, c.ID, c.State, to, reason)
 	}
-	err := st.Connections().Move(ctx, c.ID, c.State, to, reason)
 	switch {
-	case errors.Is(err, store.ErrIllegalMove), errors.Is(err, store.ErrStateMoved), errors.Is(err, store.ErrNotFound):
+	case errors.Is(err, statemachine.ErrIllegalTransition), errors.Is(err, store.ErrNotFound):
 		// Another request moved it first, or it was never usable from its
 		// state: the refusal stands either way.
 	case err != nil:

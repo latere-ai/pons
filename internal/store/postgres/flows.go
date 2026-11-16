@@ -5,6 +5,7 @@ package postgres
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -47,6 +48,9 @@ func scanFlow(row pgx.Row) (store.Flow, error) {
 }
 
 func (x flows) Put(ctx context.Context, f store.Flow) error {
+	if status := store.FlowStatusOf(f); store.FlowTable.CheckStart(status) != nil {
+		return fmt.Errorf("%w: a flow does not start %s", store.ErrIllegalMove, status)
+	}
 	scopes, err := jsonText(f.Scopes, "[]")
 	if err != nil {
 		return err
@@ -94,6 +98,54 @@ ON CONFLICT (connection) DO UPDATE SET
 		return store.ErrNotFound
 	}
 	return err
+}
+
+// matched answers a write guarded on a flow's state: nil when it changed the
+// row, ErrNotFound when no flow has the id, and ErrStateMoved when the flow
+// is in a state the write does not take.
+func (x flows) matched(ctx context.Context, id string, n int64, err error) error {
+	if err != nil {
+		return err
+	}
+	if n == 1 {
+		return nil
+	}
+	var exists bool
+	if err := x.v.q.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM flows WHERE id = $1)`, id).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return store.ErrNotFound
+	}
+	return store.ErrStateMoved
+}
+
+func (x flows) Answer(ctx context.Context, f store.Flow) error {
+	var pendingMeta any
+	if len(f.Pending.Meta) > 0 {
+		text, err := jsonText(f.Pending.Meta, "{}")
+		if err != nil {
+			return err
+		}
+		pendingMeta = text
+	}
+	p := f.Pending.Sealed
+	tag, err := x.v.q.Exec(ctx, `
+UPDATE flows SET state_hash = NULL, finish_hash = $2, pending_kind = $3, pending_meta = $4::text::jsonb,
+       pending_key_id = $5, pending_wrapped_key = $6, pending_key_nonce = $7, pending_ciphertext = $8,
+       pending_nonce = $9, expires_at = $10
+ WHERE id = $1 AND `+store.FlowIn(store.FlowTable.Sources(store.FlowAnswered)...),
+		f.ID, nullable(f.FinishHash), f.Pending.Kind, pendingMeta,
+		nullable(p.KeyID), nullable(p.WrappedKey), nullable(p.KeyNonce), nullable(p.Ciphertext), nullable(p.Nonce),
+		f.ExpiresAt)
+	return x.matched(ctx, f.ID, tag.RowsAffected(), err)
+}
+
+func (x flows) End(ctx context.Context, id string, at time.Time) error {
+	tag, err := x.v.q.Exec(ctx, `
+UPDATE flows SET state_hash = NULL, finish_hash = NULL, expires_at = $2
+ WHERE id = $1 AND `+store.FlowIn(store.FlowTable.Sources(store.FlowEnded)...), id, at)
+	return x.matched(ctx, id, tag.RowsAffected(), err)
 }
 
 func (x flows) Get(ctx context.Context, connectionID string) (store.Flow, error) {

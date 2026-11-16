@@ -335,8 +335,8 @@ func cloneConnection(c store.Connection) store.Connection {
 
 func (x viewConnections) Create(_ context.Context, c store.Connection, max int) error {
 	v := x.v
-	if c.State != store.StatePending && c.State != store.StateConnected {
-		return store.ErrIllegalMove
+	if err := store.CheckStart(c.State); err != nil {
+		return err
 	}
 	if _, ok := v.d.connections[c.ID]; ok {
 		return fmt.Errorf("store: the connection id %s is taken", c.ID)
@@ -378,7 +378,7 @@ func (x viewConnections) List(_ context.Context, f store.Filter, p store.Page) (
 	var rows []store.Connection
 	for _, c := range x.v.d.connections {
 		if !slices.Contains(f.Owners, c.Owner) ||
-			(f.Connector != "" && c.Connector != f.Connector) || (f.State != "" && c.State != f.State) {
+			(f.Connector != "" && c.Connector != f.Connector) || (len(f.State) > 0 && c.State != f.State) {
 			continue
 		}
 		rows = append(rows, cloneConnection(c))
@@ -416,15 +416,25 @@ func (x viewConnections) Rename(_ context.Context, id, name string) error {
 }
 
 func (x viewConnections) Move(_ context.Context, id string, from, to store.State, reason string) error {
-	if !store.Legal(from, to) {
-		return store.ErrIllegalMove
+	if err := store.CheckMove(from, to); err != nil {
+		return err
 	}
 	return x.change(id, func(c *store.Connection) error {
 		if c.State != from {
 			return store.ErrStateMoved
 		}
 		c.State = to
-		c.Reason = store.NextReason(from, to, c.Reason, reason)
+		c.Reason = store.NextReason(to, c.Reason, reason)
+		return nil
+	})
+}
+
+func (x viewConnections) Refuse(_ context.Context, id, reason string) error {
+	return x.change(id, func(c *store.Connection) error {
+		if c.State != store.StatePending {
+			return store.ErrStateMoved
+		}
+		c.Reason = store.NextRefusedReason(c.Reason, reason)
 		return nil
 	})
 }
@@ -461,6 +471,20 @@ func (x viewConnections) Delete(_ context.Context, id string) error {
 	// The credential and the flow go with the row, as the cascading
 	// foreign keys take them in Postgres.
 	del(v, v.d.credentials, id)
+	del(v, v.d.flows, id)
+	del(v, v.d.connections, id)
+	return nil
+}
+
+func (x viewConnections) DeletePending(_ context.Context, id string) error {
+	v := x.v
+	c, ok := v.d.connections[id]
+	if !ok {
+		return store.ErrNotFound
+	}
+	if _, held := v.d.credentials[id]; held || c.State != store.StatePending {
+		return store.ErrStateMoved
+	}
 	del(v, v.d.flows, id)
 	del(v, v.d.connections, id)
 	return nil
@@ -624,6 +648,9 @@ func cloneFlow(f store.Flow) store.Flow {
 
 func (x viewFlows) Put(_ context.Context, f store.Flow) error {
 	v := x.v
+	if status := store.FlowStatusOf(f); store.FlowTable.CheckStart(status) != nil {
+		return fmt.Errorf("%w: a flow does not start %s", store.ErrIllegalMove, status)
+	}
 	if _, ok := v.d.connections[f.Connection]; !ok {
 		return store.ErrNotFound
 	}
@@ -645,6 +672,48 @@ func (x viewFlows) Put(_ context.Context, f store.Flow) error {
 		f.CreatedAt = v.now()
 	}
 	put(v, v.d.flows, f.Connection, cloneFlow(f))
+	return nil
+}
+
+// flowByID is the flow with the id, and the connection that holds it.
+func (x viewFlows) flowByID(id string) (store.Flow, bool) {
+	for _, f := range x.v.d.flows {
+		if f.ID == id {
+			return f, true
+		}
+	}
+	return store.Flow{}, false
+}
+
+func (x viewFlows) Answer(_ context.Context, f store.Flow) error {
+	held, ok := x.flowByID(f.ID)
+	if !ok {
+		return store.ErrNotFound
+	}
+	if err := checkJSON(f.Pending.Meta); err != nil {
+		return err
+	}
+	if !slices.Contains(store.FlowTable.Sources(store.FlowAnswered), store.FlowStatusOf(held)) {
+		return store.ErrStateMoved
+	}
+	held = cloneFlow(held)
+	held.Pending, held.FinishHash, held.StateHash = cloneCredential(f.Pending), bytes.Clone(f.FinishHash), nil
+	held.ExpiresAt = f.ExpiresAt
+	put(x.v, x.v.d.flows, held.Connection, held)
+	return nil
+}
+
+func (x viewFlows) End(_ context.Context, id string, at time.Time) error {
+	held, ok := x.flowByID(id)
+	if !ok {
+		return store.ErrNotFound
+	}
+	if !slices.Contains(store.FlowTable.Sources(store.FlowEnded), store.FlowStatusOf(held)) {
+		return store.ErrStateMoved
+	}
+	held = cloneFlow(held)
+	held.StateHash, held.FinishHash, held.ExpiresAt = nil, nil, at
+	put(x.v, x.v.d.flows, held.Connection, held)
 	return nil
 }
 

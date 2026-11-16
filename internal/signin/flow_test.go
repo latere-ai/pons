@@ -442,7 +442,7 @@ func TestSweep(t *testing.T) {
 	refused := r.signIn("dave", "code")
 	_, f, _ = r.s.Begin(refused, plan, "https://app.example.com/back")
 	if r.st.Flows().Put(ctx, f) != nil || r.st.Connections().Move(ctx, refused.ID, store.StateConnected, store.StatePending, "") != nil ||
-		r.st.Connections().Move(ctx, refused.ID, store.StatePending, store.StatePending, store.ReasonRevoked) != nil {
+		r.st.Connections().Refuse(ctx, refused.ID, store.ReasonRevoked) != nil {
 		t.Fatal("setting up a refused reconnect")
 	}
 	revoked := len(r.auth.Revoked())

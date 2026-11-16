@@ -60,6 +60,14 @@ func (x connections) Move(ctx context.Context, id string, from, to store.State, 
 	return x.s.one(ctx, func(v *view) error { return v.Connections().Move(ctx, id, from, to, reason) })
 }
 
+func (x connections) Refuse(ctx context.Context, id, reason string) error {
+	return x.s.one(ctx, func(v *view) error { return v.Connections().Refuse(ctx, id, reason) })
+}
+
+func (x connections) DeletePending(ctx context.Context, id string) error {
+	return x.s.one(ctx, func(v *view) error { return v.Connections().DeletePending(ctx, id) })
+}
+
 func (x connections) Describe(ctx context.Context, id string, a store.Account) error {
 	return x.s.one(ctx, func(v *view) error { return v.Connections().Describe(ctx, id, a) })
 }
@@ -126,6 +134,14 @@ type flows struct{ s *Store }
 
 func (x flows) Put(ctx context.Context, f store.Flow) error {
 	return x.s.one(ctx, func(v *view) error { return v.Flows().Put(ctx, f) })
+}
+
+func (x flows) Answer(ctx context.Context, f store.Flow) error {
+	return x.s.one(ctx, func(v *view) error { return v.Flows().Answer(ctx, f) })
+}
+
+func (x flows) End(ctx context.Context, id string, at time.Time) error {
+	return x.s.one(ctx, func(v *view) error { return v.Flows().End(ctx, id, at) })
 }
 
 func (x flows) Get(ctx context.Context, connectionID string) (out store.Flow, err error) {

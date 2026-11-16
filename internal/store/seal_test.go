@@ -256,22 +256,26 @@ func TestCredentialDocuments(t *testing.T) {
 // The reason after a move follows the rule both adapters apply.
 func TestNextReason(t *testing.T) {
 	cases := []struct {
-		from, to       store.State
+		to             store.State
 		current, given string
 		want           string
 	}{
-		{store.StatePending, store.StateConnected, "revoked", "x", ""},
-		{store.StateConnected, store.StateNeedsReconnect, "", "revoked", "revoked"},
-		{store.StateConnected, store.StateNeedsReconnect, "old", "", "old"},
-		{store.StatePending, store.StatePending, "old", "refresh_refused", "refresh_refused"},
-		{store.StatePending, store.StatePending, "old", "", "old"},
-		{store.StateNeedsReconnect, store.StatePending, "revoked", "x", "revoked"},
-		{store.StateConnected, store.StatePending, "", "x", ""},
+		{store.StateConnected, "revoked", "x", ""},
+		{store.StateNeedsReconnect, "", "revoked", "revoked"},
+		{store.StateNeedsReconnect, "old", "", "old"},
+		{store.StatePending, "revoked", "x", "revoked"},
+		{store.StatePending, "", "x", ""},
 	}
 	for _, c := range cases {
-		if got := store.NextReason(c.from, c.to, c.current, c.given); got != c.want {
-			t.Errorf("%s to %s from %q given %q: %q, want %q", c.from, c.to, c.current, c.given, got, c.want)
+		if got := store.NextReason(c.to, c.current, c.given); got != c.want {
+			t.Errorf("to %s from %q given %q: %q, want %q", c.to, c.current, c.given, got, c.want)
 		}
+	}
+	if got := store.NextRefusedReason("old", "refresh_refused"); got != "refresh_refused" {
+		t.Errorf("a refusal with a reason: %q", got)
+	}
+	if got := store.NextRefusedReason("old", ""); got != "old" {
+		t.Errorf("a refusal with none: %q", got)
 	}
 	if (store.Page{}).Size() != store.DefaultLimit || (store.Page{Limit: 1000}).Size() != store.MaxLimit || (store.Page{Limit: 7}).Size() != 7 {
 		t.Fatal("a page's size")

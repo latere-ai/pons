@@ -13,6 +13,8 @@ import (
 	"net/url"
 	"strings"
 
+	"latere.ai/x/pkg/statemachine"
+
 	"latere.ai/x/pons/catalog"
 	"latere.ai/x/pons/internal/apierr"
 	"latere.ai/x/pons/internal/id"
@@ -112,10 +114,14 @@ func back(f store.Flow, member, value string) string {
 }
 
 // end ends a flow: its time is set to now, so the next sweep takes it as a
-// flow that ran out, and no callback or confirm matches it again.
+// flow that ran out, and no callback or confirm matches it again. A flow
+// that already ended, or that a newer one replaced, is left as it is.
 func (s *Signin) end(ctx context.Context, f store.Flow, outcome string) {
-	f.ExpiresAt, f.StateHash, f.FinishHash = s.now(), nil, nil
-	if err := s.Store.Flows().Put(ctx, f); err != nil {
+	err := s.Store.Flows().End(ctx, f.ID, s.now())
+	switch {
+	case errors.Is(err, statemachine.ErrIllegalTransition), errors.Is(err, store.ErrNotFound):
+		s.log().InfoContext(ctx, "a flow had already left its state", "flow", f.ID)
+	case err != nil:
 		s.log().WarnContext(ctx, "an ended flow was not written; it runs out by its time", "flow", f.ID, "error", err.Error())
 	}
 	s.log().InfoContext(ctx, "a sign-in ended", "flow", f.ID, "connection", f.Connection, "outcome", outcome)
@@ -202,7 +208,13 @@ func (s *Signin) callback(ctx context.Context, q url.Values, key string) (string
 	finish := secret()
 	f.Pending, f.FinishHash, f.StateHash = pending, hash(finish), nil
 	f.ExpiresAt = s.now().Add(ConfirmTime)
-	if err := s.Store.Flows().Put(ctx, f); err != nil {
+	switch err := s.Store.Flows().Answer(ctx, f); {
+	case errors.Is(err, statemachine.ErrIllegalTransition), errors.Is(err, store.ErrNotFound):
+		// A newer sign-in replaced the flow, or the sweep took it, while the
+		// code was exchanged: no live flow has this state any more.
+		s.log().WarnContext(ctx, "a flow left its state while its code was exchanged", "flow", f.ID)
+		return "", ErrNoFlow
+	case err != nil:
 		return "", apierr.Internal(err)
 	}
 	return back(f, "code", finish), nil

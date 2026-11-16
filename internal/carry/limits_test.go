@@ -278,7 +278,7 @@ func TestTheStateOfAConnection(t *testing.T) {
 	if a := call("alice", c); a.status != http.StatusOK {
 		t.Fatalf("pending for a reconnect, with its credential: %d %s", a.status, a.body)
 	}
-	if err := r.st.Connections().Move(ctx, c.ID, store.StatePending, store.StatePending, store.ReasonRevoked); err != nil {
+	if err := r.st.Connections().Refuse(ctx, c.ID, store.ReasonRevoked); err != nil {
 		t.Fatal(err)
 	}
 	if a := call("alice", c); a.status != http.StatusConflict || a.detail("state") != "pending" || a.detail("reason") != store.ReasonRevoked {

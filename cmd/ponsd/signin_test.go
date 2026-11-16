@@ -318,8 +318,8 @@ func TestConfirmIsOnceAndTimed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.ExpiresAt = f.CreatedAt
-	if err := s.store.Flows().Put(t.Context(), f); err != nil {
+	// Ending the flow at its creation time makes it a flow that ran out.
+	if err := s.store.Flows().End(t.Context(), f.ID, f.CreatedAt); err != nil {
 		t.Fatal(err)
 	}
 	if a := s.do(http.MethodPost, "/v1/connections/"+late.id+"/confirm", "bob", map[string]any{"code": back.Query().Get("code")}); a.status != http.StatusGone {
