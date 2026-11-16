@@ -6,6 +6,30 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+### Changed
+
+- **A connection and a sign-in refuse any step their lifecycle does not
+  have.** A connection moves between pending, connected and needs-reconnect
+  only along the steps the connection's lifecycle lists, and a sign-in is
+  answered once, ends once, and never goes back to waiting. Every write
+  checks the state the record is in as it writes, so two requests that race
+  on one record cannot leave it somewhere neither meant. The lifecycles, and
+  the lease that keeps two replicas from refreshing one credential at the
+  same moment, are checked by proofs and model checks that run with the
+  tests.
+
+### Fixed
+
+- **A sign-in that was confirmed as it ran out no longer loses its
+  connection.** The sweep that removes a connection whose first sign-in never
+  finished read the connection and then deleted it in a second step, so a
+  confirm that landed between the two connected it and the sweep then
+  deleted it with its new credential. The sweep now deletes only a connection
+  that is still pending and holds no credential.
+- **A callback that arrives after a newer sign-in replaced its flow, or
+  after the flow ran out, no longer overwrites the newer flow.** It is
+  answered as a sign-in with no live flow.
+
 ## v0.7.1 - 2026-11-15
 
 - **v0.7.0 is published with this release.** Its own release stopped before
