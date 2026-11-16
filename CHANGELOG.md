@@ -6,6 +6,8 @@ here is refused before it is pushed.
 
 ## Unreleased
 
+## v0.8.0 - 2026-11-16
+
 ### Changed
 
 - **A connection and a sign-in refuse any step their lifecycle does not
