@@ -26,6 +26,11 @@ here is refused before it is pushed.
   confirm that landed between the two connected it and the sweep then
   deleted it with its new credential. The sweep now deletes only a connection
   that is still pending and holds no credential.
+- **A confirm of an old sign-in no longer deletes a newer one.** The confirm
+  removed the connection's flow by the connection, so one that read a flow a
+  reconnect had since replaced deleted the new flow. It now removes the flow
+  it read and, when that flow is gone, changes nothing and answers that the
+  connection's state moved.
 - **A callback that arrives after a newer sign-in replaced its flow, or
   after the flow ran out, no longer overwrites the newer flow.** It is
   answered as a sign-in with no live flow.
