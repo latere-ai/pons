@@ -97,3 +97,16 @@ image:
         PONS_OIDC_ISSUERS: https://issuer.example.com
       port: 8080
       probe: /livez
+
+# The lifecycles of the store: each status type is held to its table by the
+# enum-go gate, so a switch over one names every state.
+enums:
+  go:
+    types:
+      - internal/store.State
+      - internal/store.FlowStatus
+    fields:
+      internal/store.Connection.State: internal/store.State
+      internal/store.Filter.State: internal/store.State
+    parsers:
+      internal/store.ParseState: Reads a connection state written as text outside the store, such as a query parameter, and reports whether ConnectionTable has it.
