@@ -154,8 +154,8 @@ func (x flows) ByState(ctx context.Context, h []byte) (out store.Flow, err error
 	return out, err
 }
 
-func (x flows) Delete(ctx context.Context, connectionID string) error {
-	return x.s.one(ctx, func(v *view) error { return v.Flows().Delete(ctx, connectionID) })
+func (x flows) Delete(ctx context.Context, id string) error {
+	return x.s.one(ctx, func(v *view) error { return v.Flows().Delete(ctx, id) })
 }
 
 func (x flows) TakeExpired(ctx context.Context, now time.Time, limit int) (out []store.Flow, err error) {

@@ -737,8 +737,12 @@ func (x viewFlows) ByState(_ context.Context, h []byte) (store.Flow, error) {
 	return store.Flow{}, store.ErrNotFound
 }
 
-func (x viewFlows) Delete(_ context.Context, connectionID string) error {
-	del(x.v, x.v.d.flows, connectionID)
+func (x viewFlows) Delete(_ context.Context, id string) error {
+	held, ok := x.flowByID(id)
+	if !ok {
+		return store.ErrStateMoved
+	}
+	del(x.v, x.v.d.flows, held.Connection)
 	return nil
 }
 

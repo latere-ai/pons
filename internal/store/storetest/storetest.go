@@ -882,7 +882,7 @@ func testGrants(t *testing.T, e env) {
 		if _, err := tx.Credentials().Put(ctx, drive.ID, f.Pending); err != nil {
 			return err
 		}
-		return tx.Flows().Delete(ctx, drive.ID)
+		return tx.Flows().Delete(ctx, f.ID)
 	}))
 	count(g, 3)
 	ok(t, e.st.Connections().Delete(ctx, mail.ID))
@@ -964,6 +964,52 @@ func sameFlow(a, b store.Flow) bool {
 		reflect.DeepEqual(a.Verifier, b.Verifier) && a.Pending.Kind == b.Pending.Kind &&
 		sameJSON(a.Pending.Meta, b.Pending.Meta) && reflect.DeepEqual(a.Pending.Sealed, b.Pending.Sealed) &&
 		a.ExpiresAt.Equal(b.ExpiresAt)
+}
+
+// deleteRace holds a confirm of an old flow against a newer flow of its
+// connection: the confirm's transaction names the flow it read, finds it
+// replaced, and writes nothing, so neither the credential nor the newer flow
+// is lost. Where the confirm wins the race instead, it deletes its own flow
+// and the replacement then lands on a connection with no flow.
+func deleteRace(t *testing.T, st store.Store, now func() time.Time) {
+	ctx := context.Background()
+	s := Sealer(t, 1)
+	for range 20 {
+		c := Connection("owner", "r-"+id.New(id.Connection)[4:], store.StatePending)
+		ok(t, st.Connections().Create(ctx, c, 0))
+		old := Flow(t, s, c, now().Add(time.Hour))
+		ok(t, st.Flows().Put(ctx, old))
+		newer := Flow(t, s, c, now().Add(time.Hour))
+		newer.StateHash = []byte("newer-" + c.ID)
+		newer.FinishHash, newer.Pending = nil, store.SealedCredential{}
+		errs := race(2, func(i int) error {
+			if i == 0 {
+				return st.Tx(ctx, func(tx store.Tx) error {
+					if _, err := tx.Credentials().Put(ctx, c.ID, old.Pending); err != nil {
+						return err
+					}
+					return tx.Flows().Delete(ctx, old.ID)
+				})
+			}
+			return st.Flows().Put(ctx, newer)
+		})
+		ok(t, errs[1])
+		got, gerr := st.Flows().Get(ctx, c.ID)
+		_, _, cerr := st.Credentials().Get(ctx, c.ID)
+		switch {
+		case errs[0] == nil:
+			// The confirm deleted its own flow before the replacement, or
+			// the replacement came first and the confirm found its flow
+			// gone; the second cannot succeed.
+			failIf(t, cerr != nil, "the confirm committed without its credential: %v", cerr)
+			failIf(t, gerr == nil && got.ID == old.ID, "the old flow outlived its confirm")
+		case errors.Is(errs[0], store.ErrStateMoved):
+			failIf(t, gerr != nil || got.ID != newer.ID, "the newer flow was lost: %v %v", got.ID, gerr)
+			failIf(t, !errors.Is(cerr, store.ErrNotFound), "a refused confirm left its credential: %v", cerr)
+		default:
+			t.Fatalf("a confirm of an old flow: %v", errs[0])
+		}
+	}
 }
 
 // FlowLifecycle holds a store to the flow's lifecycle table: Exhaustive and
@@ -1085,10 +1131,17 @@ func testFlows(t *testing.T, e env) {
 	if err := fs.Put(ctx, clash2); err == nil {
 		t.Fatal("two flows hold one state hash")
 	}
-	ok(t, fs.Delete(ctx, c.ID))
+	// A delete names the flow it read: one that a newer flow replaced is
+	// left in place, and one already deleted is reported.
+	is(t, fs.Delete(ctx, f.ID), store.ErrStateMoved)
+	got, err = fs.Get(ctx, c.ID)
+	ok(t, err)
+	failIf(t, got.ID != replaced.ID, "a delete of the replaced flow removed %s", got.ID)
+	ok(t, fs.Delete(ctx, replaced.ID))
 	_, err = fs.Get(ctx, c.ID)
 	is(t, err, store.ErrNotFound)
-	ok(t, fs.Delete(ctx, c.ID))
+	is(t, fs.Delete(ctx, replaced.ID), store.ErrStateMoved)
+	deleteRace(t, e.st, e.clock.Now)
 
 	// Two sweepers take each expired flow once.
 	var expired []string

@@ -312,7 +312,7 @@ func (s *Signin) Confirm(ctx context.Context, c store.Connection, code string) e
 		if err := tx.Connections().Describe(ctx, c.ID, store.Account{Account: meta.Account, Scopes: meta.Scopes, ExpiresAt: meta.RefreshExpiresAt}); err != nil {
 			return err
 		}
-		return tx.Flows().Delete(ctx, c.ID)
+		return tx.Flows().Delete(ctx, f.ID)
 	})
 	switch {
 	case errors.Is(err, store.ErrStateMoved), errors.Is(err, store.ErrIllegalMove):

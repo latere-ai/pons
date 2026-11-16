@@ -161,9 +161,15 @@ func (x flows) ByState(ctx context.Context, h []byte) (store.Flow, error) {
 	return f, one(err)
 }
 
-func (x flows) Delete(ctx context.Context, connectionID string) error {
-	_, err := x.v.q.Exec(ctx, `DELETE FROM flows WHERE connection = $1`, connectionID)
-	return err
+func (x flows) Delete(ctx context.Context, id string) error {
+	tag, err := x.v.q.Exec(ctx, `DELETE FROM flows WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return store.ErrStateMoved
+	}
+	return nil
 }
 
 func (x flows) TakeExpired(ctx context.Context, now time.Time, limit int) ([]store.Flow, error) {

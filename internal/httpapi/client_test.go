@@ -77,7 +77,11 @@ func TestSignInRoutesRefuse(t *testing.T) {
 			t.Fatalf("%s: %d %s", body, a.status, a.body)
 		}
 	}
-	if err := h.store.Flows().Delete(t.Context(), signed); err != nil {
+	flow, err := h.store.Flows().Get(t.Context(), signed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.store.Flows().Delete(t.Context(), flow.ID); err != nil {
 		t.Fatal(err)
 	}
 	if a := h.do(http.MethodPost, "/v1/connections/"+signed+"/confirm", "alice", map[string]any{"code": "x"}); a.code() != "flow_expired" {

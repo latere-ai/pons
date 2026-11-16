@@ -332,8 +332,10 @@ type Flows interface {
 	// it. It matches only while a hash is set: ErrStateMoved when the flow
 	// already ended or was replaced, ErrNotFound when it is gone.
 	End(ctx context.Context, id string, at time.Time) error
-	// Delete removes the flow of a connection.
-	Delete(ctx context.Context, connectionID string) error
+	// Delete removes the flow with the id, in any state: ErrStateMoved,
+	// changing nothing, when no flow has it any more, because a newer flow
+	// replaced it, the sweep took it or it was deleted already.
+	Delete(ctx context.Context, id string) error
 	// TakeExpired deletes and returns up to limit flows whose time is
 	// before now, in one statement, so each reaches one sweeper.
 	TakeExpired(ctx context.Context, now time.Time, limit int) ([]Flow, error)

@@ -209,7 +209,7 @@ func TestEveryMethodFailsOnAClosedPool(t *testing.T) {
 	add("flow get", err)
 	_, err = s.Flows().ByState(ctx, flow.StateHash)
 	add("by state", err)
-	add("flow delete", s.Flows().Delete(ctx, c.ID))
+	add("flow delete", s.Flows().Delete(ctx, flow.ID))
 	_, err = s.Flows().TakeExpired(ctx, time.Now(), 0)
 	add("take expired", err)
 	_, err = s.Registrations().Put(ctx, store.Registration{Issuer: "i", RedirectURI: "r", ClientID: "c"})
